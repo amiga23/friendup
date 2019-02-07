@@ -1,25 +1,12 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
 /** @file
  * 
  *  Http structures and functions definitions
@@ -32,7 +19,7 @@
 #define __NETWORK_HTTP_H__
 
 //
-// TODO: Protect against null-byte poisioning
+//
 //
 #include <time.h>
 #include <fcntl.h>
@@ -76,6 +63,15 @@ enum {
 	HTTP_HEADER_ACCEPT,
 	HTTP_HEADER_METHOD,
 	HTTP_HEADER_REFERER,
+	HTTP_HEADER_ACCEPT_LANGUAGE,
+	HTTP_HEADER_ACCEPT_ENCODING,
+	HTTP_HEADER_LOCATION,
+	HTTP_HEADER_DESTINATION,
+	HTTP_HEADER_DEPTH,
+	HTTP_HEADER_EXPECTED_CONTENT_LENGTH,
+	HTTP_HEADER_RANGE,
+	HTTP_HEADER_X_FRAME_OPTIONS,
+	HTTP_HEADER_UPGRADE,
 	HTTP_HEADER_END
 };
 
@@ -99,7 +95,16 @@ static const char *HEADERS[] = {
 	"origin",
 	"accept",
 	"method",
-	"referer"
+	"referer",
+	"accept-language",
+	"accept-encoding",
+	"location",
+	"destination",
+	"x-expected-entity-length",
+	"depth",
+	"range",
+	"x-frame-options",
+	"upgrade"
 };
 
 //
@@ -217,8 +222,8 @@ HttpFreeRequest( request );*/
 typedef struct HttpFile
 {
 	char			hf_FileName[ 512 ];
-	char 		*hf_Data;
-	FQUAD		hf_FileSize;		// file size
+	char 			*hf_Data;
+	FULONG			hf_FileSize;		// file size
 	FILE			*hf_FP;			// when file is stored on server disk
 	struct MinNode node;
 }HttpFile;
@@ -231,7 +236,8 @@ enum {
 	HTTP_CONTENT_TYPE_DEFAULT = 0,
 	HTTP_CONTENT_TYPE_MULTIPART,
 	HTTP_CONTENT_TYPE_APPLICATION_XML,
-	HTTP_CONTENT_TYPE_TEXT_XML
+	HTTP_CONTENT_TYPE_TEXT_XML,
+	HTTP_CONTENT_TYPE_APPLICATION_JSON
 };
 
 //
@@ -266,81 +272,83 @@ typedef struct Http
 	// These fields only applies to requests.
 	//
 	// Raw null-terminated strings
-	char                   *method;
-	Uri                     *uri;
-	char                   *rawRequestPath;
-	char                   *version;
+	char				*method;
+	Uri					*uri;
+	char				*rawRequestPath;
+	char				*version;
 
-	Hashmap            *query;   // Hasmap of the query, for convinience (Is null when no query, or invalid key/value query)
+	Hashmap				*query;   // Hasmap of the query, for convinience (Is null when no query, or invalid key/value query)
 
-	unsigned int       errorCode;  // If any of these are non-null, an error has occured and a fitting response should be generated
-	unsigned int       errorLine;   // Useful for debugging, otherwise ignore
+	unsigned int		errorCode;  // If any of these are non-null, an error has occured and a fitting response should be generated
+	unsigned int		errorLine;   // Useful for debugging, otherwise ignore
 
-	Hashmap            *parsedPostContent; // x-www-form-urlencoded
+	Hashmap				*parsedPostContent; // x-www-form-urlencoded
 
 	// -----------------------------------------------------------------------------------------------------------------
 	//
 	// Fields for both requests and responses.
 	//
 	// HTTP x.x
-	int                      versionMajor; // Pretty much always 1
-	int                      versionMinor; // Also pretty much always 1 or 0
+	int					versionMajor; // Pretty much always 1
+	int					versionMinor; // Also pretty much always 1 or 0
 
 	// This is a blob (But most likely text)
-	char                   *content;
-	FUQUAD            sizeOfContent;
-	Hashmap           *headers; // Additional headers
-	char                   *h_RespHeaders[ HTTP_HEADER_END ]; // response header
-	FBOOL                h_HeadersAlloc[ HTTP_HEADER_END ]; // memory was allocated?
-	FBOOL               h_ResponseHeadersRelease;		// if response headers points to allocated memory, they should not be released
-	int                      h_RequestSource;			// depends who is calling response should go to the target
-	time_t                timestamp;  // Optional timestamp
+	char				*content;
+	FLONG				sizeOfContent;
+	Hashmap				*headers; // Additional headers
+	char				*h_RespHeaders[ HTTP_HEADER_END ]; // response header
+	FBOOL				h_HeadersAlloc[ HTTP_HEADER_END ]; // memory was allocated?
+	FBOOL				h_ResponseHeadersRelease;		// if response headers points to allocated memory, they should not be released
+	int					h_RequestSource;			// depends who is calling response should go to the target
+	time_t				timestamp;  // Optional timestamp
 
 	// -----------------------------------------------------------------------------------------------------------------
 	//
 	// These fields only applies to responses.
 	//
-	unsigned int   responseCode;
-	char               *responseReason;
+	unsigned int		responseCode;
+	char				*responseReason;
 
 	// -----------------------------------------------------------------------------------------------------------------
 	//
 	// Do not write to these. They are "private"
 	//
-	char                *response;
-	unsigned int   responseLength;
+	char				*response;
+	FLONG				responseLength;
 
-	FBOOL           partialRequest;
-	char               *partialData;
-	unsigned int   partialDataIndex;
-	FBOOL           expectBody;
-	int                  expectSize;
-	FBOOL           gotHeader;
-	FBOOL           gotBody;
+	FBOOL				partialRequest;
+	char				*partialData;
+	unsigned int		partialDataIndex;
+	FBOOL				expectBody;
+	int					expectSize;
+	FBOOL				gotHeader;
+	FBOOL				gotBody;
 	
-	char               h_PartDivider[ 256 ];
-	FBOOL           h_ContentType;
-	int                  h_ContentLength;
-	HttpFile         *h_FileList;
+	char				h_PartDivider[ 256 ];
+	FBOOL				h_ContentType;
+	FLONG				h_ContentLength;
+	FLONG				h_ExpectedLength;
+	FLONG				h_RangeMin, h_RangeMax;
+	HttpFile			*h_FileList;
 	
-	FBOOL           h_Stream;			// stream
-	void                *h_WSocket;				// websocket context, if provided data should be delivered here
-	Socket            *h_Socket;		// socket,  if != NULL  data should be delivered here
+	FBOOL				h_Stream;			// stream
+	void				*h_WSocket;				// websocket context, if provided data should be delivered here
+	Socket				*h_Socket;		// socket,  if != NULL  data should be delivered here
 	
-	int                  h_WriteType;
+	int					h_WriteType;
 	
-	FBOOL           h_WriteOnlyContent;		// set to TRUE if you want to stream content
+	FBOOL				h_WriteOnlyContent;		// set to TRUE if you want to stream content
 	
-	void                *h_ActiveSession;	// pointer to UserSession
-	FULONG         h_ResponseID;		// number used to compare http calls (unique number)
+	void				*h_ActiveSession;	// pointer to UserSession
+	FULONG				h_ResponseID;		// number used to compare http calls (unique number)
 	
-	FILE               *h_ContentFile;		// http content in FILE
-	void                *h_PIDThread;    // PIDThread
-	void                *h_UserSession;  // user session
-	void                *h_SB; // SystemBase
+	FILE				*h_ContentFile;		// http content in FILE
+	void				*h_PIDThread;    // PIDThread
+	void				*h_UserSession;  // user session
+	void				*h_SB; // SystemBase
 	
-	FBOOL           *h_ShutdownPtr;		// pointer to quit flag
-	char                h_UserActionInfo[ 512 ];
+	FBOOL				*h_ShutdownPtr;		// pointer to quit flag
+	char				h_UserActionInfo[ 512 ];
 } Http;
 
 //
@@ -385,6 +393,7 @@ Http* HttpParseRequest( const char* request, unsigned int length );
 //
 
 int HttpParsePartialRequest( Http* http, char* data, unsigned int length );
+
 //
 // Frees an HttpObject element (Only call this for HttpObjects returned from HttpParseRequest!!!)
 //
@@ -468,12 +477,6 @@ char* HttpBuild( Http* http );
 void HttpFree( Http* http );
 
 //
-// For testing purposes
-//
-
-void HttpTest();
-
-//
 //
 //
 
@@ -495,7 +498,7 @@ void HttpWrite( Http* http, Socket *sock );
 // upload file
 //
 
-HttpFile *HttpFileNew( char *filename, int fnamesize, char *data, FQUAD size );
+HttpFile *HttpFileNew( char *filename, int fnamesize, char *data, FLONG size );
 
 //
 //

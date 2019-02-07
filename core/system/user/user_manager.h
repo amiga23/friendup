@@ -1,25 +1,12 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
 /** @file
  * 
  *  User Manager
@@ -36,6 +23,7 @@
 #include <core/types.h>
 #include "user_session.h"
 #include "user_group.h"
+#include "user_sessionmanager.h"
 #include "user.h"
 #include "remote_user.h"
 
@@ -45,12 +33,13 @@
 
 typedef struct UserManager
 {
-	void										*um_SB;
+	void								*um_SB;
 	
-	User										*um_Users; 						// logged users with mounted devices
+	User								*um_Users; 						// logged users with mounted devices
 	UserGroup							*um_UserGroups;			// all user groups
-	void 										*um_USM;
+	void 								*um_USM;
 	RemoteUser							*um_RemoteUsers;		// remote users and their connections
+	User								*um_APIUser;	// API user
 } UserManager;
 
 
@@ -90,6 +79,12 @@ int UMUserUpdateDB( UserManager *um, User *usr );
 
 
 int UMAssignApplicationsToUser( UserManager *smgr, User *usr );
+
+//
+//
+//
+
+User * UMUserGetByName( UserManager *um, const char *name );
 
 //
 //
@@ -138,13 +133,25 @@ FBOOL UMUserExistByNameDB( UserManager *smgr, const char *name );
 //
 //
 
-User *UMGetUserByName( UserManager *um, char *name );
+User *UMGetUserByName( UserManager *um, const char *name );
+
+//
+//
+//
+
+FULONG UMGetUserIDByName( UserManager *um, const char *name );
 
 //
 //
 //
 
 User *UMGetUserByNameDB( UserManager *um, const char *name );
+
+//
+//
+//
+
+User *UMGetUserByIDDB( UserManager *um, FULONG id );
 
 //
 //
@@ -174,7 +181,7 @@ int  UMAddUser( UserManager *um,  User *usr );
 //
 //
 
-int  UMRemoveUser( UserManager *um,  User *usr );
+int UMRemoveUser(UserManager *um, User *usr, UserSessionManager *user_session_manager);
 
 //
 //
@@ -198,44 +205,6 @@ int UMStoreLoginAttempt( UserManager *um, const char *name, const char *info, co
 //
 //
 
-int UMAddRemoteUser( UserManager *um, const char *name, const char *sessid, const char *hostname );
-
-//
-//
-//
-
-int UMRemoveRemoteUser( UserManager *um, const char *name, const char *hostname );
-
-//
-//
-//
-
-int UMAddRemoteDrive( UserManager *um, const char *locuname, const char *uname, const char *authid, const char *hostname, char *localDevName, char *remoteDevName );
-
-//
-//
-//
-
-int UMRemoveRemoteDrive( UserManager *um, const char *uname, const char *hostname, char *localDevName, char *remoteDevName );
-
-//
-//
-//
-
-int UMAddRemoteDriveToUser( UserManager *um, CommFCConnection *con, const char *locuname, const char *uname, const char *authid, const char *hostname, char *localDevName, char *remoteDevName );
-
-//Http *UMWebRequest( void *m, char **urlpath, Http* request, UserSession *session, int *result );
-
-
-// get user by auth id
-//UserSession *UserGetByAuthID( UserDBManager *usm, const char *authId );
-// get users by timeout
-//User *UDBMUserGetByTimeout( UserDBManager *smgr, const FULONG timeout );
-
-// get by user id
-//User 							*(*UserGetByID)( UserDBManager *usm, FULONG id );
-// get user by his name
-//void								*(*UserGetByName)( UserDBManager *usm, const char *name );
-
+int UMCheckAndLoadAPIUser( UserManager *um );
 
 #endif //__SYSTEM_USER_USER_MANAGER_H__

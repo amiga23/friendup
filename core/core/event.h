@@ -1,26 +1,22 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
 
-
+/** @file event.h
+ * 
+ *  Event structure
+ *
+ *  @author PS (Pawel Stefanski)
+ *  @date created 01/2016
+ * 
+ * \ingroup EventManager
+ */
 
 #ifndef __CORE_EVENT_H__
 #define __CORE_EVENT_H__
@@ -56,15 +52,15 @@ typedef enum EventPriority
 
 typedef struct Event
 {
-	struct MinNode	node;		// pointer to next event
+	struct MinNode			node;		// pointer to next event
 
-	struct _Object *e_Src;                // pointer to source object
-    FULONG e_AttributeCheck;       // check argument set
-    FLONG e_Value;                // if value is set do something
+	struct _Object			*e_Src;                // pointer to source object
+    FULONG					e_AttributeCheck;       // check argument set
+    FLONG					e_Value;                // if value is set do something
 
-    struct _Object *e_Dst;
-    FULONG e_DstMethodID;
-    void *e_Data;
+    struct _Object			*e_Dst;
+    FULONG					e_DstMethodID;
+    void					*e_Data;
 }Event;
 
 //
@@ -73,17 +69,21 @@ typedef struct Event
 
 typedef struct CoreEvent
 {
-	struct MinNode	node;
+	struct MinNode			node;
 	time_t					ce_Time;
 	time_t					ce_TimeDelta;
-	int 						ce_RepeatTime;		// -1 repeat everytime, 0 - last repeat, n - number of repeats
-	FUQUAD 				ce_ID;
+	int 					ce_RepeatTime;		// -1 repeat everytime, 0 - last repeat, n - number of repeats
+	FUQUAD 					ce_ID;
 	
-	FThread 				*ce_Thread;
+	pthread_t				ce_Thread;
+	FBOOL					ce_Quit;
+	FBOOL					ce_Launched;
 	int						(*ce_Function)( void *sb );
-	void						*ce_Data;
+	void					*ce_Data;
 }CoreEvent;
 
 
 
 #endif
+
+/**@}*/

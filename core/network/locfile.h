@@ -1,25 +1,12 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
 /** @file
  * 
  * file contain functiton definitions related to local files
@@ -31,6 +18,8 @@
 #ifndef FILE_H_
 #define FILE_H_
 
+#define LOCFILE_USE_MMAP 0 //TK-704
+
 #include <sys/stat.h>
 #include <stdbool.h>
 #include <core/nodes.h>
@@ -40,27 +29,35 @@
 #define FILE_READ_NOW  0x00000002
 #define FILE_EXISTS    0x00000004
 
+#ifndef LOCFILE_USE_MMAP
+#error "LOCFILE_USE_MMAP must be defined to 0 or 1"
+#endif
+
 //
 //
 //
 
 typedef struct LocFile
 {
-// "public":
-	char						*lf_Filename; // Filename with extension
-	char						*lf_Path;     // Absolute path
+	char			*lf_Filename; // Filename with extension
+	FULONG			lf_FilenameLength; // Filename length
+	char			*lf_Path;     // Absolute path
+	FULONG			lf_PathLength; // Path length
 
-	unsigned long      filesize;
-	char*                   buffer;
-	unsigned long      bufferSize;
+	//unsigned long   filesize;
+	char			*lf_Buffer;
+	unsigned long   lf_FileSize;
 
-// "private":
-	FILE*                   fp;       // File pointer
-	int                       fd;       // File descriptor
-	struct stat          info;
+	//FILE*           lf_Fp;       // File pointer
+	//int             lf_Fd;       // File descriptor
+	struct stat     lf_Info;
+	time_t			lf_ModificationTimestamp;
 	
-	FUQUAD             lf_FileUsed;
+	FUQUAD          lf_FileUsed;
 	struct MinNode  node;
+	uint64_t		hash[ 2 ];
+	
+	char			*lf_Mime;
 } LocFile;
 
 //
@@ -69,24 +66,22 @@ typedef struct LocFile
 
 LocFile* LocFileNew( char* path, unsigned int flags ); // Can be relative, or absolute.
 
-//
-//
-//
-
-int LocFileRead( LocFile* file, long long offset, long long size );
 
 //
 //
 //
 
-void LocFileFree( LocFile* file );
+void LocFileDelete( LocFile* file );
 
 //
 //
 //
 
+#if LOCFILE_USE_MMAP == 1
+#define LocFileReload(a,b ) //empty macro - reloading of a file is not needed because mmap will automatically carry out all the changes
+#else
 int LocFileReload( LocFile *file,  char *path );
-
+#endif
 //
 //
 //
@@ -104,5 +99,11 @@ FLONG LocFileAvaiableSpace( const char *path );
 //
 
 LocFile* LocFileNewFromBuf( char* path, BufString *bs );
+
+//
+//
+//
+
+char *GetExtension( char *name );
 
 #endif

@@ -2,50 +2,49 @@
 
 LIB_DIR = libwebsockets 
 
-ALL:
-	for dir in $(LIB_DIR); do \
-		make -C $$dir; \
-	done
+ALL: compile
+	@echo "make ALL"
+	#for dir in $(LIB_DIR); do \
+	#	make -C $$dir; \
+	#done
 
 install:
 ifeq ($(CYGWIN_BUILD),1)
 	for dir in $(LIB_DIR); do \
-		make -C $$dir install; \
+		make -C $$dir install FRIEND_PATH=$(FRIEND_PATH); \
 	done
 	
-	cp libwebsockets/bin/cygwebsockets-8.dll ../build/
 else
-	cp libwebsockets/lib/libwebsockets.so* ../build/
-	for dir in $(LIB_DIR); do \
-		sudo make -C $$dir install; \
-	done
-	
-	if [ -d "/usr/lib/x86_64-linux-gnu/" ]; then \
-		sudo cp /usr/local/lib/libwebsockets.so.* /usr/lib/x86_64-linux-gnu/; \
-	else \
-		sudo cp /usr/local/lib/libwebsockets.so.* /lib/i386-linux-gnu/; \
-	fi
+	#sudo cp libwebsockets/build/lib/libwebsockets.so* /usr/lib/
+	#cd libwebsockets/build/ ;make install ;cd ../../
 endif
 
 setup:
-	cd libwebsockets/ ;cmake . ;cd ../
+	mkdir -p libwebsockets/build
+	mkdir -p libssh2/build
+	cd libwebsockets/build/ ; cmake ../ -DLWS_HAVE_SYS_CAPABILITY_H=OFF -DLWS_IPV6=ON -DCMAKE_BUILD_TYPE=DEBUG ; make DEBUG=0 ; cd ../../
+	cp -r libwebsockets/include/* libwebsockets/build/include/
+	cd libssh2/build/ ; cmake ../ -DCMAKE_C_FLAGS=-fPIC -DCRYPTO_BACKEND:STRING=Libgcrypt ; make DEBUG=0 ; cd ../../
+	#mkdir -p libzmq/build
+	#cd libzmq/build/ ; cmake ../ ; make DEBUG=0 ; cd ../../
 	#for dir in $(LIB_DIR); do \
-	#	make -C $$dir setup; \
+	#	make -C $$dir setup  FRIEND_PATH=$(FRIEND_PATH); \
 	#done
 
 clean:
-	for dir in $(LIB_DIR); do \
-		make -C $$dir clean; \
-	done
+	mkdir -p libwebsockets/build
+	mkdir -p libssh2/build
+	cd libwebsockets/build/ && rm -rf * && cd ../../
+	cd libssh2/build/ && rm -rf * && cd ../../
+	#cd libhttp/ ;make clean ; cd ..
 
 compile:
-	for dir in $(LIB_DIR); do \
-		make -C $$dir DEBUG=1; \
-	done
+	cd libwebsockets/build/ ;make DEBUG=1 ; cd ../../
+	cd libssh2/build/ ;make DEBUG=1 ; cd ../../
+	#cd libhttp/ ;make DEBUG=1 ; cd ../
 
 release:
-	for dir in $(LIB_DIR); do \
-                make -C $$dir release; \
-        done
-
+	cd libwebsockets/build/ ;make DEBUG=0 ; cd ../../
+	cd libssh2/build/ ;make DEBUG=0 ; cd ../../
+	#cd libhttp/ ;make DEBUG=0 ; cd ..
 

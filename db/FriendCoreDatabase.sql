@@ -86,7 +86,7 @@ CREATE TABLE IF NOT EXISTS `FDocumentation` (
 CREATE TABLE `FTinyUrl` (
  `ID` bigint(20) NOT NULL AUTO_INCREMENT,
  `UserID` bigint(20) NOT NULL,
- `Source` varchar(255) NOT NULL,
+ `Source` text NOT NULL,
  `Hash` varchar(16) NOT NULL,
  `Expire` tinyint(1) NOT NULL,
  `DateCreated` int(11) NOT NULL,
@@ -386,7 +386,7 @@ CREATE TABLE IF NOT EXISTS `FUserToGroup` (
 
 /*-- INSERT INTO `FUser` (`Name`,`Password`) VALUES ("fadmin","securefassword" ); */
 
-INSERT INTO `FUser` (`ID`,`Name`,`Password`) VALUES (1,"fadmin",CONCAT("{S6}",SHA2(CONCAT("HASHED",SHA2("securefassword",256)),256)));
+INSERT INTO `FUser` (`ID`,`Name`,`FullName`,`Password`) VALUES (1,"fadmin","Friend Administrator",CONCAT("{S6}",SHA2(CONCAT("HASHED",SHA2("securefassword",256)),256)));
 
 /*-- INSERT INTO `FUser` (`Name`,`Password`) VALUES ("guest","guest" ); */
 INSERT INTO `FUser` (`ID`,`Name`,`Password`) VALUES (2,"guest",CONCAT("{S6}",SHA2(CONCAT("HASHED",SHA2("guest",256)),256)));
@@ -465,3 +465,35 @@ INSERT INTO `FUserToGroup` (`UserID`,`UserGroupID`) VALUES ( 2,2 );
 
 -- 2017-03-06 -- on the end we will not use alter, but since we dont have version mechanism Im adding that here - stefkos
 ALTER TABLE `Filesystem` ADD `Execute` VARCHAR( 512 );
+
+
+ -- 2017-10-09 -- FKeys table
+ CREATE TABLE IF NOT EXISTS `FKeys` (
+  `ID` bigint(20) NOT NULL AUTO_INCREMENT,
+  `UserID` bigint(20) NOT NULL,
+  `ApplicationID` bigint(20) NOT NULL,
+  `UniqueID` varchar(255) NOT NULL,
+  `RowID` bigint(20) NOT NULL,
+  `RowType` varchar(255) NOT NULL,
+  `Name` varchar(255) NOT NULL,
+  `Type` varchar(255) NOT NULL,
+  `Blob` longblob,
+  `Data` text,
+  `PublicKey` text,
+  `Signature` text,
+  `DateModified` datetime NOT NULL,
+  `DateCreated` datetime NOT NULL,
+  `IsDeleted` tinyint(4) NOT NULL,
+  PRIMARY KEY (`ID`)
+) ENGINE=InnoDB  DEFAULT CHARSET=utf8 AUTO_INCREMENT=1 ;
+
+ -- 2018-04-17 -- FMetaData table
+ CREATE TABLE `FMetaData` (
+  `ID` bigint(20) NOT NULL AUTO_INCREMENT,
+  `Key` varchar(255) NOT NULL,
+  `DataID` bigint(20) DEFAULT NULL,
+  `DataTable` varchar(255) DEFAULT NULL,
+  `ValueNumber` int(11) NOT NULL DEFAULT '0',
+  `ValueString` varchar(255) NOT NULL DEFAULT '',
+  PRIMARY KEY (`ID`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 AUTO_INCREMENT=1 ;

@@ -1,23 +1,13 @@
 <?php
-/*©lpgl*************************************************************************
+/*©lgpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Lesser General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Lesser General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Lesser   *
+* General Public License, found in the file license_lgpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
-
 
 /*******************************************************************************
 * This file generates a html document  that an application can launch into. It *
@@ -42,14 +32,27 @@ if( isset( $args->conf ) )
 			$vol = explode( ':', $conf );
 			if( $vol && ( !isset( $vol[1] ) || !trim( $vol[1] ) ) )
 			{
-				$f = new dbIO( 'Filesystem' );
-				$f->Name = $vol[0];
-				$f->UserID = $User->ID;
-				if( $f->Load() )
+				if( $f = $SqlDatabase->fetchRow( $q = '
+				SELECT f.* FROM Filesystem f
+				WHERE
+					(
+						f.UserID=\'' . mysqli_real_escape_string( $SqlDatabase->_link, $User->ID ) . '\' OR
+						f.GroupID IN (
+							SELECT ug.UserGroupID FROM FUserToGroup ug, FUserGroup g
+							WHERE
+								g.ID = ug.UserGroupID AND g.Type = \'Workgroup\' AND
+								ug.UserID = \'' . $User->ID . '\'
+						)
+					)
+					AND f.Name = \'' . mysqli_real_escape_string( $SqlDatabase->_link, $vol[0] ) . '\'
+					AND f.Mounted = \'1\'
+				ORDER BY
+					f.Name ASC' )
+				)
 				{
 					$conf = json_decode( $f->Config );
 				}
-				else die( 'fail' );
+				else die( 'fail<!--separate-->{"response":"Could not find file system."}' );
 			}
 			// No it's actually a path
 			else
@@ -71,17 +74,20 @@ if( isset( $args->conf ) )
 	
 	// Base url of config
 	$burl = '';
-	if( strstr( $args->conf, '/' ) )
+	if( is_string( $args->conf ) )
 	{
-		$burl = explode( '/', $args->conf );
-		array_pop( $burl );
-		$burl = implode( '/', $burl );
-		$burl .= '/';
-	}
-	else
-	{
-		list( $burl, ) = explode( ':', $args->conf );
-		$burl .= ':';
+		if( strstr( $args->conf, '/' ) )
+		{
+			$burl = explode( '/', $args->conf );
+			array_pop( $burl );
+			$burl = implode( '/', $burl );
+			$burl .= '/';
+		}
+		else
+		{
+			list( $burl, ) = explode( ':', $args->conf );
+			$burl .= ':';
+		}
 	}
 	
 

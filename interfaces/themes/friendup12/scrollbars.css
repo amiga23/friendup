@@ -1,0 +1,190 @@
+/* For scrollbars ----------------------------------------------------------- */
+
+/* addresses the background of the bar itself. It is usually covered by the other elements */
+::-webkit-scrollbar,
+html body ::-webkit-scrollbar-track,
+.View.IconWindow ::-webkit-scrollbar-track,
+html body.activated ::-webkit-scrollbar-track
+{
+	width: 8px;
+	height: 8px;
+	background-color: rgba(255,255,255,0.5);
+}
+
+::-webkit-scrollbar-thumb
+{
+	background-color: #c8c8c8;
+}
+
+::-webkit-scrollbar:vertical
+{
+	border-width: 0 2px;
+}
+/* addresses the directional buttons on the scrollbar */
+::-webkit-scrollbar-button
+{
+}
+
+/* addresses the empty space “below” the progress bar */
+
+html body div > div .View.Active.Scrolling > .Resize
+{
+	background-color: transparent !important;
+}
+
+html body div .View.Active ::-webkit-scrollbar-track,
+html body div .View.Active.IconWindow ::-webkit-scrollbar-track
+{
+	background-color: rgba(255,255,255,0.5) !important;
+	background-image: none;
+	border: 0;
+}
+
+/* is the top-most layer of the the progress bar not covered by the draggable scrolling element (thumb) */
+::-webkit-scrollbar-track-piece
+{
+	padding-left: 2px;
+	margin-right: 2px;
+}
+
+.View.Scrolling ::-webkit-scrollbar-track-piece,
+body.Scrolling ::-webkit-scrollbar-track-piece
+{
+	margin-bottom: 14px;
+}
+/* addresses the draggable scrolling element that resizes depending on the size of the scrollable element */
+::-webkit-scrollbar-thumb
+{
+	left: 0px;
+	right: 0px;
+	background-clip: padding-box;
+	background-image: none;
+	background-position: center center;
+	background-repeat: no-repeat;
+	border-radius: 6px;
+	border: 0;
+}
+html body .View.Active ::-webkit-scrollbar-thumb,
+html body.activated ::-webkit-scrollbar-thumb,
+html body .View.Active ::-webkit-scrollbar-thumb, 
+html body .View.Active.IconWindow ::-webkit-scrollbar-thumb
+{
+	background-image: none;
+	border: 0;
+}
+
+/* Dark scheme */
+
+body.Dark::-webkit-scrollbar
+body.Dark .View.Active ::-webkit-scrollbar
+{
+	background-color: hsla(210, 29%, 20%, 0.5);
+}
+
+html body.Dark ::-webkit-scrollbar,
+html body.Dark ::-webkit-scrollbar-track,
+html body.Dark .View.Active ::-webkit-scrollbar-track,
+.Dark .View.Active.IconWindow ::-webkit-scrollbar-track,
+.Dark .View.IconWindow ::-webkit-scrollbar-track,
+html body.Dark.activated ::-webkit-scrollbar-track,
+html body.Dark .View.Active.IconWindow ::-webkit-scrollbar-track
+{
+	background-color: rgba(36,51,66,0.5) !important;
+	border: 0;
+}
+
+html body.Dark ::-webkit-scrollbar-thumb
+{
+	background-color: #34495e !important;
+	border-color: #314559;
+}
+
+html body.Dark .View.Active ::-webkit-scrollbar-thumb,
+html body.Dark.activated ::-webkit-scrollbar-thumb,
+html body.Dark .View.Active ::-webkit-scrollbar-thumb, 
+html body.Dark .View.Active.IconWindow ::-webkit-scrollbar-thumb
+{
+	background-color: #34495e !important;
+	border-color: #314559;
+}  
+
+/* End dark scheme */
+
+/* Charcoal scheme */
+
+body.Charcoal::-webkit-scrollbar
+body.Charcoal .View.Active ::-webkit-scrollbar
+{
+	background-color: rgba(0,0,0,0.6);
+}
+
+html body.Charcoal ::-webkit-scrollbar,
+html body.Charcoal ::-webkit-scrollbar-track,
+html body.Charcoal .View.Active ::-webkit-scrollbar-track,
+.Charcoal .View.Active.IconWindow ::-webkit-scrollbar-track,
+.Charcoal .View.IconWindow ::-webkit-scrollbar-track,
+html body.Charcoal.activated ::-webkit-scrollbar-track,
+html body.Charcoal .View.Active.IconWindow ::-webkit-scrollbar-track
+{
+	background-color: rgba(20,20,20,0.3) !important;
+	border-color: rgba(20,20,20,0.3) !important;
+}
+
+html body.Charcoal ::-webkit-scrollbar-thumb
+{
+	background-color: #383838 !important;
+	border-color: #303030;
+}
+
+html body.Charcoal .View.Active ::-webkit-scrollbar-thumb,
+html body.Charcoal.activated ::-webkit-scrollbar-thumb,
+html body.Charcoal .View.Active ::-webkit-scrollbar-thumb, 
+html body.Charcoal .View.Active.IconWindow ::-webkit-scrollbar-thumb
+{
+	background-color: #404040 !important;
+	border-color: #383838;
+}
+
+/* End Charcoal scheme */
+
+.View.Active.IconWindow ::-webkit-scrollbar-thumb
+{
+	/*background-color: #afafaf;
+	background-image: none;*/
+	border: 0px;
+}
+
+::-webkit-scrollbar-button
+{
+	display: none;
+}
+
+/* addresses the (usually) bottom corner of the scrollable element, where two scrollbars might meet */
+::-webkit-scrollbar-corner
+{
+}
+/* addresses the draggable resizing handle that appears above the scrollbar-corner at the bottom */
+::-webkit-resizer
+{
+}
+
+@media only screen and (max-device-width: 768px)
+{
+	::-webkit-scrollbar
+	{
+		width: 4px;
+		height: 4px;
+	}
+	::-webkit-scrollbar-thumb, .View.Active.IconWindow ::-webkit-scrollbar-thumb,
+	body.activated ::-webkit-scrollbar-thumb, .View.Active ::-webkit-scrollbar-thumb
+	{
+		background-image: none;
+		border: 1px solid rgba(0,0,0,0.1);
+	}
+	.View.Active ::-webkit-scrollbar-track,
+	body.activated ::-webkit-scrollbar-track
+	{
+		background-color: #444444;
+	}
+}
+

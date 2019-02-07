@@ -1,24 +1,19 @@
 /*©agpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Affero General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Affero General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Affero   *
+* General Public License, found in the file license_agpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
 
+var user = '';
+
 Application.run = function( msg )
 {
+	user = this.userId;
+
 	// Make room for connection windows
 	this.connectionWindows = [];
 	
@@ -192,64 +187,69 @@ Application.refreshSoftware = function()
 // Refresh the doors!
 Application.refreshDoors = function()
 {
-	var m = new Module( 'system' );
-	m.onExecuted = function( e, d )
+	var mm = new Module( 'system' );
+	mm.onExecuted = function( dd, users )
 	{
-		if( e == 'ok' )
+		var m = new Module( 'system' );
+		m.onExecuted = function( e, d )
 		{
-			var rows = JSON.parse( d );
-			var out = [];
-			for( var a = 0; a < rows.length; a++ )
+			if( e == 'ok' )
 			{
-				var m = 'fa-toggle-on';
-				if( rows[a].Mounted != '1' )
-					m = 'fa-toggle-off';
-			
-				var sw = ' sw' + (a%2+1);
-			
-				if( rows[a].Mounted != '1' )
-					sw += ' Unmounted';
-				else sw += ' BackgroundNegative Negative';
-			
-				// Only owner can edit
-				var edits = '<div class="Infobtn FloatRight">' + i18n( 'i18n_shared_drive' ) + '</div>';
-				if( rows[a].UserID == Application.userId )
+				var rows = JSON.parse( d );
+				var out = [];
+				for( var a = 0; a < rows.length; a++ )
 				{
-					//console.log('we have this row info...',rows[a]);
-					edits = '\
-							<div class="">\
-								<button type="button" class="IconSmall fa-remove" onclick="Application.sendMessage({ command: \'delete\', id: ' + rows[a].ID + ' })"></button>\
-							</div>\
-							<div class="">\
-								<button type="button" class="IconSmall fa-pencil" onclick="Application.sendMessage({ command: \'edit\', id: ' + rows[a].ID + ' })"></button>\
-							</div>\
-							<div class="">\
-								<button type="button" class="IconSmall ' + m + '" onclick="Application.sendMessage({ command: \'' + ( rows[a].Mounted != '1' ? 'mount' : 'unmount' ) + '\', id: \'' + rows[a].ID + '\'\
-									, data: { type: \'' + rows[a].Type +'\', name: \'' + rows[a].Name + '\', path: \''+ rows[a].Path + '\' } } )"></button>\
-							</div>\
-					';
-				}
+					var m = 'fa-toggle-on';
+					if( rows[a].Mounted != '1' )
+						m = 'fa-toggle-off';
+			
+					var sw = ' sw' + (a%2+1);
+			
+					if( rows[a].Mounted != '1' )
+						sw += ' Unmounted';
+					else sw += ' BackgroundNegative Negative';
+			
+					// Only owner can edit
+					var edits = '<div class="Infobtn FloatRight">' + i18n( 'i18n_shared_drive' ) + '</div>';
+					if( 1 == 1 || rows[a].UserID == Application.userId )
+					{
+						//console.log('we have this row info...',rows[a]);
+						edits = '\
+								<div class="">\
+									<button type="button" class="IconSmall fa-remove" onclick="Application.sendMessage({ command: \'delete\', id: \'' + rows[a].ID + '\', devname: \'' + rows[a].Name + '\' })"></button>\
+								</div>\
+								<div class="">\
+									<button type="button" class="IconSmall fa-pencil" onclick="Application.sendMessage({ command: \'edit\', id: ' + rows[a].ID + ' })"></button>\
+								</div>\
+								<div class="">\
+									<button type="button" class="IconSmall ' + m + '" onclick="Application.sendMessage({ command: \'' + ( rows[a].Mounted != '1' ? 'mount' : 'unmount' ) + '\', id: \'' + rows[a].ID + '\'\
+										, data: { type: \'' + rows[a].Type +'\', name: \'' + rows[a].Name + '\', path: \''+ rows[a].Path + '\' } } )"></button>\
+								</div>\
+						';
+					}
 				
-				out.push( '\
-					<div class="HBox' + sw + ' Padding Disk">\
-						<div>\
-							<div><strong>' + rows[a].Name + '</strong></div>\
+					out.push( '\
+						<div class="HBox' + sw + ' Padding Disk">\
+							<div>\
+								<div><strong>' + rows[a].Name + '</strong></div>\
+							</div>\
+							<div class="Image" style="background-image: url(/system.library/module/?module=system&command=getdiskcover&disk=' + encodeURIComponent( rows[a].Name ) + '&authid=' + Application.authId + ')"></div>\
+							<div>\
+								<div>' + i18n('i18n_' + rows[a].Type ) + '</div>\
+							</div>\
+							<div class="Buttons">\
+								' + edits + '\
+							</div>\
 						</div>\
-						<div class="Image" style="background-image: url(/system.library/module/?module=system&command=getdiskcover&disk=' + encodeURIComponent( rows[a].Name ) + '&authid=' + Application.authId + ')"></div>\
-						<div>\
-							<div>' + i18n('i18n_' + rows[a].Type ) + '</div>\
-						</div>\
-						<div class="Buttons">\
-							' + edits + '\
-						</div>\
-					</div>\
-				' );
+					' );
+				}
+				Application.mainView.sendMessage( { command: 'setmountlist', data: out.join ( '' ), users: users } );
 			}
-			Application.mainView.sendMessage( { command: 'setmountlist', data: out.join ( '' ) } );
+			Application.sendMessage( { type: 'system', command: 'refreshdoors' } );
 		}
-		Application.sendMessage( { type: 'system', command: 'refreshdoors' } );
+		m.execute( 'mountlist', { userid: user } );
 	}
-	m.execute( 'mountlist', {} );
+	mm.execute( 'listusers' );
 }
 
 Application.receiveMessage = function( msg )
@@ -277,9 +277,13 @@ Application.receiveMessage = function( msg )
 			{
 				if( acc.data == true )
 				{
-					t.deleteConnection( msg.id );
+					t.deleteConnection( msg.id, msg.devname );
 				}
 			} );
+			break;
+		case 'setuser':
+			user = msg.userid;
+			this.refreshDoors();
 			break;
 		case 'mount':
 			this.mountConnection( msg.id, msg.data, msg );
@@ -358,15 +362,69 @@ Application.loadTypes = function( d, callback )
 	n.execute( 'types' );
 }
 
-Application.deleteConnection = function( id )
+Application.loadKeys = function( d, callback )
 {
-	var m = new Module( 'system' );
-	m.onExecuted = function( e, dat )
+	Application.keyData.get( function( e, data )
 	{
-		Application.refreshDoors();
-		Application.refreshSoftware();
+		var out = [];
+		
+		//console.log( 'data: ', data );
+		
+		if( e == 'ok' && data )
+		{
+			for( var k in data )
+			{
+				var on = ( d && d.split( ',' ).indexOf( data[k].ID ) >= 0 ? ' selected="selected"' : '' );
+				out.push( '<option value="' + data[k].ID + '"' + on + '>' + 
+				data[k].Name + ( data[k].Type && data[k].Type != 'plain' ? ' (' + data[k].Type + ')' : '' ) + 
+				'</option>' );
+			}
+		}
+		
+		if( callback && typeof( callback ) == 'function' ) callback( out );
+		
+	}, '*' );
+	
+	// Old method ... delete later ...
+	/*var n = new Module( 'system' );
+	n.onExecuted = function( e, dat )
+	{
+		var p = JSON.parse( dat );
+		
+		var out = [];
+		for( var a = 0; a < p.length; a++ )
+		{
+			var on = '';
+			if( d && p[a].ID == d )
+			{
+				on = ' selected="selected"';
+			}
+			out.push( '<option value="' + p[a].ID + '"' + on + '>' + p[a].Name + ' (' + p[a].Type + ')</option>' );
+		}
+		if( callback && typeof( callback ) == 'function' ) callback( out );
 	}
-	m.execute( 'deletedoor', { id: id } );
+	n.execute( 'keys' );*/
+}
+
+Application.deleteConnection = function( id, devname )
+{
+	var l = new Library( 'system.library' );
+	l.onExecuted = function()
+	{
+		Application.sendMessage( { type: 'system', command: 'refreshdoors' } );
+		var m = new Module( 'system' );
+		m.onExecuted = function( e, dat )
+		{
+			Application.refreshDoors();
+			Application.refreshSoftware();
+		}
+		m.execute( 'deletedoor', { id: id } );
+	}
+	var args = {
+		command: 'unmount',
+		devname: devname
+	};
+	l.execute( 'device', args );
 }
 
 // Opens the New connection dialog
@@ -387,7 +445,13 @@ Application.newConnection = function()
 			Application.loadTypes( false, function( out )
 			{
 				out = out.join ( "\n" );
-				v.sendMessage( { command: 'setinfo', info: {}, types: out } );	
+				
+				Application.loadKeys( false, function( keys )
+				{
+					if( keys ) keys = keys.join ( "\n" );
+					
+					v.sendMessage( { command: 'setinfo', info: {}, types: out, keys: keys, user: user } );
+				});
 			}); 
 		} );
 	}
@@ -437,14 +501,20 @@ Application.editConnection = function( id )
 							out = out.join ( "\n" );
 							out = out.split( 'value="' + d.Type + '"' ).join( 'value="' + d.Type + '" selected="selected"' );
 							if( d.Password ) d.Password = '********';
-							v.sendMessage( { command: 'setinfo', info: d, types: out } );	
+							
+							Application.loadKeys( d.KeysID, function( keys )
+							{
+								if( keys ) keys = keys.join ( "\n" );
+								
+								v.sendMessage( { command: 'setinfo', info: d, types: out, keys: keys, user: user } );
+							});
 						} );
 					} );
 				}
 				ms.execute( 'dosdrivergui', { type: d.Type } );
 			}
 		}
-		m.execute( 'filesystem', { id: id } );
+		m.execute( 'filesystem', { id: id, userid: user } );
 	}
 	f.load();
 	this.connectionWindows.push( v );
@@ -482,6 +552,9 @@ Application.mountConnection = function( id, data, msg )
 	if( msg.visible )
 		args.visible = msg.visible;
 	
+	// TODO: Make this work on the server side if one is admin
+	args.userid = user;
+	
 	if( data.Type != 'Local' )
 		args.module = 'system';
 	
@@ -513,6 +586,9 @@ Application.unmountConnection = function( id, data )
 		devname: data.name.split( ':' ).join ( '' ),
 		path: data.path
 	};
+	
+	// TODO: Make this work on the server side if one is admin
+	args.userid = user;
 	
 	if( data.Type != 'Local' )
 		args.module = 'system';

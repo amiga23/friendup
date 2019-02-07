@@ -1,19 +1,10 @@
 /*©agpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Affero General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Affero General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Affero   *
+* General Public License, found in the file license_agpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
 
@@ -27,6 +18,9 @@
 *******************************************************************************/
 
 document.title = 'The dock base app.';
+
+Application.selectAfterLoad = false;
+Application.items = false;
 
 function LoadDocks()
 {
@@ -52,8 +46,20 @@ function LoadApplications( win, currentItemId, callback )
 	var m = new Module( 'dock' );
 	m.onExecuted = function( cod, dat )
 	{
-		var eles = JSON.parse( dat );
+		var eles = false;
+		
+		try
+		{
+			eles = JSON.parse( dat );
+		}
+		catch(e)
+		{
+			console.log( 'Error during dock load...', cod, dat );
+			return;
+			
+		}
 		var ele = '';
+		Application.items = eles;
 		if( !currentItemId )
 		{
 			for( var a = 0; a < eles.length; a++ )
@@ -66,27 +72,50 @@ function LoadApplications( win, currentItemId, callback )
 		}
 		Application.currentItemId = currentItemId;
 		
+		var sw = 2;
+		
 		for( var a = 0; a < eles.length; a++ )
 		{
 			var cl = '';
-			if( a > 0 ) cl = ' MarginTop';
-			//console.log( eles[a] );
-			var img = eles[a].Image ? ( '/webclient/' + eles[a].Image ) : ( '/webclient/apps/' + eles[a].Name + '/icon.png' );
+			
+			var img = '';
+			if( eles[a].Name != 'Unnamed' )
+			{
+				img = eles[a].Image ? ( '/webclient/' + eles[a].Image ) : ( '/webclient/apps/' + eles[a].Name + '/icon.png' );
+			}
+			
 			if( eles[a].Icon )
 			{
 				if( eles[a].Icon.indexOf( ':' ) > 0 )
 					img = getImageUrl( eles[a].Icon );
-				else img = '/webclient/' + eles[a].Icon;
+				else if( eles[a].Icon.indexOf( '/system.library' ) == 0 )
+				{
+					img = eles[a].Icon.split( /sessionid\=[^&]+/ ).join( 'authid=' + Application.authId );
+				}
+				else if( eles[a].Icon.indexOf( '/webclient' ) != 0 )
+				{
+					img = '/webclient/' + eles[a].Icon;
+				}
 			}
 			
 			// Activate the current selected
-			if( eles[a].Id == currentItemId ) cl += ' BackgroundNegative Negative';
+			if( eles[a].Id == currentItemId ) cl += ' Selected';
+			
+			// Double check image.
+			var im = '<div class="Empty"></div>';
+			if( img && img.length )
+			{
+				im = '<img style="float: right; width: 40px; height: auto" src="' + img + '"/>';
+			}
+			
+			sw = sw == 1 ? 2 : 1;
+			cl += ' sw' + sw;
 			
 			ele += '\
-			<div class="Box' + cl + '" onclick="Application.sendMessage( { command: \'select\', id: \'' + eles[a].Id + '\' } )">\
+			<div class="Padding' + cl + '" id="dockEdit'+ eles[a].Id +'" onclick="Application.sendMessage( { command: \'select\', id: \'' + eles[a].Id + '\' } )">\
 				<div class="HRow">\
-					<div class="FloatRight HContent50"><img style="float: right; width: 40px; height: auto" src="' + img + '"/></div>\
-					<div class="FloatLeft HContent50">' + eles[a].Name + '</div>\
+					<div class="FloatRight" style="width: 60px">' + im + '</div>\
+					<div class="FloatLeft PaddingLeft" style="width: calc(100%-60px)">' + eles[a].Name + '</div>\
 				</div>\
 			</div>\
 			';
@@ -98,10 +127,15 @@ function LoadApplications( win, currentItemId, callback )
 		
 		Application.appCache = eles;
 		
-		Application.view.sendMessage( { command: 'refreshapps', data: ele } );
+		Application.view.sendMessage( { command: 'refreshapps', data: ele, current: currentItemId } );
 		Application.sendMessage( { type: 'system', command: 'refreshdocks' } );
-		
-		if( callback ) callback();
+		if( Application.selectAfterLoad )
+		{
+			var nid = Application.selectAfterLoad;
+			Application.selectAfterLoad = false;
+			Application.activateDockItem( nid );
+		}
+		if( callback ) callback( eles );
 	}
 	m.execute( 'items', { itemId: !currentItemId ? 0 : currentItemId } );
 }
@@ -113,7 +147,7 @@ Application.run = function( packet )
 
 	var w = new View( {
 		title:  i18n('i18n_dock_editor'),
-		width:  520, 
+		width:  720, 
 		height: 480,
 		id:     'dock_editor'
 	} );
@@ -154,6 +188,9 @@ Application.run = function( packet )
 		} );
 	}
 	f.load();
+
+	// Set app in single mode
+	this.setSingleInstance( true );
 	
 	// Disable gui
 	this.disabled = true;
@@ -166,23 +203,41 @@ Application.newDockItem = function()
 	var w = this.view;
 	m.onExecuted = function( r, dat )
 	{
+		if( r == 'ok' )
+		{
+			Application.selectAfterLoad = dat;
+		}
 		LoadApplications( w );
 	}
 	m.execute( 'additem', {} );
 }
 
 // Activate a dock item
-Application.activateDockItem = function( id )
+Application.activateDockItem = function( id, scroll )
 {
 	var w = this.view;
+	if( !id ) return;
+	
 	LoadApplications( w, id, function()
 	{
 		var m = new Module( 'dock' );
 		m.onExecuted = function( r, d )
 		{
+			if( d == 'fail' ) return;
+			
+			try{
+				d = JSON.parse( d );
+			}
+			catch( e )
+			{
+				console.log('invalid dock activate',d,e);
+				return;
+			}
+			
 			w.sendMessage( {
 				command: 'updateitem',
-				item: JSON.parse( d )
+				item: d,
+				scroll: scroll ? scroll : 'no'
 			} );
 			Application.disabled = false;
 		}
@@ -201,7 +256,14 @@ Application.deleteDockItem = function( id )
 			var m = new Module( 'dock' );
 			m.onExecuted = function( r, d )
 			{
-				LoadApplications( w );
+				//console.log(isMobile,'item has been deleted!',Application.items);
+				//if( !isMobile )
+				//{
+					LoadApplications( w, false, function( items )
+					{
+						Application.activateDockItem( items[0].Id );
+					} );
+				//}
 			}
 			m.execute( 'deleteitem', { itemId: id } );
 		}
@@ -216,7 +278,7 @@ Application.blur = function()
 }
 
 // Update an application in the database
-Application.saveItem = function( id, application, shortdescription, icon )
+Application.saveItem = function( id, application, displayname, shortdescription, icon, workspace )
 {
 	var w = this.view;
 
@@ -231,13 +293,23 @@ Application.saveItem = function( id, application, shortdescription, icon )
 		}
 	}
 	*/
-	
 	var m = new Module( 'dock' );
 	m.onExecuted = function( r, d )
 	{
 		LoadApplications( w, id );
+   		Notify({title:i18n('i18n_item_saved'),text:i18n('i18n_item_saved_text')});
 	}
-	m.execute( 'saveitem', { itemId: id, application: application, shortdescription: shortdescription, icon: icon } );
+	var ms = { 
+		itemId: id, 
+		application: application,
+		displayname: displayname,
+		shortdescription: shortdescription, 
+		icon: icon, 
+		workspace: workspace 
+	};
+	console.log( 'Saving item: ', ms );
+	Application.selectAfterLoad = id;
+	m.execute( 'saveitem', ms );
 }
 
 Application.sortOrder = function( direction )
@@ -251,6 +323,7 @@ Application.sortOrder = function( direction )
 	{
 		LoadApplications( w, i );
 	}
+	Application.selectAfterLoad = i;
 	m.execute( 'sortorder', { itemId: this.currentItemId, direction: direction } );
 }
 
@@ -290,8 +363,10 @@ Application.receiveMessage = function( msg )
 					Application.saveItem( 
 						Application.currentItemId,
 						msg.application,
+						msg.displayname,
 						msg.shortdescription,
-						msg.icon
+						msg.icon,
+						msg.workspace
 					);
 				}
 				break;
@@ -312,5 +387,4 @@ Application.receiveMessage = function( msg )
 		}
 	}
 }
-
 

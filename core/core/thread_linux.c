@@ -1,35 +1,40 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
+/** @file
+ *
+ * Threading managemen t
+ *
+ * file contain all functitons related to threads
+ *
+ * @author PS (Pawel Stefanski)
+ * @date created 02/2015
+ * 
+ * \defgroup FriendCoreThreadsLinux Linux
+ * \ingroup FriendCoreThreads
+ * @{
+ */
 
 #include <core/thread.h>
 #include <util/log/log.h>
 #include <pthread.h>
 
-//
-// create new thread
-//
-
-FThread *ThreadNew( void *func, void *data, FBOOL autos )
+/**
+ * Create new thread
+ *
+ * @param func pointer to function which will be called
+ * @param data pointer to data which will be passed to function as parameter
+ * @param autos TRUE if function must be launched immidiatly
+ * @param attr pointer to thread attributes (pthread_attr_t)
+ * @return pointer to new FThread structure when success, otherwise NULL
+ */
+FThread *ThreadNew( void *func, void *data, FBOOL autos, pthread_attr_t *attr )
 {
 	if( !func || !data ) return NULL;
 	
@@ -46,15 +51,13 @@ FThread *ThreadNew( void *func, void *data, FBOOL autos )
 	nt->t_Launched = FALSE;
 	
 	//uuid_generate( nt->t_uuid );
-	nt->t_pid = (FUQUAD)nt;
+	nt->t_PID = (FUQUAD)nt;
 	
-	//DEBUG("ThreadNew create thread func ptr %x\n", func );
-
 	if( autos == TRUE )
 	{
 		nt->t_Quit = FALSE;
 		
-		if( ( error = pthread_create( &(nt->t_Thread), NULL, func, nt ) ) == 0 )
+		if( ( error = pthread_create( &(nt->t_Thread), attr, func, nt ) ) == 0 )
 		{
 			nt->t_Launched = TRUE;
 			// WE ALWAYS PASS POINTER TO THREAD AND ALLOW DEVELOPER TO HANDLE  quit
@@ -63,7 +66,7 @@ FThread *ThreadNew( void *func, void *data, FBOOL autos )
 		else
 		{
 			FFree( nt );
-			DEBUG("[ThreadNew] error: %d\n", error );
+			FERROR("[ThreadNew] error: %d\n", error );
 			return NULL;
 		}
 	}
@@ -75,10 +78,12 @@ FThread *ThreadNew( void *func, void *data, FBOOL autos )
 	return nt;
 }
 
-//
-// start thread
-//
-
+/**
+ * Start thread
+ *
+ * @param ft pointer to FThread structure
+ * @return pointer to FThread structure when success, otherwise NULL
+ */
 FThread *ThreadStart( FThread *ft )
 {
 	if( ft != NULL && ft->t_Launched == FALSE )
@@ -94,17 +99,19 @@ FThread *ThreadStart( FThread *ft )
 		else
 		{
 			//free( ft );
-			DEBUG("[ThreadNew] error: %d\n", error );
+			FERROR("[ThreadNew] error: %d\n", error );
 			return NULL;
 		}
 	}
 	return ft;
 }
 
-//
-// Stop currently working thread
-//
-
+/**
+ * Stop working thread
+ *
+ * @param ft pointer to FThread structure (thread which will be stopped)
+ * @param wait set to TRUE if you want to wait till thread will stop
+ */
 void ThreadCancel( FThread *ft, FBOOL wait )
 {
 	pthread_cancel( ft->t_Thread );
@@ -115,35 +122,16 @@ void ThreadCancel( FThread *ft, FBOOL wait )
 	}
 }
 
-//
-// example
-//
-/*
-	void f( void *args )
-	{
-	struct FThread *ft = (FThread *)args;
-	while( ft->quit != TRUE )
-	{
-		//...do something
-	}
-	
-	ft = t_Ended = TRUE;
-
-	}
-*/
-
-
-//
-// remove thread
-//
-
+/**
+ * Stop and delete working thread
+ *
+ * @param t pointer to FThread structure (thread which will be stopped/deleted)
+ */
 void ThreadDelete( FThread *t )
 {
 	if( t->t_Thread )
 	{
 		t->t_Quit = TRUE;
-		
-		DEBUG("[ThreadDelete] Asking thread %p to quit.\n", t );
 		
 		//if( t->t_Launched == TRUE )
 		{
@@ -156,4 +144,4 @@ void ThreadDelete( FThread *t )
 	}
 }
 
-//#endif // __LINUX__
+/**@}*/

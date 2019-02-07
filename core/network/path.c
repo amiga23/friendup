@@ -1,25 +1,12 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -33,7 +20,7 @@
 //
 //
 
-inline void PathSplit( Path* p )
+static inline void PathSplit( Path* p )
 {
 	char* path = p->raw;
 	char** pathArray = NULL;
@@ -135,42 +122,29 @@ Path* PathNew( const char* path )
 Path* PathJoin( Path* path1, Path* path2 )
 {
 	unsigned int size = path1->rawSize + path2->rawSize + 1;
-	char* newPath = FCalloc( (size + 10), sizeof(char) );
+	char* newPath = FMalloc( (size + 10) );
 	if( newPath == NULL )
 	{
 		FERROR("PathJoin, cannot allocate memory for newpath\n");
 		return NULL;
 	}
 	memcpy( newPath, path1->raw, path1->rawSize );
-	memcpy( newPath + path1->rawSize + 1, path2->raw, path2->rawSize );
-	newPath[path1->rawSize] = '/'; // Doesn't matter if path1 already has this. It'll just be ignored, then :)
-	newPath[size] = 0;
+	if( path2->raw[ 0 ] != '/' )
+	{
+		memcpy( newPath + path1->rawSize + 1, path2->raw, path2->rawSize );
+		newPath[path1->rawSize] = '/';
+		newPath[size] = 0;
+	}
+	else
+	{
+		memcpy( newPath + path1->rawSize, path2->raw, path2->rawSize );
+		newPath[size-1] = 0;
+	}
+
 	Path* p = PathNew( newPath );
-	free( newPath );
+	FFree( newPath );
 	return p;
 }
-
-//
-//
-//
-
-char* PathBasename( char* path )
-{
-	return 0;
-}
-
-//
-//
-//
-
-char* PathDirectory( char* path )
-{
-	return 0;
-}
-
-//
-//
-//
 
 void PathResolve( Path* p )
 {

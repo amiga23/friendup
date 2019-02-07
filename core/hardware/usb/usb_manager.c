@@ -1,25 +1,12 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
 /** @file
  * 
  *  USB devices manager
@@ -28,15 +15,13 @@
  *  @date created 18/01/2017
  */
 
-
-
 #include "usb_manager.h"
 #include <core/types.h>
 #include <core/library.h>
 #include <mysql.h>
 #include <util/hooks.h>
 #include <util/list.h>
-#include <system/handler/file.h>
+#include <system/fsys/file.h>
 #include <network/socket.h>
 #include <network/http.h>
 #include <system/systembase.h>
@@ -51,9 +36,11 @@
 #include <windows.h>
 #endif
 
-//
-//
-//
+/**
+ * Create USBManager
+ *
+ * @return return new USBManager structure when success, otherwise NULL
+ */
 
 USBManager *USBManagerNew()
 {
@@ -66,14 +53,14 @@ USBManager *USBManagerNew()
 		man->usbm_Port = 0;
 		man->usbm_MaxPort = 1;
 
-		DEBUG("USBManager default values initalized\n");
+		DEBUG("[USBManager] default values initalized\n");
 
 		#ifdef _WIN32
 		HMODULE lib = LoadLibrary("USBInterface.dll");
 		man->usbm_LibPtr = lib;
 		if (lib != NULL)
 		{
-			DEBUG("DLL found, assigning functions\n");
+			DEBUG("[USBManager] DLL found, assigning functions\n");
 
 			man->CLibInit = GetProcAddress(lib, "CLibInit");
 			man->CServerCreateEnumUsbDev = GetProcAddress(lib, "CServerCreateEnumUsbDev");
@@ -109,9 +96,7 @@ USBManager *USBManagerNew()
 			man->CClientTrafficRemoteDevIsCompressed = GetProcAddress(lib, "CClientTrafficRemoteDevIsCompressed");
 			man->CServerGetSharedUsbDevIsCompressed = GetProcAddress(lib, "CServerGetSharedUsbDevIsCompressed");
 
-			DEBUG("Before cinit\n");
 			man->CLibInit();
-			DEBUG("after cinit\n");
 
 			if (man->usbm_MaxPort < 1)		// check how many ports were created and create Friend structure
 			{
@@ -121,7 +106,7 @@ USBManager *USBManagerNew()
 			{
 				USBManagerCreatePorts(man, TRUE);
 			}
-			DEBUG("usbcreated\n");
+			DEBUG("[USBManager] usbcreated\n");
 			
 		}
 		else
@@ -129,7 +114,7 @@ USBManager *USBManagerNew()
 			DWORD dwError = 0;
 
 			dwError = GetLastError();
-			DEBUG("DLL not found, some problems can appear during USB usage. Error:  %d\n", dwError );
+			DEBUG("[USBManager] DLL not found, some problems can appear during USB usage. Error:  %d\n", dwError );
 		}
 		#endif // _WIN32
 	}
@@ -140,10 +125,11 @@ USBManager *USBManagerNew()
 	return man;
 }
 
-//
-// Delete USBManager
-//
-
+/**
+ * Delete USBManager
+ *
+ * @param usbm pointer to USBManager which will be deleted
+ */
 void USBManagerDelete(USBManager *usbm)
 {
 	if (usbm != NULL)
@@ -162,28 +148,32 @@ void USBManagerDelete(USBManager *usbm)
 	}
 }
 
-
+/**
+ * Create USB port
+ *
+ * @param usbm pointer to USBManager
+ * @param pos position on which new USB port will be created
+ * @param connected set to TRUE if you want to set port to connected state
+ * @return return new USBDevice structure when success, otherwise NULL
+ */
 #ifdef _WIN32
-
-//
-//
-//
-
 USBDevice *CreatePort( USBManager *usbm, int pos, FBOOL connected )
+#else
+USBDevice *CreatePort( USBManager *usbm __attribute__((unused)), int pos __attribute__((unused)), FBOOL connected __attribute__((unused)))
+#endif
 {
+	#ifdef _WIN32
+
 	USBDevice *dev = USBDeviceNew();
 
 	if (dev != NULL)
 	{
 		char port[64];
 		snprintf(port, sizeof(port), "%d", usbm->usbm_IPPort);
-		printf("Port assigned, pointer %x\n", usbm->CClientAddRemoteDevManually);
 		usbm->CClientAddRemoteDevManually(port);
-		DEBUG("create port\n");
 		/*
 		if (ok != TRUE)
 		{
-			DEBUG("Port was not added\n");
 			USBDeviceDelete( dev );
 			dev = NULL;
 			return NULL;
@@ -191,7 +181,6 @@ USBDevice *CreatePort( USBManager *usbm, int pos, FBOOL connected )
 		else
 		{
 		*/
-			DEBUG("USBDevice found\n");
 			if (connected == TRUE)
 			{
 				usbm->CClientStartRemoteDev(usbm->usbm_Client, pos, TRUE, "");
@@ -203,12 +192,11 @@ USBDevice *CreatePort( USBManager *usbm, int pos, FBOOL connected )
 			char *name = NULL;
 			if (usbm->CClientGetRemoteDevName(usbm->usbm_Client, pos, &name) == FALSE)
 			{
-				printf("No more entries\n");
+
 			}
 
 			char *network = NULL;
 			usbm->CClientGetRemoteDevNetSettings(usbm->usbm_Client, pos, &network);;
-			printf("DEVICES : %s network %s\n", name, network);
 
 			if (dev != NULL)
 			{
@@ -257,24 +245,34 @@ USBDevice *CreatePort( USBManager *usbm, int pos, FBOOL connected )
 		return NULL;
 	}
 	return dev;
+#else
+	return NULL;
+#endif
 }
 
-//
-//
-//
-
+/**
+ * Create default USB ports
+ *
+ * @param usbm pointer to USBManager
+ * @param connected set to TRUE if you want to have all ports in connected state
+ * @return return 0 when success, otherwise error number
+ */
+#ifdef _WIN32
 int USBManagerCreatePorts(USBManager *usbm, FBOOL connected)
+#else
+int USBManagerCreatePorts(USBManager *usbm __attribute__((unused)), FBOOL connected __attribute__((unused)))
+#endif
 {
+#ifdef _WIN32
+
 	usbm->usbm_Ports = FCalloc(usbm->usbm_MaxPort, sizeof(USBDevice));
 
 	if (usbm->usbm_Ports != NULL && usbm->CClientEnumAvailRemoteDev(&usbm->usbm_Client) )
 	{
 		int i = 0;
-		printf("USBManagerCreatePorts\n");
 
 		for (i = 0; i < usbm->usbm_MaxPort; i++)
 		{
-			DEBUG("Create port %d\n", i);
 			usbm->usbm_Ports[i] = CreatePort(usbm, i, connected);
 		} // for() MaxPort
 	}
@@ -285,14 +283,23 @@ int USBManagerCreatePorts(USBManager *usbm, FBOOL connected)
 	}
 
 	return 0;
+#else
+	return 0;
+#endif
 }
 
-//
-//
-//
-
+/**
+ * Delete all USB ports
+ *
+ * @param usbm pointer to USBManager
+ */
+#ifdef _WIN32
 void USBManagerDeletePorts(USBManager *usbm)
+#else
+void USBManagerDeletePorts(USBManager *usbm __attribute__((unused)))
+#endif
 {
+#ifdef _WIN32
 	if (usbm->usbm_Ports != NULL)
 	{
 		int i;
@@ -313,14 +320,26 @@ void USBManagerDeletePorts(USBManager *usbm)
 			usbm->usbm_Client = NULL;
 		}
 	}
+#else
+
+#endif
 }
 
-//
-//
-//
-
+/**
+ * Add new USB port
+ *
+ * @param usbm pointer to USBManager
+ * @param connected set to TRUE if you want to have all ports in connected state
+ * @return return 0 when success, otherwise error number
+ */
+#ifdef _WIN32
 int USBManagerAddNewPort(USBManager *usbm, char *port)
+#else
+int USBManagerAddNewPort(USBManager *usbm __attribute__((unused)), char *port __attribute__((unused)))
+#endif
 {
+#ifdef _WIN32
+
 	int lastPort = usbm->usbm_MaxPort;
 
 	USBDevice *dev = CreatePort(usbm, lastPort, TRUE);
@@ -339,16 +358,25 @@ int USBManagerAddNewPort(USBManager *usbm, char *port)
 			usbm->usbm_Ports[lastPort] = dev;
 		}
 	}
+#else
 
+#endif
 	return 0;
 }
 
-//
-//
-//
-
+/**
+ * Get all information about created USB ports
+ *
+ * @param usbm pointer to USBManager
+ */
+#ifdef _WIN32
 void USBManagerGetAllCreatedPorts(USBManager *usbm)
+#else
+void USBManagerGetAllCreatedPorts(USBManager *usbm __attribute__((unused)))
+#endif
 {
+#ifdef _WIN32
+
 	if (usbm->usbm_Client != NULL)
 	{
 		usbm->CClientRemoveEnumOfRemoteDev(usbm->usbm_Client);
@@ -363,7 +391,6 @@ void USBManagerGetAllCreatedPorts(USBManager *usbm)
 		char *name = NULL;
 		if (usbm->CClientGetRemoteDevName(usbm->usbm_Client, devices, &name) == FALSE)
 		{
-			printf("No more entries\n");
 			break;
 		}
 		devices++;
@@ -374,14 +401,26 @@ void USBManagerGetAllCreatedPorts(USBManager *usbm)
 		usbm->usbm_MaxPort = devices;
 		USBManagerCreatePorts(usbm, TRUE);
 	}
+#else
+
+#endif
 }
 
-//
-//
-//
-
+/**
+ * Lock usb port
+ *
+ * @param usbm pointer to USBManager
+ * @param usesession pointer to UserSession which is locking port
+ * @return return pointer to USBDevice when success, otherwise NULL
+ */
+#ifdef _WIN32
 USBDevice *USBManagerLockPort(USBManager *usbm, UserSession *session)
+#else
+USBDevice *USBManagerLockPort(USBManager *usbm __attribute__((unused)), UserSession *session __attribute__((unused)))
+#endif
 {
+#ifdef _WIN32
+
 	int i;
 
 	if (usbm != NULL)
@@ -396,15 +435,28 @@ USBDevice *USBManagerLockPort(USBManager *usbm, UserSession *session)
 			}
 		}
 	}
+	
+#else
+
+#endif
 	return NULL;	// ports are locked
 }
 
-//
-//
-//
-
+/**
+ * UnLock usb port
+ *
+ * @param usbm pointer to USBManager
+ * @param ldev pointer to USBDevice which will be unlocked
+ * @return return 0 when success, otherwise error number
+ */
+#ifdef _WIN32
 int USBManagerUnLockPort(USBManager *usbm, USBDevice *ldev )
+#else
+int USBManagerUnLockPort(USBManager *usbm __attribute__((unused)), USBDevice *ldev __attribute__((unused)))
+#endif
 {
+#ifdef _WIN32
+
 	if (usbm != NULL)
 	{
 		int i = 0;
@@ -419,14 +471,26 @@ int USBManagerUnLockPort(USBManager *usbm, USBDevice *ldev )
 		}
 	}
 	return -1;
+#else
+	return -1;
+#endif
 }
 
-//
-//
-//
-
+/**
+ * Get USBDevice by ID
+ *
+ * @param usbm pointer to USBManager
+ * @param id id of device which you want to get
+ * @return return pointer to USBDevice when success, otherwise NULL
+ */
+#ifdef _WIN32
 USBDevice *USBManagerGetDeviceByID(USBManager *usbm, FUQUAD id)
+#else
+USBDevice *USBManagerGetDeviceByID(USBManager *usbm __attribute__((unused)), FUQUAD id __attribute__((unused)))
+#endif
 {
+#ifdef _WIN32
+
 	if (usbm != NULL)
 	{
 		int i = 0;
@@ -439,21 +503,33 @@ USBDevice *USBManagerGetDeviceByID(USBManager *usbm, FUQUAD id)
 			}
 		}
 	}
+#else
+
+#endif
 return NULL;
 }
 
-//
-//
-//
-
+/**
+ * Create new USBDevice
+ *
+ * @param usbm pointer to USBManager
+ * @param connected set to TRUE if you want to create new device in connected state 
+ * @return return 0 when success, otherwise error number
+ */
+#ifdef _WIN32
 int USBManagerCreateDevice(USBManager *usbm, FBOOL connected)
+#else
+int USBManagerCreateDevice(USBManager *usbm __attribute__((unused)), FBOOL connected __attribute__((unused)))
+#endif
 {
-		/*
-		USBDevice *dev = USBDeviceNew();
-		if( dev != NULL )
-		{
-		if( usbm->usbm_Port < usbm->usbm_MaxPort )
-		{
+#ifdef _WIN32
+
+/*
+USBDevice *dev = USBDeviceNew();
+if( dev != NULL )
+{
+	if( usbm->usbm_Port < usbm->usbm_MaxPort )
+	{
 		VARIANT v;
 		v.vt = VT_I4; // signed 4 byte integer
 		v.intVal = usbm->usbm_IPPort;
@@ -468,23 +544,34 @@ int USBManagerCreateDevice(USBManager *usbm, FBOOL connected)
 		// add port to list
 		dev->node.mln_Succ = (MinNode *)usbm->usbm_Ports;
 		usbm->usbm_Ports = dev;
-		}
-		else
-		{
+	}
+	else
+	{
 		Log( FLOG_ERROR, "Cannot create more ports then %d\n", usbm->usbm_MaxPort );
 		return 1;
-		}
-		}
-		*/
+	}
+}
+*/
+#else
 
+#endif
+	return 0;
 }
 
-		//
-		//
-		//
-
+/**
+ * Delete USBDevice by ID
+ *
+ * @param usbm pointer to USBManager
+ * @param id id of device which will be deleted
+ */
+#ifdef _WIN32
 void USBManagerDeleteDevice( USBManager *usbm, FUQUAD id )
+#else
+void USBManagerDeleteDevice( USBManager *usbm __attribute__((unused)), FUQUAD id __attribute__((unused)))
+#endif
 {
+#ifdef _WIN32
+
 	USBDevice *ldev = usbm->usbm_Devices;
 	USBDevice *prev = ldev;
 	while( ldev != NULL )
@@ -507,112 +594,21 @@ void USBManagerDeleteDevice( USBManager *usbm, FUQUAD id )
 		prev = ldev;
 		ldev = (USBDevice *) ldev->node.mln_Succ;
 	}
+#else
+
+#endif
 }
 
-//
-//
-//
+/**
+ * USBManager device change function
+ */
 
 void USBManagerDeviceChange()
 {
+#ifdef _WIN32
 
+#else
+	
+#endif
 }
 
-#else //_WIN32
-
-//
-// linux
-//
-
-USBDevice *CreatePort( USBManager *usbm, int pos, FBOOL connected )
-{
-	return NULL;
-}
-
-//
-//
-//
-
-int USBManagerCreatePorts(USBManager *usbm, FBOOL connected)
-{
-
-	return 1;
-}
-
-//
-//
-//
-
-void USBManagerDeletePorts(USBManager *usbm)
-{
-
-}
-
-//
-//
-//
-
-int USBManagerAddNewPort(USBManager *usbm, char *port)
-{
-
-	return 0;
-}
-
-//
-//
-//
-
-void USBManagerGetAllCreatedPorts(USBManager *usbm)
-{
-
-}
-
-//
-//
-//
-
-USBDevice *USBManagerLockPort(USBManager *usbm, UserSession *session)
-{
-
-	return NULL;	// ports are locked
-}
-
-//
-//
-//
-
-int USBManagerUnLockPort(USBManager *usbm, USBDevice *ldev )
-{
-
-	return -1;
-}
-
-//
-//
-//
-
-USBDevice *USBManagerGetDeviceByID(USBManager *usbm, FUQUAD id)
-{
-
-	return NULL;
-}
-
-//
-//
-//
-
-int USBManagerCreateDevice(USBManager *usbm, FBOOL connected)
-{
-		return -1;
-}
-
-//
-//
-//
-
-void USBManagerDeleteDevice( USBManager *usbm, FUQUAD id )
-{
-
-}
-
-#endif // _WIN32

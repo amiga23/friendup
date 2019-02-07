@@ -1,25 +1,12 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
 /** @file
  * 
  *  USB web interface
@@ -28,13 +15,12 @@
  *  @date created 20/01/2017
  */
 
-//#include "usb_manager.h"
 #include <core/types.h>
 #include <core/library.h>
 #include <mysql.h>
 #include <util/hooks.h>
 #include <util/list.h>
-#include <system/handler/file.h>
+#include <system/fsys/file.h>
 #include <network/socket.h>
 #include <network/http.h>
 #include <system/systembase.h>
@@ -56,6 +42,15 @@ Http* USBManagerWebRequest( void *lb, char **urlpath, Http* request, UserSession
 	Log( FLOG_DEBUG, "USB Request %s  CALLED BY: %s\n", urlpath[ 0 ], loggedSession->us_User->u_Name );
 	Http *response = NULL;
 	
+	/// @cond WEB_CALL_DOCUMENTATION
+	/**
+	* 
+	* <HR><H2>system.library/usb/help</H2>Return information about avaiable usb funtions
+	*
+	* @param sessionid - (required) session id of logged user
+	* @return return information about avaiable usb functions
+	*/
+	/// @endcond
 	if (strcmp(urlpath[0], "help") == 0)
 	{
 		struct TagItem tags[] = {
@@ -72,12 +67,17 @@ Http* USBManagerWebRequest( void *lb, char **urlpath, Http* request, UserSession
 			queryport - query for usb port\n \
 			releaseport - release usb port\n \
 			");
-
-	//
-	// list all avaiable ports
-	//
-
 	}
+	
+	/// @cond WEB_CALL_DOCUMENTATION
+	/**
+	* 
+	* <HR><H2>system.library/usb/listports</H2>List all available usb ports
+	*
+	* @param sessionid - (required) session id of logged user
+	* @return return information about avaiable usb ports in JSON format when success, otherwise error code
+	*/
+	/// @endcond
 	else if (strcmp(urlpath[0], "listports") == 0)
 	{
 		struct TagItem tags[] = {
@@ -93,20 +93,15 @@ Http* USBManagerWebRequest( void *lb, char **urlpath, Http* request, UserSession
 		{
 			int pos = 0;
 
-			DEBUG("USB.library LIST\n");
-
 			BufStringAdd(bs, " { \"USBPorts\": [");
 			
-			DEBUG("USB string created\n");
 			for( pos = 0; pos < l->sl_USB->usbm_MaxPort ; pos++ )
 			{
-				DEBUG(" Going through USB ports pos %d\n", pos );
 				USBDevice *dev =  l->sl_USB->usbm_Ports[ pos ];
 				
 				if( dev != NULL )
 				{
 					char tempBuffer[ 1024 ];
-					DEBUG("Device is not NULL\n");
 
 					if (pos > 0)
 					{
@@ -116,8 +111,6 @@ Http* USBManagerWebRequest( void *lb, char **urlpath, Http* request, UserSession
 					int msgsize = snprintf(tempBuffer, sizeof(tempBuffer), "\"Name\":\"%s\",\"Port\":\"%s\",\"Connected\":\"%d\"", dev->usbd_Name, dev->usbd_NetworkAddress, dev->usbd_State );
 
 					BufStringAddSize(bs, tempBuffer, msgsize);
-				
-					DEBUG("Info about port added\n");
 				}
 				else
 				{
@@ -139,12 +132,17 @@ Http* USBManagerWebRequest( void *lb, char **urlpath, Http* request, UserSession
 		{
 			FERROR("ERROR: Cannot allocate memory for BufferString\n");
 		}
-
-	//
-	// ask FC for USB port
-	//
-
 	}
+	
+	/// @cond WEB_CALL_DOCUMENTATION
+	/**
+	* 
+	* <HR><H2>system.library/usb/queryport</H2>Query FriendCore for avaiable usb port
+	*
+	* @param sessionid - (required) session id of logged user
+	* @return { USBDeviceID: <number> } when success, otherwise error code
+	*/
+	/// @endcond
 	else if (strcmp(urlpath[0], "queryport") == 0)
 	{
 		struct TagItem tags[] = {
@@ -160,7 +158,7 @@ Http* USBManagerWebRequest( void *lb, char **urlpath, Http* request, UserSession
 		USBDevice *dev = USBManagerLockPort(l->sl_USB, loggedSession);
 		if (dev != NULL)
 		{
-			int size = sprintf(buffer, "{ \"USBDeviceID\": \"%llu\" }", dev->usbd_ID );
+			int size = sprintf(buffer, "{ \"USBDeviceID\": \"%lu\" }", dev->usbd_ID );
 			HttpAddTextContent(response, buffer);
 		}
 		else
@@ -168,12 +166,18 @@ Http* USBManagerWebRequest( void *lb, char **urlpath, Http* request, UserSession
 			int size = sprintf(buffer, "{ \"response\": \"%s\" }", "All ports are busy");
 			HttpAddTextContent(response, buffer);
 		}
-
-	//
-	// release USB port
-	//
-
 	}
+	
+	/// @cond WEB_CALL_DOCUMENTATION
+	/**
+	* 
+	* <HR><H2>system.library/usb/releaseport</H2>Release USB port
+	*
+	* @param sessionid - (required) session id of logged user
+	* @param id - (required) id of usb port which you want to release
+	* @return { USBDeviceID: <number> } when success, otherwise error code
+	*/
+	/// @endcond
 	else if (strcmp(urlpath[0], "releaseport") == 0)
 	{
 		struct TagItem tags[] = {
@@ -186,17 +190,17 @@ Http* USBManagerWebRequest( void *lb, char **urlpath, Http* request, UserSession
 
 		response = HttpNewSimple(HTTP_200_OK, tags);
 
-		HashmapElement *el = HttpGetPOSTParameter(request, "devname");
+		HashmapElement *el = HttpGetPOSTParameter( request, "id" );
 		if (el != NULL)
 		{
 			char *next;
-			id = (FQUAD)strtol((char *)el->data, &next, 0);
+			id = (FLONG)strtol((char *)el->data, &next, 0);
 		}
 		
 		if (id > 0)
 		{
 			USBDevice *dev = USBManagerGetDeviceByID(l->sl_USB, id);
-			char buffer[512];
+			//
 			int size = 0;
 			int error = -1;
 
@@ -211,29 +215,41 @@ Http* USBManagerWebRequest( void *lb, char **urlpath, Http* request, UserSession
 
 			if (error == 0)
 			{
-				int size = sprintf(buffer, "{ \"USBDeviceID\": \"%llu\" }", dev->usbd_ID);
+				char buffer[512];
+				int size = sprintf(buffer, "{ \"USBDeviceID\": \"%lu\" }", dev->usbd_ID);
 				HttpAddTextContent(response, buffer);
 			}
 			else
 			{
 				if (error == -1)
 				{
-					int size = sprintf(buffer, "{ \"response\": \"%s %d\" }", "Cannot unlock port, error number ", error );
-					HttpAddTextContent(response, buffer);
+					char dictmsgbuf[ 256 ];
+					char dictmsgbuf1[ 196 ];
+					snprintf( dictmsgbuf1, sizeof(dictmsgbuf1), l->sl_Dictionary->d_Msg[DICT_CANNOT_UNLOCK_PORT], error );
+					snprintf( dictmsgbuf, sizeof(dictmsgbuf), "{ \"response\": \"%s\", \"code\":\"%d\" }", dictmsgbuf1 , DICT_CANNOT_UNLOCK_PORT );
+					HttpAddTextContent( response, dictmsgbuf );
 				}
 				else 
 				{
-					int size = sprintf(buffer, "{ \"response\": \"%s %lu\" }", "Cannot find device with provided ID: ", id );
-					HttpAddTextContent(response, buffer);
+					char dictmsgbuf[ 256 ];
+					char dictmsgbuf1[ 196 ];
+					snprintf( dictmsgbuf1, sizeof(dictmsgbuf1), l->sl_Dictionary->d_Msg[DICT_CANNOT_FIND_DEVICE], id );
+					snprintf( dictmsgbuf, sizeof(dictmsgbuf), "{ \"response\": \"%s\", \"code\":\"%d\" }", dictmsgbuf1 , DICT_CANNOT_FIND_DEVICE );
+					HttpAddTextContent( response, dictmsgbuf );
 				}
 			}
 		}
-		
-	//
-	// add USB port
-	//
-		
 	}
+	
+	/// @cond WEB_CALL_DOCUMENTATION
+	/**
+	* 
+	* <HR><H2>system.library/usb/addport</H2>Add USB port
+	*
+	* @param sessionid - (required) session id of logged user
+	* @return code 0 when success, otherwise error number
+	*/
+	/// @endcond
 	else if (strcmp(urlpath[0], "addport") == 0)
 	{
 		struct TagItem tags[] = {
@@ -252,27 +268,42 @@ Http* USBManagerWebRequest( void *lb, char **urlpath, Http* request, UserSession
 			port = (char *)el->data;
 		}
 		
-		el = HttpGetPOSTParameter(request, "description");
-		if (el != NULL)
-		{
-			description = (char *)el->data;
-		}
-		
 		char buffer[512];
 		
 		if (port != NULL)
 		{
-			//int USBManagerAddNewPort(USBManager *usbm, char *port);
-			//int size = sprintf(buffer, "{ \"USBDeviceID\": \"%llu\" }", dev->usbd_ID );
-			//HttpAddTextContent(response, buffer);
+			int err = USBManagerAddNewPort( l->sl_USB, port );
+			
+			char buffer[512];
+			int size = sprintf(buffer, "{ \"code\": \"%d\" }", err );
+			HttpAddTextContent(response, buffer);
 		}
 		else
 		{
-			int size = sprintf(buffer, "{ \"response\": \"%s\" }", "port paramter is missing");
-			HttpAddTextContent(response, buffer);
+			char dictmsgbuf[ 256 ];
+			char dictmsgbuf1[ 196 ];
+			snprintf( dictmsgbuf1, sizeof(dictmsgbuf1), l->sl_Dictionary->d_Msg[DICT_PARAMETERS_MISSING], "port" );
+			snprintf( dictmsgbuf, sizeof(dictmsgbuf), "{ \"response\": \"%s\", \"code\":\"%d\" }", dictmsgbuf1 , DICT_PARAMETERS_MISSING );
+			HttpAddTextContent( response, dictmsgbuf );
 		}
 	}
 	
+	//
+	// function releated to devices not found
+	//
+	
+	else
+	{
+		struct TagItem tags[] = {
+			{ HTTP_HEADER_CONTENT_TYPE, (FULONG)StringDuplicate( DEFAULT_CONTENT_TYPE ) },
+			{ HTTP_HEADER_CONNECTION, (FULONG)StringDuplicate( "close" ) },
+			{ TAG_DONE, TAG_DONE }
+		};
+		response = HttpNewSimple( HTTP_200_OK, tags );
+		char dictmsgbuf[ 256 ];
+		snprintf( dictmsgbuf, sizeof(dictmsgbuf), "fail<!--separate-->{ \"response\": \"%s\", \"code\":\"%d\" }", l->sl_Dictionary->d_Msg[DICT_FUNCTION_NOT_FOUND] , DICT_FUNCTION_NOT_FOUND );
+		HttpAddTextContent( response, dictmsgbuf );
+	}
 	
 	return response;
 }

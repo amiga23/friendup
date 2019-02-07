@@ -1,23 +1,13 @@
 <?php
-/*©lpgl*************************************************************************
+/*©lgpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Lesser General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Lesser General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Lesser   *
+* General Public License, found in the file license_lgpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
-
 
 // Create FSFile table for managing doors
 $t = new DbTable( 'Filesystem' );
@@ -100,20 +90,23 @@ $t = new dbTable( 'FKeys' );
 if( !$t->load() )
 {
 	$SqlDatabase->Query( '
-	CREATE TABLE `FKeys` (
+	CREATE TABLE IF NOT EXISTS `FKeys` (
 	 `ID` bigint(20) NOT NULL AUTO_INCREMENT,
 	 `UserID` bigint(20) NOT NULL,
 	 `UniqueID` varchar(255) NOT NULL,
 	 `RowID` bigint(20) NOT NULL,
 	 `RowType` varchar(255) NOT NULL,
+	 `Name` varchar(255) NOT NULL,
 	 `Type` varchar(255) NOT NULL,
-	 `Data` longblob,
-	 `PublicKey` blob,
+	 `Blob` longblob,
+	 `Data` text,
+	 `PublicKey` text,
+	 `Signature` text,
 	 `DateModified` datetime NOT NULL,
 	 `DateCreated` datetime NOT NULL,
 	 `IsDeleted` tinyint(4) NOT NULL,
 	 PRIMARY KEY (`ID`)
-	) 
+	)
 	' );
 }
 

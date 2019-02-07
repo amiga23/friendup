@@ -1,23 +1,69 @@
 <?php
-/*©lpgl*************************************************************************
+/*©lgpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Lesser General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Lesser General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Lesser   *
+* General Public License, found in the file license_lgpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
 
+function storeRecentApps( $name )
+{
+	global $User, $Logger;
+	// Store list in database --------------------------------------------------
+	
+	$appHistory = new dbIO( 'FSetting' );
+	$appHistory->UserID = $User->ID;
+	$appHistory->Type = 'system';
+	$appHistory->Key = 'recent_apps';
+	$appHistory->load();
+	
+	$list = [];
+	if( $appHistory->Data )
+	{
+		$list = json_decode( $appHistory->Data );
+		if( !$list ) $list = [];
+	}
+	
+	$Logger->log( 'Merging? ' . $appHistory->Key );
+	
+	$list = array_merge( array( $name ), $list );
+	
+	// Fix duplicates!
+	$cleaned = [];
+	for( $a = 0; $a < count( $list ); $a++ )
+	{
+		$found = false;
+		for( $b = 0; $b < count( $cleaned ); $b++ )
+		{
+			if( $cleaned[ $b ] == $list[ $a ] )
+			{
+				$found = true;
+				break;
+			}
+		}
+		if( !$found )
+			$cleaned[] = $list[ $a ];	
+	}
+	$list = $cleaned; unset( $cleaned );
+	
+	// Max ten in list
+	$out = [];
+	for( $a = 0; $a < 10 && $a < count( $list ); $a++ )
+	{
+		$out[] = $list[ $a ];
+	}
+	
+	$appHistory->Data = json_encode( $out );
+	$appHistory->save();
+	unset( $list, $a );
+	
+	$Logger->log( 'Stored anything? ' . $appHistory->Data );
+	
+	// Done storing recent apps ------------------------------------------------
+}
 
 function findInSearchPaths( $app )
 {
@@ -118,6 +164,10 @@ if( $retObject && isset( $retObject->ProjectName ) )
 			$init = $v->Path;
 		}
 	}
+	
+	// Store the recent!
+	storeRecentApps( $v->Filename );
+	
 	if( $init )
 	{
 		$conf->Init = $init;
@@ -153,6 +203,8 @@ else if( $level == 'API' )
 	}
 	// TODO: Update authid sometime for guests..? No?
 	$conf->AuthID = $fa->AuthID;
+	
+	storeRecentApps( $o->Name );
 		
 	die( 'ok<!--separate-->' . json_encode( $conf ) );
 }
@@ -183,7 +235,9 @@ else if( $row = $SqlDatabase->FetchObject( '
 		else $conf->Path = str_replace( '../resources', '', $conf->Path );
 		
 		// Icons, normal app icon, icon for dormant disk, dock icon
-		if( file_exists( 'resources/' . $conf->Path . 'icon.png' ) )
+		if( file_exists( 'resources/' . $conf->Path . 'icon.svg' ) )
+			$conf->Icon = $conf->Path . 'icon.svg';
+		else if( file_exists( 'resources/' . $conf->Path . 'icon.png' ) )
 			$conf->Icon = $conf->Path . 'icon.png';
 		if( file_exists( 'resources/' . $conf->Path . 'icon_door.png' ) )
 			$conf->IconDoor = $conf->Path . 'icon_door.png';
@@ -191,6 +245,8 @@ else if( $row = $SqlDatabase->FetchObject( '
 			$conf->IconDock = $conf->Path . 'icon_dock.png';
 		
 		$conf->UserConfig = $ur->Data;
+		
+		storeRecentApps( $args->args->application );
 		
 		die( 'ok<!--separate-->' . json_encode( $conf ) );
 	}
@@ -225,6 +281,6 @@ else if ( $path = findInSearchPaths( $args->args->application ) )
 	}
 	die( 'notinstalled<!--separate-->{"path":"' . $path . '","trusted":"'. $trusted .'"}' );
 }
-die( 'fail<!--separate-->{"response": "not installed"}' );
+die( 'fail<!--separate-->{"response": "file does not exist"}' );
 
 ?>

@@ -1,19 +1,10 @@
 /*©agpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Affero General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Affero General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Affero   *
+* General Public License, found in the file license_agpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
 
@@ -25,12 +16,15 @@
 *                                                                              *
 *******************************************************************************/
 
+// Assumptions
+window.isTablet = window.isMobile = false;
+
 // Main namespace
-if( !window.friend ) window.friend = {};
-friend = window.friend || {}
-friend.iconsSelectedCount = 0;
-friend.currentMenuItems = false;
-friend.singleInstanceApps = [];
+Friend = window.Friend || {}
+Friend.iconsSelectedCount = 0;
+Friend.currentMenuItems = false;
+Friend.singleInstanceApps = [];
+Friend.windowBaseString = 'Friend Workspace';
 
 // Some global variables
 var globalConfig = {};
@@ -68,7 +62,7 @@ function getWrapperCallback( uniqueId )
 // Run a callback and remove from list
 function runWrapperCallback( uniqueId, data )
 {
-	if( typeof( apiWrapperCallbacks[uniqueId] ) != 'undefined' )
+	if( typeof( apiWrapperCallbacks[uniqueId] ) == 'function' )
 	{
 		apiWrapperCallbacks[uniqueId]( data );
 		var o = [];
@@ -99,198 +93,798 @@ function apiWrapper( event, force )
 {
 	// TODO: Origin
 	if( !event && !event.data ) return false;
-	
+
 	var edi = -1, d = event.data;
-	if( d.match( /^[a-z]*?\</i ) && ( edi = event.data.indexOf( '<!--separate-->' ) ) >= 0 )
-		d = event.data.substr( 0, edi - 1 );
-	if( !d.indexOf( '{' ) && !d.indexOf( '[' ) )
-		return false;
-	
+	try
+	{
+		if( d.match( /^[a-z]*?\</i ) && ( edi = event.data.indexOf( '<!--separate-->' ) ) >= 0 )
+			d = event.data.substr( 0, edi - 1 );
+		if( !d.indexOf( '{' ) && !d.indexOf( '[' ) )
+			return false;
+	}
+	catch( e )
+	{
+		if( typeof( d ) != 'object' )
+		{
+			return false;
+		}
+	}
+
 	var msg = false;
 	try
 	{
-		msg = JSON.parse( d );
-	} catch(e) { console.log('Unexpected answer: ' + d, event.data ); }
+		msg = typeof( d ) == 'object' ? d : JSON.parse( d );
+	} 
+	catch( e )
+	{ 
+		console.log( 'Unexpected answer: ' + d, event.data ); 
+	}
+	
+	// Check attributes for special types
+	for( var prop in msg )
+	{
+		if( prop.indexOf( '_format' ) < 0 ) continue;
+		var propName = prop.substring( 0, prop.length - 7 );
+		if( typeof( msg[ propName ] ) != 'undefined' )
+		{
+			switch( msg[ prop ] )
+			{
+				case 'binaryString':
+				case 'base64':
+					msg[ propName ] = ConvertStringToArrayBuffer( msg[ propName ], msg[ prop ] );			
+					//var data = msg[ propName ].split( ',' );
+					//msg[ propName ] = ( new Uint8Array( data ) ).buffer;
+					break;
+			}
+		}
+	}
 
+	// Send message back to origin view/application or function
+	function sendItBack( message )
+	{
+		if ( typeof messageInfo.callback == 'function' )
+		{
+			messageInfo.callback( message );
+			return;
+		}
+		if ( messageInfo.view )
+		{
+			if ( typeof messageInfo.callback == 'string' )
+			{
+				message.type = 'callback';
+				message.callback = messageInfo.callback;
+			}
+			message.applicationId = messageInfo.applicationId;
+			message.viewId = messageInfo.viewId;
+			messageInfo.view.postMessage( JSON.stringify( message ), '*' );
+		}
+	}
 	if( msg.type )
 	{
 		// Find application iframe
 		var app = findApplication( msg.applicationId );
 		if( force ) app = force; // <- Run with privileges
-		if( !app ) 
+		if( !app )
 		{
-			//console.log( 'apiwrapper - found no app for ', msg );
-			return false;
+			// Special case, enter the switch with these conditions
+			if( msg.type != 'friendNetworkRun' )
+			{
+				console.log( 'apiwrapper - found no app for ', msg );
+				return false;
+			}
 		}
-		
-		switch( msg.type )
+
+		// For Francois :)
+		if ( msg.type.substring( 0, 13 ) == 'friendNetwork' )
 		{
+			var messageInfo = {};
+			if ( msg.applicationId )
+			{
+				messageInfo.view = GetContentWindowByAppMessage( findApplication( msg.applicationId ), msg );
+				messageInfo.applicationId = msg.applicationId;
+				if ( msg.applicationName )
+					messageInfo.applicationName = msg.applicationName;
+				messageInfo.viewId = msg.viewId;
+				messageInfo.callback = msg.callback;
+			}
+		}
+		switch( msg.type ) 
+		{
+			// DOS -------------------------------------------------------------
+			case 'dos':
+				var win = ( app && app.windows ) ? app.windows[ msg.viewId ] : false;
+				var tar = win ? app.windows[ msg.targetViewId ] : false; // Target for postmessage
+				var cbk = msg.callback;
+				switch ( msg.method )
+				{
+					case 'getDisks':
+						Friend.DOS.getDisks( msg.flags, function( response, list, extra )
+						{
+							var nmsg = 
+							{
+								viewId: msg.viewId,
+								applicationId: msg.applicationId,
+								callback: cbk,
+								response: response,
+								list: list
+							};
+							if( tar )
+								tar.iframe.contentWindow.postMessage( JSON.stringify( nmsg ), '*' );
+							else 
+								app.contentWindow.postMessage( JSON.stringify( nmsg ), '*' );
+						} );
+						break;
+					case 'getDirectory':
+						Friend.DOS.getDirectory( msg.path, msg.flags, function( response, list, extra )
+						{
+							var nmsg = 
+							{
+								viewId: msg.viewId,
+								applicationId: msg.applicationId,
+								callback: cbk,
+								response: response,
+								list: list,
+								path: msg.path,
+								extra: extra
+							};
+							if( tar )
+								tar.iframe.contentWindow.postMessage( JSON.stringify( nmsg ), '*' );
+							else 
+								app.contentWindow.postMessage( JSON.stringify( nmsg ), '*' );
+						}, msg.extra );
+						break;
+					case 'executeJSX':
+						Friend.DOS.executeJSX( msg.path, msg.args, function( response, message, iframe, extra )
+						{
+							var nmsg = 
+							{
+								viewId: msg.viewId,
+								applicationId: msg.applicationId,
+								callback: cbk,
+								response: response,
+								extra: extra
+							};
+							if( tar )
+							{	
+								tar.iframe.contentWindow.postMessage( JSON.stringify( nmsg ), '*' );
+							}
+							// If we are injecting into an iframe returned from executeJSX!
+							else if( iframe )
+							{
+								iframe.contentWindow.postMessage( JSON.stringify( nmsg ), '*' );
+							}
+							else 
+								app.contentWindow.postMessage( JSON.stringify( nmsg ), '*' );
+						}, msg.extra );
+						break;
+					case 'loadHTML':
+						Friend.DOS.loadHTML( msg.applicationId, msg.path, function( response, html, extra )
+						{
+							var nmsg = 
+							{
+								viewId: msg.viewId,
+								applicationId: msg.applicationId,
+								callback: cbk,
+								response: response,
+								html: html,
+								extra: extra
+							};
+							if( tar )
+								tar.iframe.contentWindow.postMessage( JSON.stringify( nmsg ), '*' );
+							else 
+								app.contentWindow.postMessage( JSON.stringify( nmsg ), '*' );
+						}, msg.extra );
+						break;
+					case 'getDriveInfo':
+						Friend.DOS.getDriveInfo( msg.path, function( response, icon, extra )
+						{
+							var nmsg = 
+							{
+								viewId: msg.viewId,
+								applicationId: msg.applicationId,
+								callback: cbk,
+								response: icon ? true : false,
+								info: icon,
+								path: msg.path,
+								extra: msg.extra
+							};
+							if( tar )
+								tar.iframe.contentWindow.postMessage( JSON.stringify( nmsg ), '*' );
+							else 
+								app.contentWindow.postMessage( JSON.stringify( nmsg ), '*' );							
+						}, msg.extra );
+						break;
+					case 'getFileInfo':
+						Friend.DOS.getFileInfo( msg.path, function( response, icon, extra )
+						{
+							var nmsg = 
+							{
+								viewId: msg.viewId,
+								applicationId: msg.applicationId,
+								callback: cbk,
+								response: response,
+								info: icon,
+								path: msg.path,
+								extra: extra
+							};
+							if( tar )
+								tar.iframe.contentWindow.postMessage( JSON.stringify( nmsg ), '*' );
+							else 
+								app.contentWindow.postMessage( JSON.stringify( nmsg ), '*' );							
+						}, msg.extra );
+						break;
+					case 'fileAccess':
+						Friend.DOS.getFileAccess( msg.path, function( response, permissions, extra )
+						{
+							// Setup the callback message
+							var nmsg = 
+							{
+								viewId: msg.viewId,
+								applicationId: msg.applicationId,
+								callback: cbk,
+								response: response,
+								permissions: permissions,
+								path: msg.path, 
+								extra: extra
+							};
+							if( tar )
+								tar.iframe.contentWindow.postMessage( JSON.stringify( nmsg ), '*' );
+							else 
+								app.contentWindow.postMessage( JSON.stringify( nmsg ), '*' );
+						}, msg.extra );
+						break;
+					case 'openWindowByFilename':
+						if( msg.args )
+						{
+							Friend.DOS.openWindowByFilename( msg.args.fileInfo, msg.args.ext );
+						}
+						break;
+				}
+				msg.callback = null;
+				break;
+			// Virtual Reality -------------------------------------------------
+			case 'friendvr':
+				if( Friend.VRWrapper )
+				{
+					var data = Friend.VRWrapper( msg );
+					
+					// Handle callbacks
+					if( msg.callback && app )
+					{
+						if( msg.viewId && app.windows && app.windows[ msg.viewId ] )
+						{
+							var nmsg = {
+								applicationId: msg.applicationId,
+								viewId: msg.viewId,
+								type: 'callback',
+								callback: msg.callback,
+								data: data
+							};
+							app.windows[ msg.viewId ].sendMessage( nmsg );
+						}
+						else
+						{
+							var nmsg = {
+								applicationId: msg.applicationId,
+								type: 'callback',
+								callback: msg.callback,
+								data: data
+							};
+							app.contentWindow.postMessage( JSON.stringify( nmsg ), '*' );
+						}
+					}
+				}
+				else
+				{
+					// First time, give an alert
+					if( !Friend.VRError )
+					{
+						Alert( 'VR mode not available', 'Please run Friend in VR mode to run this application.' );
+						Friend.VRError = 1;
+					}
+				}
+				break;
 			// Friend Network --------------------------------------------------
-			// TODO: Work no this!
 			case 'friendnet':
 				switch( msg.method )
 				{
+					case 'isReady':
+						FriendNetwork.isReady( 
+						{
+							message: msg,
+							extra: msg.extra,
+							callback: msg.callback
+						} );
+						break;
 					case 'list':
-						FriendNetwork.listHosts( {
-							applicationName: msg.applicationName,
-							applicationId: msg.applicationId,
-							callback: function( data )
-							{
-								var cw = GetContentWindowByAppMessage( app, msg );
-								var nmsg = {
-									applicationId: msg.applicationId,
-									applicationName: msg.applicationName,
-									type: 'callback',
-									callback: msg.callback,
-									data: {command: 'friendnetwork', data: data}
-								};
-								cw.postMessage( JSON.stringify( nmsg ), '*' );
-							}
+						FriendNetwork.listHosts( 
+						{
+							message: msg,
+							extra: msg.extra,
+							callback: msg.callback
+						} );
+						break;
+					case 'listToConsole':
+						FriendNetwork.listHostsToConsole( 
+						{
+							message: msg,
+							extra: msg.extra,
+							callback: msg.callback
+						} );
+						break;
+					case 'subscribeToHostListUpdates':
+						FriendNetwork.subscribeToHostListUpdates( 
+						{
+							message: msg,
+							extra: msg.extra,
+							callback: msg.callback
+						} );
+						break;
+					case 'unsubscribeFromHostListUpdates':
+						FriendNetwork.unsubscribeFromHostListUpdates( 
+						{
+							message: msg,
+							extra: msg.extra,
+							identifier: msg.identifier,
+							callback: msg.callback
+						} );
+						break;
+					case 'subscribeToHostUpdates':
+						FriendNetwork.subscribeToHostUpdates( 
+						{
+							message: msg,
+							extra: msg.extra,
+							key: msg.key,
+							callback: msg.callback
+						} );
+						break;
+					case 'unsubscribeFromHostUpdates':
+						FriendNetwork.unsubscribeFromHostUpdates( 
+						{
+							message: msg,
+							extra: msg.extra,
+							key: msg.key,
+							callback: msg.callback
 						} );
 						break;
 					case 'connect':
-						FriendNetwork.connectToHost( {
-							applicationName: msg.applicationName,
-							applicationId: msg.applicationId,
+						FriendNetwork.connectToHost( 
+						{
+							message: msg,
+							extra: msg.extra,
+							url: msg.url,
+							hostType: msg.hostType,
+							flags: msg.flags,
+							callback: msg.callback
+						} );
+						break;
+					case 'sendFile':
+						FriendNetwork.sendFile( 
+						{
+							message: msg,
+							extra: msg.extra,
+							key: msg.key,
+							file: msg.file,
 							name: msg.name,
-							callback: function( data )
-							{
-								var cw = GetContentWindowByAppMessage( app, msg );
-								var nmsg = {
-									applicationId: msg.applicationId,
-									applicationName: msg.applicationName,
-									type: 'callback',
-									callback: msg.callback,
-									data: {command: 'friendnetwork', data: data}
-								};
-								cw.postMessage( JSON.stringify( nmsg ), '*' );
-							}
+							infos: msg.infos,
+							callback: msg.callback
+						} );
+						break;
+					case 'disconnect':
+						FriendNetwork.disconnectFromHost( {
+							message: msg,
+							key: msg.key,
+							callback: msg.callback,
+							extra: msg.extra
+						} );
+						break;
+					case 'disconnectByName':
+						FriendNetwork.disconnectFromHostByName( {
+							message: msg,
+							hostName: msg.hostName,
+							callback: msg.callback,
+							extra: msg.extra
 						} );
 						break;
 					case 'dispose':
 						FriendNetwork.disposeHosting( {
-							applicationName: msg.applicationName,
-							applicationId: msg.applicationId,
-							name: msg.name,
-							callback: function( data )
-							{
-								var cw = GetContentWindowByAppMessage( app, msg );
-								var nmsg = {
-									applicationId: msg.applicationId,
-									applicationName: msg.applicationName,
-									type: 'callback',
-									callback: msg.callback,
-									data: {command: 'friendnetwork', data: data}
-								};
-								cw.postMessage( JSON.stringify( nmsg ), '*' );
-							}
+							message: msg,
+							key: msg.key,
+							callback: msg.callback,
+							extra: msg.extra
 						} );
 						break;
 					case 'send':
 						FriendNetwork.send( {
-							applicationName: msg.applicationName,
-							applicationId: msg.applicationId,
-							host: msg.host,
-							event: msg.event,
+							message: msg,
+							data: msg.data,
 							key: msg.key,
-							callback: function( data )
-							{
-								var cw = GetContentWindowByAppMessage( app, msg );
-								var nmsg = {
-									applicationId: msg.applicationId,
-									applicationName: msg.applicationName,
-									type: 'callback',
-									callback: msg.callback,
-									data: { command: 'friendnetwork', data: data }
-								};
-								cw.postMessage( JSON.stringify( nmsg ), '*' );
-							}
+							callback: msg.callback,
+							extra: msg.extra
+						} );
+						break;
+					case 'sendCredentials':
+						FriendNetwork.sendCredentials( {
+							message: msg,
+							password: msg.password,
+							key: msg.key,
+							encrypted: msg.encrypted,
+							extra: msg.extra,
+							callback: msg.callback
+						} );
+						break;
+					case 'setHostPassword':
+						FriendNetwork.setHostPassword( {
+							message: msg,
+							password: msg.password,
+							key: msg.key,
+							extra: msg.extra,
+							callback: msg.callback
 						} );
 						break;
 					case 'host':
-						FriendNetwork.startHosting( {
-							applicationName: msg.applicationName,
-							applicationId: msg.applicationId,
+						var newmsg =
+						{
+							message: msg,
 							name: msg.name,
-							callback: function( data )
-							{
-								var cw = GetContentWindowByAppMessage( app, msg );
-								var nmsg = {
-									applicationId: msg.applicationId,
-									applicationName: msg.applicationName,
-									type: 'callback',
-									callback: msg.callback,
-									data: { command: 'friendnetwork', data: data }
-								};
-								cw.postMessage( JSON.stringify( nmsg ), '*' );
-							},
-							listener: msg.listener
+							connectionType: msg.connectionType,
+							applicationName: msg.applicationName,
+							description: msg.description,
+							password: msg.password,
+							data: msg.data,
+							extra: msg.extra,
+							callback: msg.callback
+						};
+						FriendNetwork.startHosting( newmsg );
+						break;
+					case 'updateHostPassword':
+						FriendNetwork.updateHostPassword( 
+						{
+							message: msg,
+							key: msg.key,
+							password: msg.password,
+							extra: msg.extra,
+							callback: msg.callback
 						} );
 						break;
-					// Add a new session and return key
-					case 'addsession':
-						var key = FriendNetwork.addSession(
-							msg.applicationId,
-							msg.name,
-							'',
-							msg.mode
-						);
-						var cw = GetContentWindowByAppMessage( app, msg );
-						var nmsg = {
-							applicationId: msg.applicationId,
-							applicationName: msg.applicationName,
-							type: 'callback',
-							key: key,
-							callback: msg.callback,
-							data: { command: 'friendnetwork', key: key }
-						};
-						cw.postMessage( JSON.stringify( nmsg ), '*' );
-					case 'getstatus':
-						FriendNetwork.getStatus();
+					case 'closeSession':
+						FriendNetwork.closeSession({
+							message: msg,
+							key: msg.key,
+							extra: msg.extra,
+							callback: msg.callback
+						});
+						break;
+					case 'closeApplication':
+						FriendNetwork.closeApplication( msg );
+						break;
+					case 'status':
+						FriendNetwork.getStatus(
+                        {
+							message: msg,
+							extra: msg.extra						
+						} ) ;
+						break;
+					case 'getUserInformation':
+						FriendNetwork.getUserInformation(
+                        {
+							message: msg,
+							extra: msg.extra,
+							callback: msg.callback
+						} ) ;
+						break;
+				}
+				msg.callback = false; // terminate callback
+				break;
+
+			// Friend Network Share ---------------------------------------------
+			case 'friendNetworkRun':
+				switch ( msg.method )
+				{
+					case 'start':
+						FriendNetworkDoor.runRemoteApplication( msg, function( response, data, extra )
+						{
+							var nmsg = 
+							{
+								command: 'runRemoteApplicationResponse',
+								response: response,
+								data: data,
+								extra: extra,
+								isFriendAPI: true
+							};
+							sendItBack( nmsg );
+						}, msg.extra );
 						break;
 				}
 				break;
+
+			// Friend Network Share ---------------------------------------------
+			case 'friendNetworkShare':
+				switch( msg.method )
+				{
+					case 'activate':
+						FriendNetworkShare.activate( msg.activate );
+						break;
+					case 'changeFriendNetworkSettings':
+						FriendNetworkShare.changeFriendNetworkSettings( msg.settings );
+						break;
+				}
+				msg.callback = false; // terminate callback
+				break;
+
+			// Friend Network Drive ---------------------------------------------
+			case 'friendNetworkDrive':
+				switch( msg.method )
+				{
+					case 'activate':
+						FriendNetworkDrivecloseFriend.activate( msg.activate );
+						break;
+					case 'changeFriendNetworkSettings':
+						FriendNetworkDrive.changeFriendNetworkSettings( msg.settings );
+						break;
+				}
+				msg.callback = false; // terminate callback
+				break;
+
+			// Friend Network Door ---------------------------------------------
+			case 'friendNetworkDoor':
+				switch( msg.method )
+				{
+					case 'activate':
+						FriendNetworkDoor.activate( msg.activate );
+						break;
+					case 'changeFriendNetworkSettings':
+						FriendNetworkDoor.changeFriendNetworkSettings( msg.settings );
+						break;
+					case 'relocateHTML':
+						FriendNetworkDoor.relocateHTML( msg.html, msg.sourceDrive, msg.linkReplacement, msg.linkFunction, function( response, html )
+						{
+							var nmsg = 
+							{
+								command: 'relocateHTMLReponse',
+								response: response,
+								html: html,
+								extra: msg.extra
+							};
+							sendItBack( nmsg );
+						}, msg.extra );
+						break;
+					case 'connectToDoor':
+						FriendNetworkDoor.connectToDoor( msg.hostName, msg.appName, 'folder', function( response, connection ) 
+						{
+							// Remove elements that make JSON.stringify crash
+							//connection.door = false;
+							var nmsg = 
+							{
+								command: 'connectToDoorReponse',
+								response: response,
+								connection: connection,
+								extra: msg.extra
+							};
+							sendItBack( nmsg );
+						}, msg.extra );
+						break;
+					case 'disconnectFromDoor':
+						var response = FriendNetworkDoor.disconnectFromDoor( msg.door, msg.parameters );
+						var nmsg = 
+						{
+							command: 'disconnectFromDoorReponse',
+							response: response,
+							extra: msg.extra
+						};
+						sendItBack( nmsg );
+						break;
+					case 'shareDoor':
+						FriendNetworkDoor.shareDoor( msg.hostName, msg.appName, function( response, share ) 
+						{
+							var nmsg = 
+							{
+								command: 'disconnectFromDoorReponse',
+								response: response,
+								share: share,
+								extra: msg.extra
+							};
+							sendItBack( nmsg );
+						}, msg.extra );
+						break;
+					case 'closeSharedDoor':
+						var response = FriendNetworkDoor.closeSharedDoor( msg.name );
+						var nmsg = 
+						{
+							command: 'disconnectFromDoorReponse',
+							response: response,
+							extra: msg.extra
+						};
+						sendItBack( nmsg );
+						break;
+				}
+				msg.callback = false; // terminate callback
+				break;
+
+			// Automatic API System...
+			case 'Friend':
+				Friend.callAPIFunction( msg );
+				msg.callback = false;
+				break;
+
+			// Friend Network Friends ---------------------------------------------
+			case 'friendNetworkFriends':
+				switch( msg.method )
+				{
+					case 'changeFriendNetworkSettings':
+						FriendNetworkFriends.changeFriendNetworkSettings( msg.settings );
+						break;
+					case 'listCommunities':
+						FriendNetworkFriends.listCommunities( msg.url, function( response, communities, users, extra ) 
+						{
+							var nmsg = 
+							{
+								command: 'listCommunitiesResponse',
+								response: response,
+								communities: communities,
+								users: users,
+								extra: extra
+							};
+							sendItBack( nmsg );
+						}, msg.extra );
+						break;
+					case 'getUniqueDeviceIdentifier':
+						FriendNetworkFriends.getUniqueDeviceIdentifier( function( identifier, extra ) 
+						{
+							var nmsg = 
+							{
+								command: 'getUniqueDeviceIdentifierResponse',
+								identifier: identifier,
+								extra: extra
+							};
+							sendItBack( nmsg );
+						}, msg.extra );
+						break;
+					case 'getDeviceInformation':
+						FriendNetworkFriends.getDeviceInformation( msg.flags, function( information, extra ) 
+						{
+							var nmsg = 
+							{
+								command: 'getDeviceInformationResponse',
+								information: information,
+								extra: extra
+							};
+							sendItBack( nmsg );
+						}, msg.extra );
+						break;
+					default:
+						break;
+				}
+				msg.callback = false; // terminate callback
+				break;
+
+			// Friend Network Apps ---------------------------------------------
+			case 'friendNetworkApps':
+				switch( msg.method )
+				{
+					case 'changeFriendNetworkSettings':
+						FriendNetworkApps.changeFriendNetworkSettings( msg.settings );
+						break;
+					case 'registerApplication':
+						FriendNetworkApps.registerApplication( msg.appInformation, msg.userInformation, msg.password, function( response, data, extra )
+						{
+							sendItBack( response, data, extra );
+						}, msg.extra );
+						break;
+					case 'closeApplication':
+						FriendNetworkApps.closeApplication( msg.appIdentifier, function( response, data, extra )
+						{
+							sendItBack( response, data, extra );
+						}, msg.extra );
+						break;
+					case 'closeConnections':
+						FriendNetworkApps.closeConnections( msg.appIdentifier, function( response, data, extra )
+						{
+							sendItBack( response, data, extra );
+						}, msg.extra );
+						break;
+					case 'closeRunningConnections':
+						FriendNetworkApps.closeRunningConnections( msg.appIdentifier, function( response, data, extra )
+						{
+							sendItBack( response, data, extra );
+						}, msg.extra );
+						break;
+					case 'openHost':
+						FriendNetworkApps.openHost( msg.appIdentifier, function( response, data, extra )
+						{
+							sendItBack( response, data, extra );
+						}, msg.extra );
+						break;
+					case 'closeHost':
+						FriendNetworkApps.closeHost( msg.appIdentifier, function( response, data, extra )
+						{
+							sendItBack( response, data, extra );
+						}, msg.extra )
+						break;
+					case 'connectToUser':
+						FriendNetworkApps.connectToUser( msg.appIdentifier, msg.nameHost, function( response, data, extra ) 
+						{
+							sendItBack( response, data, extra );
+						}, msg.extra );
+						break;
+					case 'disconnectFromApp':
+						FriendNetworkApps.closeUser( msg.appIdentifier, msg.userIdentifier, function( response, data, extra ) 
+						{
+							sendItBack( response, data, extra );
+						}, msg.extra );
+						break;
+					case 'establishConnections':
+						FriendNetworkApps.establishConnections( msg.appIdentifier, function( response, data, extra ) 
+						{
+							sendItBack( response, data, extra );
+						}, msg.extra );
+						break;
+					case 'sendMessageToAll':
+						FriendNetworkApps.sendMessageToAll( msg.appIdentifier, msg.message, function( response, data, extra ) 
+						{
+							sendItBack( response, data, extra );
+						}, msg.extra );
+						break;
+					case 'startApplication':
+						FriendNetworkApps.startApplication( msg.appIdentifier, function( response, data, extra ) 
+						{
+							sendItBack( response, data, extra );
+						}, msg.extra );
+						break;
+					case 'getHosts':
+						FriendNetworkApps.getHosts( msg.appIdentifier, msg.filters, msg.registerToUpdates, function( response, data, extra ) 
+						{
+							sendItBack( response, data, extra );
+						}, msg.extra );
+						break;
+				}
+				msg.callback = false; // terminate callback
+				break;
+
 			// Dormant ---------------------------------------------------------
 			// TODO : permissions - does the app have persmission to:
 			// 1: expose its own data
 			// 2: pull from other exposed apps
 			// - is it possible for applicationId to leak to other applications?
 			case 'dormantmaster':
-				
 				switch( msg.method )
 				{
 					case 'execute':
-						
+
 						//find our door
 						var door = false;
 						for (var a = 0; a < DormantMaster.appDoors.length; a++)
 						{
-							if (DormantMaster.appDoors[a].title.toLowerCase() == msg.executable.split(':')[0].toLowerCase())
+							var doorTest = DormantMaster.appDoors[ a ].getDoor();
+							if( doorTest )
 							{
-								door = DormantMaster.appDoors[a];
+								if( doorTest.Title.split( ':' )[0].toLowerCase() == msg.executable.split( ':' )[ 0 ].toLowerCase() )
+								{
+									door = DormantMaster.appDoors[ a ];
+								}
 							}
 						}
-						if (door)
+						if( door )
 						{
 							var path = '';
-							if (msg.executable.indexOf('/'))
+							if( msg.executable.indexOf( '/' ) )
 							{
-								path = msg.executable.split('/');
+								path = msg.executable.split( '/' );
 								path.pop();
-								path = path.join('/');
+								path = path.join( '/' ) + '/';
 							}
 							else
 							{
-								path = msg.executable.split(':')[0] + ':';
+								path = msg.executable.split( ':' )[ 0 ] + ':';
 							}
-							door.getDirectory(path, function (data)
+							door.getDirectory( path, function( data )
 							{
 								// Callback
 								for (var b = 0; b < data.length; b++)
 								{
 									if ((data[b].Path + data[b].Title).toLowerCase() == msg.executable.toLowerCase())
 									{
-										data[b].Dormant.execute(data[b].Title, msg.dormantArgs);
+										data[b].Dormant.execute(data[b], msg.dormantArgs);
 									}
 								}
 								var ret = {
@@ -300,7 +894,7 @@ function apiWrapper( event, force )
 									method:        'callback',
 									data:          data
 								};
-								
+
 								if (msg.callback)
 									runWrapperCallback(msg.callback, data);
 							});
@@ -311,46 +905,11 @@ function apiWrapper( event, force )
 								runWrapperCallback(msg.callback, false);
 						}
 						break;
-					// Make a connection to the friend network
-					case 'connectfriendnetwork':
-						DormantMaster.connectFriendNetworkTo( {
-							applicationName: msg.applicationName,
-							applicationId: msg.applicationId,
-							callback: function( data )
-							{
-								var cw = GetContentWindowByAppMessage( app, msg );
-								var nmsg = {
-									applicationId: msg.applicationId,
-									applicationName: msg.applicationName,
-									type: 'callback',
-									callback: msg.callback,
-									data: {command: 'friendnetwork', data: data}
-								};
-								cw.postMessage( JSON.stringify( nmsg ), '*' );
-							}
-						} );
-						break;
-					// Disconnect now!
-					case 'disconnectfriendnetwork':
-						DormantMaster.disconnectFriendNetworkFrom( {
-							applicationName: msg.applicationName,
-							applicationId: msg.applicationId,
-							callback: function( data )
-							{
-								var cw = GetContentWindowByAppMessage( app, msg );
-								var nmsg = {
-									applicationId: msg.applicationId,
-									applicationName: msg.applicationName,
-									type: 'callback',
-									callback: msg.callback,
-									data: {command: 'friendnetwork', data: data}
-								};
-								cw.postMessage( JSON.stringify( nmsg ), '*' );
-							}
-						} );
-						break;
 					case 'callback':
-						if( msg.callbackId && msg.data )
+						if ( !msg.callbackId )
+							return;
+						
+						if( msg.data )
 						{
 							//find our door
 							var door = false;
@@ -370,6 +929,9 @@ function apiWrapper( event, force )
 								}
 								runWrapperCallback(msg.callbackId, msg.data);
 							}
+						} else
+						{
+							runWrapperCallback( msg.callbackId, null );
 						}
 						break;
 					case 'addevent':
@@ -383,7 +945,7 @@ function apiWrapper( event, force )
 						break;
 						// Make proxy object
 					case 'addAppDoor':
-						
+
 						// Make sure we have a unique name!
 						var num = 0;
 						var nam = msg.title;
@@ -403,81 +965,173 @@ function apiWrapper( event, force )
 							}
 						}
 						while (found);
-						
+
 						var doorObject = {
-							title:         namnum,
-							doorId:        msg.doorId,
-							applicationId: msg.applicationId,
-							getDoor:       function ()
-										   {
-											   var icon = 'apps/' + msg.title + '/icon.png';
-											   if (app && app.config.IconDoor)
-												   icon = app.config.IconDoor;
-											   return {
-												   MetaType: 'Meta',
-												   Title:    namnum + ':', /* remove this from all references*/
-												   Filename: namnum + ':',
-												   IconFile: icon,
-												   Position: 'left',
-												   Module:   'files',
-												   Command:  'dormant',
-												   Filesize: 4096,
-												   Flags:    '',
-												   Type:     'Dormant',
-												   Dormant:  this
-											   };
-										   },
-							addWindow:     function (win)
-										   {
-											   this.windows.push(win);
-										   },
-							getDirectory:  function (t, callback)
-										   {
-											   var id = addWrapperCallback(callback);
-											   // Callback
-											   var ret = {
-												   applicationId: msg.applicationId,
-												   doorId:        msg.doorId,
-												   callbackId:    id,
-												   command:       'dormantmaster',
-												   method:        'getdirectory',
-												   path:          t
-											   };
-											   if (msg.viewId) ret.viewId = msg.viewId;
-											   app.contentWindow.postMessage(
-													   JSON.stringify(ret), '*'
-											   );
-										   },
+							title         : namnum,
+							doorId        : msg.doorId,
+							applicationId : msg.applicationId,
+							getDoor: function ()
+							{
+								var icon = 'apps/' + msg.title + '/icon.png';
+								if (app && app.config.IconDoor)
+									icon = app.config.IconDoor;
+								return {
+									MetaType : 'Meta',
+									Title    : namnum + ':', /* remove this from all references*/
+									Filename : namnum + ':',
+									IconFile : icon,
+									Position : 'left',
+									Module   : 'files',
+									Command  : 'dormant',
+									Filesize : 4096,
+									Flags    : '',
+									Type     : 'Dormant',
+									Path	 : namnum + ':',
+									Dormant  : this
+								};
+							},
+							addWindow: function( win )
+							{
+								this.windows.push( win );
+							},
+							getDirectory: function( t, callback )
+							{
+								var id = addWrapperCallback(callback);
+								// Callback
+								var ret = {
+									applicationId : msg.applicationId,
+									doorId        : msg.doorId,
+									callbackId    : id,
+									command       : 'dormantmaster',
+									method        : 'getdirectory',
+									path          : t
+								};
+								if (msg.viewId) ret.viewId = msg.viewId;
+								app.contentWindow.postMessage(
+										JSON.stringify(ret), '*'
+								);
+							},
+							getFileInformation: function( t, callback )
+							{
+								var id = addWrapperCallback(callback);
+								// Callback
+								var ret = {
+									applicationId : msg.applicationId,
+									doorId        : msg.doorId,
+									callbackId    : id,
+									command       : 'dormantmaster',
+									method        : 'getFileInformation',
+									path          : t
+								};
+								if (msg.viewId) ret.viewId = msg.viewId;
+								app.contentWindow.postMessage(
+										JSON.stringify(ret), '*'
+								);
+							},
+							setFileInformation: function( perm, callback )
+							{
+								var id = addWrapperCallback(callback);
+								// Callback
+								var ret = {
+									applicationId : msg.applicationId,
+									doorId        : msg.doorId,
+									callbackId    : id,
+									command       : 'dormantmaster',
+									method        : 'setFileInformation',
+									perm          : perm
+								};
+								if (msg.viewId) ret.viewId = msg.viewId;
+								app.contentWindow.postMessage(
+										JSON.stringify(ret), '*'
+								);
+							},
 							// Execute a dormant command!
-							execute:       function (command, args)
-										   {
-											   var id = addWrapperCallback(function (data)
-											   {
-												   //
-											   });
-											   // Callback
-											   var ret = {
-												   applicationId:  msg.applicationId,
-												   doorId:         msg.doorId,
-												   callbackId:     id,
-												   command:        'dormantmaster',
-												   method:         'execute',
-												   dormantCommand: command,
-												   dormantArgs:    args
-											   };
-											   if (msg.viewId) ret.viewId = msg.viewId;
-											   app.contentWindow.postMessage(
-													   JSON.stringify(ret), '*'
-											   );
-										   },
-							windows:       []
-							
+							execute: function( fnObj, args )
+							{
+								var path = fnObj.Path;
+								var command = fnObj.Title || fnObj.Filename;
+								var id = addWrapperCallback(function (data)
+								{
+									//
+								});
+								// Callback
+								var ret = {
+									applicationId  : msg.applicationId,
+									doorId         : msg.doorId,
+									callbackId     : id,
+									command        : 'dormantmaster',
+									method         : 'execute',
+									dormantPath    : path,
+									dormantCommand : command,
+									dormantArgs    : args
+								};
+								if (msg.viewId) ret.viewId = msg.viewId;
+								app.contentWindow.postMessage(
+										JSON.stringify(ret), '*'
+								);
+							},
+							read: function( path, mode, callback )
+							{
+								var id = addWrapperCallback( callback );
+								// Callback
+								var ret = {
+									applicationId : msg.applicationId,
+									doorId        : msg.doorId,
+									callbackId    : id,
+									command       : 'dormantmaster',
+									method        : 'read',
+									path          : path,
+									mode		  : mode
+								};
+								if (msg.viewId) ret.viewId = msg.viewId;
+								app.contentWindow.postMessage(
+										JSON.stringify(ret), '*'
+								);
+							},
+							write: function( path, data, callback )
+							{
+								var id = addWrapperCallback( callback );
+								// Callback
+								var ret = {
+									applicationId : msg.applicationId,
+									doorId        : msg.doorId,
+									callbackId    : id,
+									command       : 'dormantmaster',
+									method        : 'write',
+									path          : path,
+									data		  : data
+								};
+								if (msg.viewId) ret.viewId = msg.viewId;
+								app.contentWindow.postMessage(
+										JSON.stringify(ret), '*'
+								);
+							},
+							dosAction: function( func, args, callback )
+							{
+								var id = addWrapperCallback( callback );
+								// Callback
+								var ret = {
+									applicationId : msg.applicationId,
+									doorId        : msg.doorId,
+									callbackId    : id,
+									command       : 'dormantmaster',
+									method        : 'dosAction',
+									func          : func,
+									args		  : args
+								};
+								if (msg.viewId) ret.viewId = msg.viewId;
+								app.contentWindow.postMessage(
+									JSON.stringify(ret), '*'
+								);
+							},
+							windows: []
+
 						};
 						if (msg.viewId) doorObject.viewId = msg.viewId;
-						
+
 						// Add the appdoor
 						DormantMaster.addAppDoor(doorObject);
-						
+
 						// Callback
 						var ret = {
 							applicationId: msg.applicationId,
@@ -488,9 +1142,10 @@ function apiWrapper( event, force )
 							title:         msg.title,
 							realtitle:     namnum
 						};
-						if (msg.viewId) ret.viewId = msg.viewId;
+						if( msg.viewId ) 
+							ret.viewId = msg.viewId;
 						app.contentWindow.postMessage(
-								JSON.stringify(ret), '*'
+							JSON.stringify(ret), '*'
 						);
 						break;
 						// Silent deletion
@@ -527,7 +1182,7 @@ function apiWrapper( event, force )
 						{
 							door.getDirectory(msg.path, function (data)
 							{
-								// Make sure the "files" have doorid 
+								// Make sure the "files" have doorid
 								// TODO: Is this safe? Other way of doing it?
 								for (var a in data)
 									data[a].doorId = door.doorId;
@@ -546,31 +1201,69 @@ function apiWrapper( event, force )
 							});
 						}
 						break;
+					case 'createDrive':
+						var id = Friend.Doors.Dormant.createDrive( msg.options, function( response, data, extra )
+						{
+							// Callback
+							var ret = 
+							{
+								applicationId: msg.applicationId,
+								callbackId: msg.callbackId,
+								command: 'dormantmaster',
+								method: 'callback',
+								response: response,
+								data: data,
+								extra: extra
+							};
+							if ( msg.viewId ) 
+								ret.viewId = msg.viewId;
+							app.contentWindow.postMessage( JSON.stringify( jsonSafeObject( ret ) ), '*' );
+						}, msg.extra );
+						break;
+					case 'destroyDrive':
+						Friend.Doors.Dormant.destroyDrive( msg.driveId, msg.options, function( response, data, extra )
+						{
+							// Callback
+							var ret = 
+							{
+								applicationId: msg.applicationId,
+								callbackId: msg.callbackId,
+								command: 'dormantmaster',
+								method: 'callback',
+								response: response,
+								data: response,
+								extra: extra
+							};
+							if ( msg.viewId ) 
+								ret.viewId = msg.viewId;
+							app.contentWindow.postMessage( JSON.stringify( jsonSafeObject( ret ) ), '*' );
+						}, msg.extra );
+						break;
 				}
 				break;
-				
+
 				// Notify ----------------------------------------------------------
 				// Ok, the iframe was loaded!? Check data
 			case 'notify':
-				if (app.windows && app.windows[msg.viewId])
+				if ( app.windows && app.windows[msg.viewId] )
 				{
-					app.windows[msg.viewId].sendMessage({
+					app.windows[msg.viewId].sendMessage( {
 						command: 'notify'
-					});
+					} );
 					// Execute the loaded function to carry out queued events..
-					if (app.windows[msg.viewId].iframe)
+					if( app.windows[msg.viewId].iframe )
 						app.windows[msg.viewId].iframe.loaded = true;
 					app.windows[msg.viewId].executeSendQueue();
-					
+
 					// Try to execute register callback function
-					if (msg.registerCallback)
-						runWrapperCallback(msg.registerCallback);
+					if( msg.registerCallback )
+						runWrapperCallback( msg.registerCallback );
 				}
 				// We got notify without a window (shell application or main app win no window)
 				else
 				{
 					// Try to execute register callback function
-					if (msg.registerCallback)
+					if( msg.registerCallback )
 						runWrapperCallback(msg.registerCallback);
 				}
 				break;
@@ -578,7 +1271,7 @@ function apiWrapper( event, force )
 			case 'screen':
 				var screenId = msg.screenId;
 				// Existing screen
-				if (msg.method && app.screens && app.screens[msg.screenId])
+				if( msg.method && app.screens && app.screens[ msg.screenId ] )
 				{
 					var scr = app.screens[msg.screenId];
 					switch (msg.method)
@@ -598,24 +1291,24 @@ function apiWrapper( event, force )
 							}
 							break;
 						case 'setContent':
-							if (scr)
+							if( scr )
 							{
 								// Create a new callback dispatch here..
 								var cb = false;
-								if (msg.callback)
-									cb = makeAppCallbackFunction(app, msg);
+								if( msg.callback )
+									cb = makeAppCallbackFunction( app, msg );
 								
 								// Do the setting!
-								var domain = GetDomainFromConf(app.config);
+								var domain = GetDomainFromConf(app.config, msg.applicationId);
 								scr.setContentIframed(msg.data, domain, msg, cb);
-								
+
 								// Remove callback here - it will be handled by setcontentiframed
 								// as it is asyncronous
 								msg.callback = false;
 							}
 							break;
 						case 'setRichContentUrl':
-							if (scr) scr.setRichContentUrl(msg.url, msg.base, msg.applicationId, msg.filePath);
+							if( scr ) scr.setRichContentUrl(msg.url, msg.base, msg.applicationId, msg.filePath);
 							break;
 						case 'setMenuItems':
 							if (scr)
@@ -637,7 +1330,7 @@ function apiWrapper( event, force )
 							}
 							break;
 						case 'activate':
-							workspaceMenu.close();
+							WorkspaceMenu.close();
 							break;
 					}
 				}
@@ -656,13 +1349,13 @@ function apiWrapper( event, force )
 						if (!app.screens)
 							app.screens = [];
 						app.screens[screenId] = v;
-						
+
 						// Assign conf if it exists on app object
 						if (app.conf) v.conf = app.conf;
-						
+
 						// This is the external id
 						v.externScreenId = screenId;
-						
+
 						var nmsg = {
 							applicationId: msg.applicationId,
 							viewId:      msg.id ? msg.id : false,
@@ -671,7 +1364,7 @@ function apiWrapper( event, force )
 							data:          'ok'
 						};
 						app.contentWindow.postMessage(
-								JSON.stringify(nmsg), '*'
+							JSON.stringify(nmsg), '*'
 						);
 					}
 					// Call back to say the window was not correctly opened
@@ -685,10 +1378,10 @@ function apiWrapper( event, force )
 							data:          'fail'
 						};
 						app.contentWindow.postMessage(
-								JSON.stringify(nmsg), '*'
+							JSON.stringify(nmsg), '*'
 						);
 					}
-					
+
 					// Setup window keyboard handler
 					v.handleKeys = function (k)
 					{
@@ -699,58 +1392,128 @@ function apiWrapper( event, force )
 				// View ------------------------------------------------------------
 			case 'view':
 				var viewId = msg.viewId;
-				if (msg.method && app.windows && app.windows[msg.viewId])
+				if( msg.method && app.windows && app.windows[ msg.viewId ] )
 				{
-					var win = app.windows[msg.viewId];
-					switch (msg.method)
+					var win = app.windows[ msg.viewId ];
+					switch( msg.method )
 					{
-							// Pass a message to actual window
-						case 'sendMessage':
-						case 'sendmessage': // inconsistent camel case
-							if (win)
+						// Set a window state!
+						case 'windowstate':
+							if( win && typeof( win.states[ msg.state ] ) != 'undefined' )
 							{
-								win.sendMessage(msg.data);
+								win.states[ msg.state ] = msg.value;
 							}
 							break;
-							
+						case 'doneloadingbody':
+							if( win && win.iframe )
+							{
+								win.iframe.classList.remove( 'Loading' );
+							}
+							break;
+						// Pass a message to actual window
+						case 'sendMessage':
+						case 'sendmessage': // inconsistent camel case
+							if( win )
+							{
+								win.sendMessage( msg.data );
+							}
+							break;
+
 							// Receive a close request from below
 						case 'close':
-							if (win)
+							if( win )
 							{
-								win.close(1);
 								var out = [];
-								for (var c in app.windows)
-									if (c != msg.viewId)
-										out[c] = app.windows[c];
+								for( var c in app.windows )
+								{
+									if( c != msg.viewId )
+									{
+										if( app.windows[ c ].parentViewId == msg.viewId )
+										{
+											app.windows[ c ].close(1);
+											continue;
+										}
+										out[ c ] = app.windows[ c ];
+									}
+								}
 								app.windows = out;
+								win.close(1);
 							}
 							else
 							{
-								console.log('can not find window!');
+								console.log( 'can not find window!' );
+							}
+							break;
+						case 'getWindowElement':
+							if( win )
+							{
+								var cb = false;
+								msg.data = false;
+								msg.resp = 'fail';
+								
+								var elev = msg.destination ? app.windows[ msg.destination ] : app;
+								if( elev && elev.iframe ) elev = elev.iframe;
+								if( elev )
+								{
+									// TODO: Support this in security domains
+									if( win.applicationId == msg.applicationId )
+									{
+										var i = win.iframe;
+										if( !i ) i = win.content ? win.content.getElementsByTagName( 'iframe' )[0] : false;
+										if( i )
+										{
+											if( i.contentWindow )
+											{
+												try
+												{
+													var identifier = 'view_' + win._window.parentNode.id;
+													if( !elev.contentWindow.Application.windowElements )
+													{
+														elev.contentWindow.Application.windowElements = {};
+													}
+													elev.contentWindow.Application.windowElements[ identifier ] =
+														i.contentWindow.document;
+													msg.data = identifier;
+													msg.resp = 'ok';
+													msg.targetViewId = msg.destination;
+													msg.viewId = msg.destination;
+												}
+												catch( e )
+												{
+													// probably sandboxed
+												}
+											}
+										}
+									}
+								}
+								if( msg.callback )
+								{
+									cb = makeAppCallbackFunction( app, msg );
+								}
 							}
 							break;
 						case 'setFlag':
-							if (win) win.setFlag(msg.data.flag, msg.data.value);
+							if( win ) win.setFlag( msg.data.flag, msg.data.value );
 							break;
 						case 'setFlags':
-							if (win)
+							if( win )
 							{
-								win.setFlags(msg.data);
+								win.setFlags( msg.data );
 							}
 							break;
 						case 'setContent':
-							if (win)
+							if( win )
 							{
 								// Create a new callback dispatch here..
 								var cb = false;
-								if (msg.callback)
+								if( msg.callback )
 								{
-									cb = makeAppCallbackFunction(app, msg);
+									cb = makeAppCallbackFunction( app, msg );
 								}
-								
+
 								// Do the setting!
-								var domain = GetDomainFromConf(app.config);
-								win.setContentIframed(msg.data, domain, msg, cb);
+								var domain = GetDomainFromConf( app.config, msg.applicationId );
+								win.setContentIframed( msg.data, domain, msg, cb );
 								
 								// Remove callback here - it will be handled by setcontentiframed
 								// as it is asyncronous
@@ -758,100 +1521,115 @@ function apiWrapper( event, force )
 							}
 							break;
 						case 'setContentById':
-							if (win)
+							if( win )
 							{
 								// Remember callback
 								var cb = false;
-								if (msg.callback)
-									cb = makeAppCallbackFunction(app, msg);
-								
-								win.setContentById(msg.data, msg, cb);
-								
+								if( msg.callback )
+									cb = makeAppCallbackFunction( app, msg );
+
+								win.setContentById( msg.data, msg, cb );
+
 								msg.callback = false;
 							}
 							break;
 						case 'setAttributeById':
-							if (win) win.setAttributeById(msg);
+							if( win ) win.setAttributeById( msg );
 							break;
 						case 'getAttributeById':
-							if (win)
+							if( win )
 							{
 								// Do it, and call back
-								win.getAttributeById(msg, function (c)
+								win.getAttributeById( msg, function (c)
 								{
 									// TODO: Implement it (callback to send attribute value back)
-								});
+								} );
 							}
 							break;
 						case 'setSandboxedUrl':
-							if (win) win.setSandboxedUrl(msg);
+							if( win ) win.setSandboxedUrl( msg );
 							break;
 						case 'setRichContent':
-							if (win)
-								win.setRichContent(msg.data);
+							if( win )
+								win.setRichContent( msg.data );
 							break;
 						case 'setRichContentUrl':
-							if (win)
-								win.setRichContentUrl(msg.url, msg.base, msg.applicationId, msg.filePath);
+							if( win )
+							{
+								win.setRichContentUrl( msg.url, msg.base, msg.applicationId, msg.filePath );
+							}
 							break;
 						case 'getContentById':
-							if (win)
+							if( win )
 							{
-								var c = win.getContentById(msg.identifier, msg.flag);
-								if (c)
+								var c = win.getContentById( msg.identifier, msg.flag );
+								if( c )
 								{
-									app.contentWindow.postMessage(JSON.stringify({
+									app.contentWindow.postMessage( JSON.stringify( {
 										command: 'view',
 										method:  'getSubContent',
 										data:    c.innerHTML
-									}), '*');
+									} ), '*');
 								}
 							}
 							break;
 							// Adds an event by class and runs callback function
 						case 'addEventByClass':
-							if (win)
+							if( win )
 							{
-								win.addEventByClass(msg.className, msg.event, function (e)
-										{
-											app.contentWindow.postMessage(JSON.stringify({
-												command:  'callback',
-												callback: msg.callback,
-												data:     false
-											}), '*');
-										}
+								win.addEventByClass( msg.className, msg.event, function(e)
+									{
+										app.contentWindow.postMessage( JSON.stringify( {
+											command:  'callback',
+											callback: msg.callback,
+											data:     false
+										} ), '*' );
+									}
 								);
 							}
 							break;
 						case 'focusOnElement':
-							if (win)
+							if( win )
 							{
-								win.focusOnElement(msg.identifier, msg.flag);
+								win.focusOnElement( msg.identifier, msg.flag );
 							}
 							break;
 						case 'setMenuItems':
-							if (win)
-								win.setMenuItems(msg.data, msg.applicationId, msg.viewId);
-							
+							if( win )
+								win.setMenuItems( msg.data, msg.applicationId, msg.viewId );
+
 							CheckScreenTitle();
 							break;
+						case 'toFront':
+							if( win )
+							{
+								_WindowToFront( win._window.parentNode );
+							}
+							break;
 						case 'focus':
-							if (win)
+							if( win )
 							{
 								win.focus();
 							}
 							break;
 						case 'activate':
-							if (win)
+							// Don't touch moving windows!
+							if( !( window.currentMovable && currentMovable.getAttribute( 'moving' ) == 'moving' ) )
 							{
-								win.activate();
+								if( !window.isMobile )
+								{
+									if( win )
+									{
+										win.activate();
+									}
+									WorkspaceMenu.close();
+								}
 							}
-							workspaceMenu.close();
 							break;
 					}
 				}
 				// don't trigger on method
-				else if (!msg.method)
+				else if( !msg.method )
 				{
 					// Try to open a window
 					msg.data.viewId = msg.viewId;
@@ -860,43 +1638,51 @@ function apiWrapper( event, force )
 					msg.data.applicationName = app.applicationName;
 					msg.data.applicationDisplayName = app.applicationDisplayName;
 					
+					// Add preferred workspace
+					if( app.workspace ) msg.data.workspace = app.workspace;
+
 					// Redirect to the real screen
-					if (msg.data.screen && app && app.screens[msg.data.screen])
+					if( msg.data.screen && app && app.screens[ msg.data.screen ] )
 					{
-						msg.data.screen = app.screens[msg.data.screen];
+						msg.data.screen = app.screens[ msg.data.screen ];
 					}
 					else
 					{
 						msg.data.screen = null;
 					}
-					
-					var v = new View(msg.data);
+
+					var postTarget = app;
+
+					var v = new View( msg.data );
 					var win = msg.parentViewId && app.windows ? app.windows[msg.parentViewId] : false;
-					if (win)
+					if( win )
 					{
 						v.parentViewId = msg.parentViewId;
+						postTarget = win.content.getElementsByTagName( 'iframe' )[0];
 					}
-					if (v.ready)
+					
+					if( v.ready )
 					{
-						if (!app.windows)
+						if( !app.windows )
 							app.windows = [];
-						app.windows[viewId] = v;
-						
+						app.windows[ viewId ] = v;
+
 						// Assign conf if it exists on app object
-						if (app.conf) v.conf = app.conf;
-						
+						if( app.conf ) v.conf = app.conf;
+
 						// This is the external id
 						v.externViewId = viewId;
 						
 						var nmsg = {
 							applicationId: msg.applicationId,
-							viewId:      msg.id ? msg.id : false,
+							viewId:        msg.id ? msg.id : viewId,
 							type:          'callback',
 							command:       'viewresponse',
 							data:          'ok'
 						};
-						app.contentWindow.postMessage(
-								JSON.stringify(nmsg), '*'
+						
+						postTarget.contentWindow.postMessage(
+							JSON.stringify( nmsg ), '*'
 						);
 					}
 					// Call back to say the window was not correctly opened
@@ -904,16 +1690,16 @@ function apiWrapper( event, force )
 					{
 						var nmsg = {
 							applicationId: msg.applicationId,
-							viewId:      msg.id ? msg.id : false,
+							viewId:        msg.id ? msg.id : viewId,
 							type:          'callback',
 							command:       'viewresponse',
 							data:          'fail'
 						};
-						app.contentWindow.postMessage(
-								JSON.stringify(nmsg), '*'
+						postTarget.contentWindow.postMessage(
+							JSON.stringify( nmsg ), '*'
 						);
 					}
-					
+
 					// Setup window keyboard handler
 					v.handleKeys = function (k)
 					{
@@ -949,11 +1735,11 @@ function apiWrapper( event, force )
 								{
 									cb = makeAppCallbackFunction( app, msg );
 								}
-								
+
 								// Do the setting!
-								var domain = GetDomainFromConf( app.config );
+								var domain = GetDomainFromConf( app.config, msg.applicationId );
 								wid.setContentIframed( msg.data, domain, msg, cb );
-								
+
 								// Remove callback here - it will be handled by setcontent
 								// as it is asyncronous
 								msg.callback = false;
@@ -982,13 +1768,13 @@ function apiWrapper( event, force )
 						case 'close':
 							if( wid )
 							{
-								console.log( 'Closing widget.' );
 								wid.close();
+								
 								// Remove widget from list
 								var w = [];
-								for (var a in app.widgets)
-									if (app.widget[a] != wid)
-										w.push(app.widget[a]);
+								for( var a in app.widgets )
+									if( app.widgets[ a ] != wid )
+										w.push( app.widgets[a] );
 								app.widgets = w;
 							}
 							else
@@ -1002,16 +1788,16 @@ function apiWrapper( event, force )
 				else if ( !msg.method )
 				{
 					var v = new Widget( msg.data );
-					
+
 					// We might need these
 					v.applicationId = msg.applicationId;
 					v.authId = msg.authId;
 					v.applicationDisplayName = msg.applicationDisplayName;
 					v.applicationName = msg.applicationName;
-					
+
 					if (!app.widgets) app.widgets = [];
 					app.widgets[widgetId] = v;
-					
+
 					var nmsg = {
 						applicationId: msg.applicationId,
 						widgetId:      msg.id ? msg.id : false,
@@ -1042,12 +1828,12 @@ function apiWrapper( event, force )
 			// TODO : Permissions - only check local filesystems?
 			// Are there admin only filesystems?
 			case 'file':
-			
+
 				// Some paths come as filenames obviously..
 				if( !msg.data.path && msg.data.filename && msg.data.filename.indexOf( ':' ) > 0 )
 					msg.data.path = msg.data.filename;
-					
-				// Perhaps do error?					
+
+				// Perhaps do error?
 				if( msg.data.path && msg.data.path.toLowerCase && msg.data.path.toLowerCase().substr( 0, 8 ) != 'progdir:' && msg.data.path.indexOf( ':' ) > 0 )
 				{
 					if( !checkAppPermission( app.authId, 'Door Local' ) )
@@ -1056,44 +1842,47 @@ function apiWrapper( event, force )
 						return false;
 					}
 				}
-			
+
 				if( typeof( msg.data.path ) == 'undefined' )
 				{
 					console.log( 'Empty path..' );
 					return false;
 				}
-			
+
 				var fileId = msg.fileId;
-				
+
 				// Make real file object
 				var f = new File( msg.data.path );
 				f.application = app;
 				// TODO: This should be in the application from the start
 				if( !f.application.filePath )
 					f.application.filePath = msg.filePath;
-				
+
 				// Add variables
 				if( msg.vars )
 				{
 					for( var a in msg.vars )
+					{
 						f.addVar( a, msg.vars[a] );
+					}
 				}
-				
+
 				// Respond with file contents (uses raw data..)
 				if( msg.method == 'load' )
 				{
 					f.onLoad = function( data )
 					{
 						// Fallback
-						if( !data && this.rawdata )
-							data = this.rawdata;
-							
+						if( !data && this.rawData )
+							data = this.rawData;
+
 						// File loads should remain in their view context
 						var cw = GetContentWindowByAppMessage( app, msg );
-							
+
 						if( app && cw )
 						{
-							var nmsg = { command: 'fileload', fileId: fileId, data: data };
+							var nmsg = { command: 'fileload', fileId: fileId };
+							
 							// Pass window id down
 							if( msg.viewId )
 							{
@@ -1107,6 +1896,19 @@ function apiWrapper( event, force )
 							}
 							if( Workspace.authId )
 								nmsg.authId = Workspace.authId;
+								
+							// Binary data is sent as string..
+							if( typeof( data ) == 'object' )
+							{
+								//var v = new Uint8Array( data );
+								//nmsg.data = Array.prototype.join.call( v, ',' );
+								nmsg.dataFormat = 'string';
+								nmsg.data = ConvertArrayBufferToString( data, 'base64' );
+							}
+							else
+							{
+								nmsg.data = data;
+							}
 							cw.postMessage( JSON.stringify( nmsg ), '*' );
 						}
 					}
@@ -1119,10 +1921,10 @@ function apiWrapper( event, force )
 						// Fallback
 						if( !data && this.rawdata )
 							data = this.rawdata;
-							
+
 						// File loads should remain in their view context
 						var cw = GetContentWindowByAppMessage( app, msg );
-							
+
 						if( app && cw )
 						{
 							var nmsg = { command: 'fileload', fileId: fileId, data: data };
@@ -1150,7 +1952,7 @@ function apiWrapper( event, force )
 					{
 						// File posts should remain in their view context
 						var cw = GetContentWindowByAppMessage( app, msg );
-						
+
 						if( app && cw )
 						{
 							var nmsg = { command: 'filepost', fileId: fileId, result: result };
@@ -1203,9 +2005,18 @@ function apiWrapper( event, force )
 							cw.postMessage( JSON.stringify( nmsg ), '*' );
 						}
 					}
-					f.save( msg.data.data, msg.data.path );
+					// We have a binary in string format!
+					// Convert it back into binary!
+					var mode = '';
+					if( msg.dataFormat == 'string' )
+					{
+						var data = ConvertStringToArrayBuffer( msg.data.data, 'base64' );
+						mode = 'wb';
+						msg.data.data = data;
+					}
+					f.save( msg.data.data, msg.data.path, mode );
 				}
-				
+
 				break;
 			// Shell API -------------------------------------------------------
 			case 'shell':
@@ -1216,7 +2027,7 @@ function apiWrapper( event, force )
 					{
 						shell = FriendDOS.getSession( msg.shellSession );
 					}
-					if( !shell ) 
+					if( !shell )
 					{
 						return false;
 					}
@@ -1228,10 +2039,10 @@ function apiWrapper( event, force )
 								// TODO: Finish the test if rmsg has become safe!
 								if( app && app.contentWindow )
 								{
-									var nmsg = { 
-										command: 'shell', 
-										shellId: msg.shellId, 
-										shellSession: shell.uniqueId, 
+									var nmsg = {
+										command: 'shell',
+										shellId: msg.shellId,
+										shellSession: shell.uniqueId,
 										shellNumber: shell.number,
 										applicationId: msg.applicationId,
 										authId: msg.authId,
@@ -1284,7 +2095,7 @@ function apiWrapper( event, force )
 								{
 									console.log( 'Nothing to do callback on!' );
 								}
-							} );
+							}, msg.clientKey, msg.restrictedPath );
 							break;
 						case 'close':
 							FriendDOS.delSession( msg.shellSession );
@@ -1313,11 +2124,11 @@ function apiWrapper( event, force )
 					sh.applicationPipe = msg.pipe; // Pipe to application
 					if( app && app.contentWindow )
 					{
-						var nmsg = { 
-							command: 'shell', 
-							shellId: msg.shellId, 
+						var nmsg = {
+							command: 'shell',
+							shellId: msg.shellId,
 							shellNumber: sh.number,
-							shellSession: shell, 
+							shellSession: shell,
 							applicationId: msg.applicationId,
 							authId: msg.authId
 						};
@@ -1334,7 +2145,7 @@ function apiWrapper( event, force )
 			// Module ----------------------------------------------------------
 			case 'module':
 				var fileId = msg.fileId;
-				
+
 				// Perhaps do error?
 				if( msg.module.toLowerCase() != 'system' && msg.module.toLowerCase() != 'files' )
 				{
@@ -1344,28 +2155,28 @@ function apiWrapper( event, force )
 						return false;
 					}
 				}
-				
+
 				// Make real module object
 				var f = new Module( msg.module );
 				f.application = app;
-				
+
 				// Add variables
 				if( msg.vars )
 				{
 					for( var a in msg.vars )
 						f.addVar( a, msg.vars[a] );
 				}
-				
+
 				// Respond with file contents (uses raw data..)
 				f.onExecuted = function( cod, dat )
 				{
 					if( app )
 					{
 						var nmsg = { command: 'fileload', fileId: fileId, data: dat, returnCode: cod };
-						
+
 						// Module calls should remain in their view context
 						var cw = GetContentWindowByAppMessage( app, msg );
-						
+
 						// Pass window id down
 						if( msg.viewId )
 						{
@@ -1416,7 +2227,7 @@ function apiWrapper( event, force )
 				}
 				break;
 			// PouchDB ---------------------------------------------------------
-			case 'pouchdb' : 
+			case 'pouchdb' :
 				console.log( 'pouchdb', msg );
 				var pdbEvent = msg.data;
 				if ( !Workspace.pouchManager )
@@ -1432,13 +2243,239 @@ function apiWrapper( event, force )
 						app.contentWindow.postMessage( err, '*' );
 				} else
 					Workspace.pouchManager.handle( pdbEvent, app );
-					
+
 				break;
 			// ApplicationStorage ----------------------------------------------
 			// TODO : permissions - should apps be able to store data? how much?
 			// TODO : api for checking how much is stored, total and per app
 			case 'applicationstorage':
 				ApplicationStorage.receiveMsg( msg, app );
+				break;
+			case 'encryption':
+
+				switch( msg.command )
+				{
+					case 'generatekeys':
+						
+						if( msg.algo )
+						{
+							switch( msg.algo )
+							{
+								case 'rsa1024':
+									
+									if( typeof msg.args.encoded != 'undefined' )
+									{
+										Workspace.encryption.encoded = msg.args.encoded;
+									}
+									
+									var passphrase = ( typeof msg.args != 'object' ? msg.args : msg.args.password );
+									
+									var keys = Workspace.encryption.generateKeys( ( typeof msg.args.username != 'undefined' ? msg.args.username : '' ), passphrase );
+									
+									var nmsg = {};
+									
+									for( var b in msg )
+									{
+										nmsg[b] = msg[b];
+									}
+									
+									if( keys )
+									{
+										nmsg.type = 'callback';
+										nmsg.resp = 'ok';
+										nmsg.data = keys;
+										
+										app.contentWindow.postMessage( JSON.stringify( nmsg ), '*' );
+									}
+									else
+									{
+										nmsg.type = 'callback';
+										nmsg.resp = 'fail';
+										nmsg.data = false;
+										
+										app.contentWindow.postMessage( JSON.stringify( nmsg ), '*' );
+									}
+									
+									break;
+								
+								case 'sha256':
+									
+									var passphrase = ( typeof msg.args != 'object' ? msg.args : msg.args.password );
+									
+									var key = Workspace.encryption.sha256( passphrase );
+									
+									var nmsg = {};
+
+									for( var b in msg )
+									{
+										nmsg[b] = msg[b];
+									}
+									
+									if( key )
+									{
+										nmsg.type = 'callback';
+										nmsg.resp = 'ok';
+										nmsg.data = key;
+										
+										app.contentWindow.postMessage( JSON.stringify( nmsg ), '*' );
+									}
+									else
+									{
+										nmsg.type = 'callback';
+										nmsg.resp = 'fail';
+										nmsg.data = false;
+								
+										app.contentWindow.postMessage( JSON.stringify( nmsg ), '*' );
+									}
+									
+									break;
+									
+								case 'md5':
+									
+									var passphrase = ( typeof msg.args != 'object' ? msg.args : msg.args.password );
+									
+									var key = Workspace.encryption.md5( passphrase );
+									
+									var nmsg = {};
+									
+									for( var b in msg )
+									{
+										nmsg[b] = msg[b];
+									}
+									
+									if( key )
+									{
+										nmsg.type = 'callback';
+										nmsg.resp = 'ok';
+										nmsg.data = key;
+										
+										app.contentWindow.postMessage( JSON.stringify( nmsg ), '*' );
+									}
+									else
+									{
+										nmsg.type = 'callback';
+										nmsg.resp = 'fail';
+										nmsg.data = false;
+								
+										app.contentWindow.postMessage( JSON.stringify( nmsg ), '*' );
+									}
+									
+									break;
+							}
+
+						}
+
+						break;
+
+					case 'encrypt':
+
+						if( msg.args )
+						{
+							var key = ( typeof msg.args != 'object' ? msg.args : msg.args.key );
+							
+							var nmsg = {};
+							
+							for( var b in msg )
+							{
+								nmsg[b] = msg[b];
+							}
+							
+							var encrypted = ( key ? Workspace.encryption.encrypt( key ) : false );
+							
+							if( encrypted && Workspace.encryption.keys.client.publickey )
+							{
+								nmsg.type = 'callback';
+								nmsg.resp = 'ok';
+								nmsg.data = { 
+									encrypted: encrypted,
+									publickey: Workspace.encryption.keys.client.publickey
+								};
+								
+								app.contentWindow.postMessage( JSON.stringify( nmsg ), '*' );
+							}
+							else
+							{
+								nmsg.type = 'callback';
+								nmsg.resp = 'fail';
+								nmsg.data = false;
+								
+								app.contentWindow.postMessage( JSON.stringify( nmsg ), '*' );
+							}
+						}
+
+						break;
+
+					case 'decrypt':
+
+						if( msg.args )
+						{
+							var key = ( typeof msg.args != 'object' ? msg.args : msg.args.key );
+							
+							var nmsg = {};
+
+							for( var b in msg )
+							{
+								nmsg[b] = msg[b];
+							}
+							
+							var decrypted = ( key ? Workspace.encryption.decrypt( key ) : false );
+							
+							if( decrypted )
+							{
+								nmsg.type = 'callback';
+								nmsg.resp = 'ok';
+								nmsg.data = { decrypted: decrypted };
+
+								app.contentWindow.postMessage( JSON.stringify( nmsg ), '*' );
+							}
+							else
+							{
+								nmsg.type = 'callback';
+								nmsg.resp = 'fail';
+								nmsg.data = false;
+								
+								app.contentWindow.postMessage( JSON.stringify( nmsg ), '*' );
+							}
+						}
+
+						break;
+
+					case 'publickey':
+
+						if( msg.args && typeof msg.args.encoded != 'undefined' )
+						{
+							Workspace.encryption.encoded = msg.args.encoded;
+						}
+
+						var keys = Workspace.encryption.getKeys();
+						
+						var nmsg = {};
+						
+						for( var b in msg )
+						{
+							nmsg[b] = msg[b];
+						}
+						
+						if( keys && keys.publickey )
+						{
+							nmsg.type = 'callback';
+							nmsg.resp = 'ok';
+							nmsg.data = { publickey: keys.publickey };
+
+							app.contentWindow.postMessage( JSON.stringify( nmsg ), '*' );
+						}
+						else
+						{
+							nmsg.type = 'callback';
+							nmsg.resp = 'fail';
+							nmsg.data = false;
+							
+							app.contentWindow.postMessage( JSON.stringify( nmsg ), '*' );
+						}
+
+						break;
+				}
+
 				break;
 			// Authenticate ----------------------------------------------
 			case 'authenticate':
@@ -1454,7 +2491,7 @@ function apiWrapper( event, force )
 					done( false, 'unknown type: ' + action.type , action.data.cid );
 					return;
 				}
-				
+
 				var data = action.data;
 				var title = app.applicationName + ' wants to add a calendar event';
 				Confirm( title, data.message, confirmBack );
@@ -1465,7 +2502,7 @@ function apiWrapper( event, force )
 						done( false, 'event denied', data.cid );
 					}
 				}
-				
+
 				function addCalendarEvent( event ) {
 					var mod = new Module( 'system' );
 					mod.onExecuted = eventAdded;
@@ -1474,11 +2511,11 @@ function apiWrapper( event, force )
 						done( 'ok' === ok, res, data.cid );
 					}
 				}
-				
+
 				function done( ok, res, cid ) {
 					if ( !cid )
 						return;
-					
+
 					var res = {
 						ok       : ok,
 						res      : res,
@@ -1487,7 +2524,7 @@ function apiWrapper( event, force )
 					app.contentWindow.postMessage( res, '*' );
 				}
 				break;
-				
+
 			// post back to whatever tab opened this tab - specialcase for treeroot / friend
 			// to have live chat using hello
 			case 'postout':
@@ -1497,7 +2534,7 @@ function apiWrapper( event, force )
 					console.log( 'window.opener.postMessage not available - dropping:', msg );
 					return;
 				}
-				
+
 				window.opener.postMessage( msg.data, '*' );
 				break;
 			case 'fconn':
@@ -1506,8 +2543,8 @@ function apiWrapper( event, force )
 					console.log( 'Workspace.conn - websocket not enabled, aborting' );
 					return;
 				}
-				
-				if ( 'register' === msg.method )
+
+				if( 'register' === msg.method )
 				{
 					// hacky check to unregister if it already exists
 					// should be done when an application closes.
@@ -1515,12 +2552,12 @@ function apiWrapper( event, force )
 					var regId = Workspace.conn.registeredApps[ app.authId ];
 					if ( regId )
 						Workspace.conn.off( app.authId, regId );
-					
+
 					var id = Workspace.conn.on( app.authId, fconnMsg );
 					Workspace.conn.registeredApps[ app.authId ] = id;
 					requestBack( true );
 					return;
-					
+
 					function fconnMsg( msg )
 					{
 						var wrap = {
@@ -1533,25 +2570,25 @@ function apiWrapper( event, force )
 						}
 					}
 				}
-				
+
 				if( 'remove' === msg.method )
 				{
 					var regId = Workspace.conn.registeredApps[ app.authId ];
 					Workspace.conn.off( app.authId, regId );
 					return;
 				}
-				
+
 				var wrap = {
 					path : msg.data.path,
 					authId : app.authId,
 					data : msg.data.data,
 				};
-				
+
 				if( 'request' === msg.method )
 					Workspace.conn.request( wrap, requestBack );
 				else
 					Workspace.conn.send( wrap );
-				
+
 				function requestBack( res )
 				{
 					msg.data = res;
@@ -1571,29 +2608,161 @@ function apiWrapper( event, force )
 				// permission should probably be checked per command?
 				switch( msg.command )
 				{
+					case 'addfilesystemevent':
+						if( msg.event && msg.path )
+						{
+							if( !Workspace.appFilesystemEvents )
+							{
+								Workspace.appFilesystemEvents = {};
+							}
+							if( !Workspace.appFilesystemEvents[ msg.event ] )
+							{
+								Workspace.appFilesystemEvents[ msg.event ] = [];
+							}
+							Workspace.appFilesystemEvents[ msg.event ].push( msg );
+						}
+						break;
+					case 'removefilesystemevent':
+						if( msg.event && msg.path )
+						{
+							if( Workspace.appFilesystemEvents )
+							{
+								if( Workspace.appFilesystemEvents[ msg.event ] )
+								{
+									var outEvents = [];
+									var evList = Workspace.appFilesystemEvents[ msg.event ];
+									for( var a = 0; a < evList.length; a++ )
+									{
+										var found = false;
+										if( evList[a].applicationId == msg.applicationId )
+										{
+											if( msg.viewId )
+											{
+												if( evList[a].viewId == msg.viewId )
+												{
+													found = true;
+												}
+											}
+											else
+											{
+												found = true;
+											}
+										}
+										if( !found ) outEvents.push( evList[a] );
+									}
+									Workspace.appFilesystemEvents[ msg.event ] = outEvents;
+								}
+							}
+						}
+						break;
+					case 'registermousedown':
+						windowMouseX = msg.x;
+						windowMouseY = msg.y;
+						if( app && app.windows[msg.viewId] )
+						{
+							var div = app.windows[ msg.viewId ];
+							var x = GetElementLeft( div.content );
+							var y = GetElementTop( div.content );
+							windowMouseX += x;
+							windowMouseY += y;
+							
+							// Activate window if it's not the current active one
+							if( !window.currentMovable || window.currentMovable != app.windows[ msg.viewId ]._window.parentNode )
+							{
+								_ActivateWindow( app.windows[ msg.viewId ]._window.parentNode );
+							}
+						}
+						// Hide context menu
+						if( Workspace.contextMenuShowing )
+						{
+							Workspace.contextMenuShowing.hide();
+							Workspace.contextMenuShowing = false;
+						}
+						break;
+					case 'registermouseup':
+						windowMouseX = msg.x;
+						windowMouseY = msg.y;
+						if( app && app.windows[msg.viewId] )
+						{
+							var div = app.windows[ msg.viewId ];
+							var x = GetElementLeft( div.content );
+							var y = GetElementTop( div.content );
+							windowMouseX += x;
+							windowMouseY += y;
+						}
+						var el = document.elementFromPoint( windowMouseX, windowMouseY );
+						if( el )
+						{
+							var clickEvent = document.createEvent( 'MouseEvents' );
+							clickEvent.initEvent( 'mouseup', true, true );
+							el.dispatchEvent( clickEvent );
+						}
+						break;
+					case 'showcontextmenu':
+						Workspace.showContextMenu( msg.menu, window.event, msg );
+						break;
+					case 'setworkspacemode':
+						var mm = new Module( 'system' );
+						mm.onExecuted = function( e, d )
+						{
+							if( e != 'ok' )
+							{
+								var opts = ge( 'UserMode' ).getElementsByTagName( 'option' );
+								for( var b = 0; b < opts.length; b++ )
+								{
+									if( opts[b].value == 'normal' )
+									{
+										opts[b].selected = 'selected';
+									}
+									else opts[b].selected = '';
+								}
+								Workspace.workspacemode = 'normal';
+							}
+							else
+							{
+								Workspace.workspacemode = msg.mode ? msg.mode : 'normal';
+							}
+						}
+						mm.execute( 'setsetting', { setting: 'workspacemode', data: msg.mode } );
+						// TODO: Perhaps we need to do something else as well?
+						break;
+					case 'brutalsignout':
+						document.location.reload();
+						break;
+					case 'keydown':
+						DoorsKeyDown( msg.data );
+						break;
+					// Task bar stuff
+					case 'task_add':
+						console.log( 'Received task_add' );
+						break;
+					case 'task_clear_all':
+						console.log( 'Received task_clear_all' );
+						break;
+					// End task bar stuff
 					case 'setsingleinstance':
 						// Add to single instances
-						if( app && msg.value == true && !friend.singleInstanceApps[ app.applicationName ] )
+						if( app && msg.value == true && !Friend.singleInstanceApps[ app.applicationName ] )
 						{
-							friend.singleInstanceApps[ app.applicationName ] = app;
+							Friend.singleInstanceApps[ app.applicationName ] = app;
 						}
 						// Remove from single instances
 						else if( app && msg.value == false )
 						{
 							var out = [];
-							for( var a in friend.singleInstanceApps )
+							for( var a in Friend.singleInstanceApps )
 							{
 								if( a != app.applicationName )
-									out[a] = friend.singleInstanceApps[a];
+									out[a] = Friend.singleInstanceApps[a];
 							}
-							friend.singleInstanceApps = out;
+							Friend.singleInstanceApps = out;
 						}
 						break;
 					case 'setclipboard':
 						ClipboardSet( ( msg.value ? msg.value : '' ), ( msg.updatesystem ? true : false ) );
 						break;
 					case 'applicationname':
-						if( app ) 
+						if( app )
 						{
 							app.applicationDisplayName = msg.applicationname;
 							for( var a = 0; a < Workspace.applications.length; a++ )
@@ -1613,6 +2782,182 @@ function apiWrapper( event, force )
 									break;
 								}
 							}
+						}
+						break;
+					case 'getapplicationkey':
+						if( app && ( msg.authId || msg.appPath ) )
+						{
+							var args = { 
+								authId : ( msg.systemWide ? '0' : msg.authId ) 
+							};
+							
+							if( !args.authId && msg.appPath )
+							{
+								args.appPath = msg.appPath;
+							}
+							
+							var nmsg = {};
+							
+							for( var a in msg ) nmsg[a] = msg[a];
+							
+							var m = new Module( 'system' );
+							m.onExecuted = function( e, d )
+							{
+								//console.log( { e: e, d: JSON.parse( d ) } );
+								
+								if( e && e == 'ok' && d )
+								{
+									try 
+									{ 
+										var data = JSON.parse( d ); 
+									
+										if( data && typeof data[0] != 'undefined' )
+										{
+											for( var k in data )
+											{
+												// If found data and there is a publickey connected to it, try to decrypt with users privatekey
+											
+												if( data[k].Data && data[k].PublicKey )
+												{
+													var decrypted = Workspace.encryption.decrypt( data[k].Data );
+												
+													if( decrypted )
+													{
+														data[k].Data = decrypted;
+													}
+												}
+												
+												try 
+												{ 
+													if( data[k].Data )
+													{
+														data[k].Data = JSON.parse( data[k].Data ); 
+													}
+												} 
+												catch( e ) {  }
+											}
+										}
+									} 
+									catch(e) 
+									{  
+										var data = {};
+									}
+									
+									nmsg.type = 'callback';
+									nmsg.resp = 'ok';
+									nmsg.data = data;
+									
+									//console.log( 'app.contentWindow.postMessage: ', nmsg );
+									
+									app.contentWindow.postMessage( JSON.stringify( nmsg ), '*' );
+								}
+								else
+								{
+									nmsg.type = 'callback';
+									nmsg.resp = 'fail';
+									nmsg.data = { e:e, d:d };
+									
+									app.contentWindow.postMessage( JSON.stringify( nmsg ), '*' );
+								}
+							}
+							m.execute( 'keys', args );
+							
+							msg.callback = false;
+						}
+						break;
+					case 'setapplicationkey':
+						//console.log( 'setapplicationkey: ', { msg: msg, app: app } );
+						// TODO: Add support for saving and getting key data connected to Door.
+						if( app && msg.args && ( msg.authId || msg.appPath ) )
+						{
+							try 
+							{
+								if( msg.args.data && typeof msg.args.data != 'string' )
+								{
+									msg.args.data = JSON.stringify( msg.args.data );
+								}
+							}
+							catch( e ) {  }
+							
+							
+							
+							// If encrypt is true, try to encrypt with users publickey
+							
+							try 
+							{
+								if( !msg.systemWide && msg.appPath && msg.appPath.indexOf( ':' ) >= 0 && Workspace.encryption.keys.server.publickey )
+								{
+									var encryption_key = Workspace.encryption.keys.server.publickey;
+								}
+								else
+								{
+									var encryption_key = Workspace.encryption.keys.client.publickey;
+								}
+								
+								if( msg.args.encrypt && msg.args.data && encryption_key )
+								{
+									var encrypted = Workspace.encryption.encrypt( msg.args.data, encryption_key );
+												
+									if( encrypted )
+									{
+										msg.args.data = encrypted;
+										msg.args.publickey = encryption_key;
+									}
+								}
+							}
+							catch( e ) {  }
+							
+							var args = {
+								type      : '',
+								name      : msg.args.name,
+								key       : msg.args.data,
+								publickey : ( msg.args.publickey ? msg.args.publickey : '' ), 
+								signature : ''
+							}
+							
+							// If it's a device ... 
+							if( !msg.systemWide && msg.appPath && msg.appPath.indexOf( ':' ) >= 0 )
+							{
+								args.appPath = msg.appPath;
+							}
+							// Else if it's an app
+							else if( msg.authId || msg.systemWide )
+							{
+								args.authId = ( msg.systemWide ? '0' : msg.authId );
+							}
+							
+							var nmsg = {};
+							
+							for( var a in msg ) nmsg[a] = msg[a];
+							
+							var m = new Module( 'system' );
+							m.onExecuted = function( e, d )
+							{
+								//console.log( { e:e, d:d, o: args } );
+								
+								if( nmsg.callback )
+								{
+									if( e && e == 'ok' )
+									{								
+										nmsg.type = 'callback';
+										nmsg.resp = 'ok';
+										nmsg.data = d;
+									
+										app.contentWindow.postMessage( JSON.stringify( nmsg ), '*' );
+									}
+									else
+									{
+										nmsg.type = 'callback';
+										nmsg.resp = 'fail';
+										nmsg.data = { e:e, d:d };
+									
+										app.contentWindow.postMessage( JSON.stringify( nmsg ), '*' );
+									}
+								}
+							}
+							m.execute( 'userkeysupdate', args );
+							
+							msg.callback = false;
 						}
 						break;
 					case 'notification':
@@ -1635,9 +2980,9 @@ function apiWrapper( event, force )
 									cw.postMessage( JSON.stringify( vmsg ), '*' );
 								}
 							}
-						
-							Notify( { 
-								title: ( msg.title? msg.title.split( /\<[^>]*?\>/ ).join( '' ) : '' ), 
+
+							Notify( {
+								title: ( msg.title? msg.title.split( /\<[^>]*?\>/ ).join( '' ) : '' ),
 								text: ( msg.text ? msg.text.split( /\<[^>]*?\>/ ).join( '' ) : '' ), application: app ? app.applicationName : '' }, function()
 							{
 								cw.postMessage( JSON.stringify( nmsg ), '*' );
@@ -1662,32 +3007,39 @@ function apiWrapper( event, force )
 					case 'confirm':
 						var nmsg = {};
 						for( var a in msg ) nmsg[a] = msg[a];
-						Confirm( msg.title, msg.string, function( data )
-						{
-							if( app )
+						console.log('we confirm...',nmsg);
+						Confirm( 
+							msg.title, 
+							msg.string, 
+							function( data )
 							{
-								nmsg.type = 'callback';
-								nmsg.data = data;
-								nmsg.command = 'callback';
-								
-								// Module calls should remain in their view context
-								var cw = GetContentWindowByAppMessage( app, msg );
-						
-								// Pass window id down
-								if( nmsg.viewId )
+								if( app )
 								{
-									nmsg.viewId = msg.viewId;
+									nmsg.type = 'callback';
+									nmsg.data = data;
+									nmsg.command = 'callback';
+	
+									// Module calls should remain in their view context
+									var cw = GetContentWindowByAppMessage( app, msg );
+	
+									// Pass window id down
+									if( nmsg.viewId )
+									{
+										nmsg.viewId = msg.viewId;
+									}
+									if( cw ) cw.postMessage( JSON.stringify( nmsg ), '*' );
 								}
-								if( cw ) cw.postMessage( JSON.stringify( nmsg ), '*' );
-							}
-						} );
+							},
+							(nmsg.confirmok ? nmsg.confirmok : false ),
+							(nmsg.confirmcancel ? nmsg.confirmcancel : false )
+						);
 						msg.callback = false;
 						break;
-					
+
 					case 'reload_user_settings':
 						Workspace.refreshUserSettings();
 						break;
-						
+
 					case 'change_application_permissions':
 						// TODO: This will bring up the user authentication window first!!!!
 						// TODO: The user must allow, because the app does not have this permission!
@@ -1703,7 +3055,7 @@ function apiWrapper( event, force )
 						}
 						m.execute( 'updateapppermissions', { application: msg.application, data: msg.data, permissions: JSON.stringify( msg.permissions ) } );
 						break;
-						
+
 					case 'updatelogin':
 						Workspace.login( msg.username, msg.password, true );
 						break;
@@ -1737,7 +3089,7 @@ function apiWrapper( event, force )
 							// Prepare response
 							var nmsg = {}; for( var a in msg ) nmsg[a] = msg[a];
 							nmsg.command = 'nativewindowresponse';
-							
+
 							switch( msg.action )
 							{
 								case 'open':
@@ -1767,6 +3119,9 @@ function apiWrapper( event, force )
 									break;
 							}
 						}
+						break;
+					case 'refreshwindowbypath':
+						Workspace.refreshWindowByPath( msg.path );
 						break;
 					case 'wallpaperimage':
 						if( msg.mode == 'doors' )
@@ -1800,14 +3155,14 @@ function apiWrapper( event, force )
 						break;
 					// Set the local storage variable
 					case 'setlocalstorage':
-						
+
 						break;
 					// Get the local storage variable
 					case 'getlocalstorage':
-					
+
 						break;
 					case 'refreshtheme':
-						Workspace.refreshTheme( msg.theme, true );
+						Workspace.refreshTheme( msg.theme, true, msg.themeConfig ? msg.themeConfig : false );
 						break;
 					// Save application state
 					case 'savestate':
@@ -1842,21 +3197,17 @@ function apiWrapper( event, force )
 							{
 								for( var a = 0; a < Workspace.applications.length; a++ )
 								{
-									var app = Workspace.applications[a];
-									if( app.applicationNumber == msg.appNum )
+									var theApp = Workspace.applications[a];
+									if( theApp.applicationNumber == msg.appNum )
 									{
-										app.contentWindow.postMessage( JSON.stringify( {
-											applicationId: app.applicationId,
+										theApp.contentWindow.postMessage( JSON.stringify( {
+											applicationId: theApp.applicationId,
 											command: 'notify',
 											method: 'closewindow'
 										} ), '*' );
-										quitit = true;
+										setTimeout( function(){ if( theApp.contentWindow ) theApp.quit(); }, 100 );
 									}
 								}
-							}
-							if( !quitit )
-							{
-								app.quit( 1 ); // quit with FORCE == 1!
 							}
 						}
 						break;
@@ -1895,9 +3246,14 @@ function apiWrapper( event, force )
 							var nmsg = msg;
 							function cb( response )
 							{
-								nmsg.method = response ? 'applicationexecuted' : 'applicationnotexecuted';
-								app.contentWindow.postMessage( JSON.stringify( nmsg ), '*' );
+								nmsg.method = response ? 
+									'applicationexecuted' : 
+									'applicationnotexecuted';
 								
+								app.contentWindow.postMessage( 
+									JSON.stringify( nmsg ), '*' 
+								);
+
 								if( nmsg.callback )
 								{
 									runWrapperCallback( nmsg.callback, response );
@@ -1907,7 +3263,9 @@ function apiWrapper( event, force )
 							if( msg.path && msg.path.split( ':' )[0] == 'System' )
 							{
 								// Special case!
-								var out = WorkspaceDormant.execute( msg.executable, msg.arguments );
+								var out = WorkspaceDormant.execute( 
+									msg.executable, msg.arguments 
+								);
 								cb( out );
 							}
 							else
@@ -1920,7 +3278,7 @@ function apiWrapper( event, force )
 					case 'librarycall':
 						var j = new cAjax();
 						var ex = '';
-						if( msg.func ) 
+						if( msg.func )
 						{
 							ex += msg.func + '/';
 							if( msg.args )
@@ -1970,16 +3328,25 @@ function apiWrapper( event, force )
 						break;
 					// File dialogs ----------------------------------------------------
 					case 'filedialog':
-						var win = app.windows ? app.windows[msg.viewId] : false;
+						var win = app.windows ? app.windows[ msg.viewId ] : false;
 						var tar = win ? app.windows[msg.targetViewId] : false; // Target for postmessage
-						var d = new Filedialog( win, function( data )
-						{
-							var nmsg = msg;
-							nmsg.data = data;
-							if( tar )
-								tar.iframe.contentWindow.postMessage( JSON.stringify( nmsg ), '*' );
-							else app.contentWindow.postMessage( JSON.stringify( nmsg ), '*' );
-						}, msg.path, msg.dialogType, msg.filename, msg.title );
+						var flags = {
+							mainView:    tar ? tar : win,
+							type:        msg.method,
+							path:        msg.path,
+							title:       msg.title,
+							filename:    msg.filename,
+							multiSelect: msg.multiSelect,
+							triggerFunction: function( data )
+							{
+								var nmsg = msg;
+								nmsg.data = data;
+								if( tar )
+									tar.iframe.contentWindow.postMessage( JSON.stringify( nmsg ), '*' );
+								else app.contentWindow.postMessage( JSON.stringify( nmsg ), '*' );
+							}
+						};
+						var d = new Filedialog( flags );
 						break;
 				}
 				break;
@@ -2001,7 +3368,7 @@ function apiWrapper( event, force )
 		var app = findApplication( msg.applicationId );
 		if( !app )
 			return false;
-		
+
 		// Sometimes we want to send to a pre determined view by id.
 		if( msg.destinationViewId )
 		{
@@ -2018,26 +3385,26 @@ function apiWrapper( event, force )
 
 /* Magic clipboard code ----------------------------------------------------- */
 
-friend.clipboard = '';
-friend.macCommand = false;
+Friend.clipboard = '';
+Friend.macCommand = false;
 
 document.addEventListener( 'keydown', function( e )
 {
 	var wh = e.which ? e.which : e.keyCode;
 	var t = e.target ? e.target : e.srcElement;
-	
+
 	if( wh == 91 )
 	{
-		friend.macCommand = true;
+		Friend.macCommand = true;
 	}
-			
-	if( e.ctrlKey || friend.macCommand )
+
+	/*if( e.ctrlKey || Friend.macCommand )
 	{
 		if( wh == 86 )
 		{
-			if( friend.clipboard.length && friend.clipboard != '' && friend.clipboard.charCodeAt( 0 ) != 1 )
+			if( Friend.clipboard.length && Friend.clipboard != '' && Friend.clipboard.charCodeAt( 0 ) != 1 )
 			{
-				if( ClipboardPasteIn( t, friend.clipboard ) )
+				if( ClipboardPasteIn( t, Friend.clipboard ) )
 				{
 					return cancelBubble( e );
 				}
@@ -2048,17 +3415,17 @@ document.addEventListener( 'keydown', function( e )
 		{
 			ClipboardSet( ClipboardGetSelectedIn( t ) );
 		}
-	}
+	}*/
 } );
 
 document.addEventListener( 'keyup', function( e )
 {
 	var wh = e.which ? e.which : e.keyCode;
-	if( wh == 91 ) friend.macCommand = false;
+	if( wh == 91 ) Friend.macCommand = false;
 } );
 
 
-document.addEventListener( 'paste', function( evt )
+/*document.addEventListener( 'paste', function( evt )
 {
 	var mimetype = '';
 	var cpd = '';
@@ -2071,33 +3438,33 @@ document.addEventListener( 'paste', function( evt )
 	if( mimetype != '' )
 	{
 		cpd = evt.clipboardData.getData( mimetype );
-	
-		//console.log('compare old and new in apirwrapper. new data: ',cpd,'friend prev:',friend.prevClipboard,'friend clipboard:',friend.clipboard);
-		if( friend.prevClipboard != cpd )
+
+		//console.log('compare old and new in apirwrapper. new data: ',cpd,'friend prev:',Friend.prevClipboard,'friend clipboard:',Friend.clipboard);
+		if( Friend.prevClipboard != cpd )
 		{
-			friend.clipboard = cpd;
-		}		
+			Friend.clipboard = cpd;
+		}
 	}
-	if( typeof Application != 'undefined' ) Application.sendMessage( { type: 'system', command: 'setclipboard', value: friend.clipboard } );
+	if( typeof Application != 'undefined' ) Application.sendMessage( { type: 'system', command: 'setclipboard', value: Friend.clipboard } );
 	return true;
-} );
+} );*/
 
 // Set the clipboard
 function ClipboardSet( text, updatesystem )
 {
 	if( text == '' ) return;
-	if( friend.clipboard == text ) return;
-	
-	friend.prevClipboard = friend.clipboard;
-	friend.clipboard = text;
-	
+	if( Friend.clipboard == text ) return;
+
+	Friend.prevClipboard = Friend.clipboard;
+	Friend.clipboard = text;
+
 	for( var a = 0; a < Workspace.applications.length; a++ )
 	{
 		var app = Workspace.applications[a];
 		app.contentWindow.postMessage( JSON.stringify( {
 			applicationId: app.applicationId,
 			command: 'updateclipboard',
-			value: friend.clipboard
+			value: Friend.clipboard
 		} ), '*' );
 	}
 	for( var a in movableWindows )
@@ -2106,19 +3473,21 @@ function ClipboardSet( text, updatesystem )
 		if( !ifr ) continue;
 		ifr.contentWindow.postMessage( JSON.stringify( {
 			command: 'updateclipboard',
-			value: friend.clipboard
+			value: Friend.clipboard
 		} ), '*' );
 	}
-	
+
 	//ask user if he want to make this clipboard global
 	if( updatesystem ) ClipboardToClientSystem();
-	
-	
+
+
 }
 
 function ClipboardToClientSystem()
 {
-	if( friend.clipboardWidget )
+	success = document.execCommand( 'copy' );
+/*
+	if( Friend.clipboardWidget )
 	{
 		//....
 	}
@@ -2132,43 +3501,42 @@ function ClipboardToClientSystem()
 			scrolling: false,
 			autosize: true
 		};
-		friend.clipboardWidget = new Widget( o );		
+		Friend.clipboardWidget = new Widget( o );
 	}
 
-	friend.clipboardWidget.dom.innerHTML = '<div class="Padding"><h3>'+ i18n('i18n_copy_to_system_clipboard_headline') +'</h3><span>' + i18n('i18n_copy_to_system_clipboard') + '</span><textarea id="clipBoardWidgetTA" class="Rounded BackgroundNegative Padding FullWidth Negative" style="box-shadow: inset 0px 2px 10px rgba(0,0,0,0.4); border: 0; margin: 10px 0 10px 0; overflow: hidden; opacity:0.5;height: 80px;">'+ friend.clipboard +'</textarea><button class="IconSmall Button fa-check" onclick="CopyClipboardToClientSystem()"> &nbsp;'+ i18n('i18n_yes') +'</button><button class="IconSmall Button fa-remove" onclick="CancelCopyClipboardToClientSystem()"> &nbsp;'+ i18n('i18n_negative') +'</button></div>';
-	friend.clipboardWidget.raise();
-	friend.clipboardWidget.show();
-	
-
+	Friend.clipboardWidget.dom.innerHTML = '<div class="Padding"><h3>'+ i18n('i18n_copy_to_system_clipboard_headline') +'</h3><span>' + i18n('i18n_copy_to_system_clipboard') + '</span><textarea id="clipBoardWidgetTA" class="Rounded BackgroundNegative Padding FullWidth Negative" style="box-shadow: inset 0px 2px 10px rgba(0,0,0,0.4); border: 0; margin: 10px 0 10px 0; overflow: hidden; opacity:0.5;height: 80px;">'+ Friend.clipboard +'</textarea><button class="IconSmall Button fa-check" onclick="CopyClipboardToClientSystem()"> &nbsp;'+ i18n('i18n_yes') +'</button><button class="IconSmall Button fa-remove" onclick="CancelCopyClipboardToClientSystem()"> &nbsp;'+ i18n('i18n_negative') +'</button></div>';
+	Friend.clipboardWidget.raise();
+	Friend.clipboardWidget.show();
+*/
 }
 function CopyClipboardToClientSystem( evt )
 {
 	myslave = ge('clipBoardWidgetTA');
 	myslave.focus();
 	myslave.select();
-	var success = false;	
-	
+	var success = false;
+
 	try {
 		myslave.focus();
 		success = document.execCommand( 'copy' );
 	} catch( e ) {
 		console.log( 'failed to copy to clippy', e );
 	}
-	
-	if( friend.clipboardWidget )
+
+	if( Friend.clipboardWidget )
 	{
 		myslave.blur();
 		ge('clipBoardWidgetTA').parentNode.removeChild( ge('clipBoardWidgetTA') );
-		friend.clipboardWidget.hide();
+		Friend.clipboardWidget.hide();
 	}
 }
 
 function CancelCopyClipboardToClientSystem()
 {
-	if( friend.clipboardWidget )
+	if( Friend.clipboardWidget )
 	{
 		ge('clipBoardWidgetTA').parentNode.removeChild( ge('clipBoardWidgetTA') );
-		friend.clipboardWidget.hide();
+		Friend.clipboardWidget.hide();
 	}
 }
 
@@ -2204,13 +3572,13 @@ function ClipboardPasteIn( ele, text )
 			var startPos = ele.selectionStart;
 			var endPos = ele.selectionEnd;
 			var scrollTop = ele.scrollTop;
-			ele.value = ele.value.substring( 0, startPos ) + 
+			ele.value = ele.value.substring( 0, startPos ) +
 				text + ele.value.substring( endPos, ele.value.length );
 			ele.focus();
 			ele.selectionStart = startPos + text.length;
 			ele.selectionEnd = startPos + text.length;
 			ele.scrollTop = scrollTop;
-		} 
+		}
 		else
 		{
 			ele.value += text;
@@ -2240,7 +3608,7 @@ function findApplication( applicationId )
 /* We need these global keys ------------------------------------------------ */
 
 // Only for our friends
-if ( window.addEventListener )
+if( window.addEventListener )
 {
 	window.addEventListener ( 'keydown', function ( e )
 	{
@@ -2266,23 +3634,26 @@ if ( window.addEventListener )
 			return _globalScreenSwap( 'DoorsScreen' );
 		}
 	});
-	
+
 	// Temporary to get message events on page load for login outside using an iframe
-	window.addEventListener ( 'message', function ( e )
+	window.addEventListener( 'message', function ( e )
 	{
 		if ( !e ) e = window.event;
-		
+
 		if( e.data && e.data.command == 'login' )
 		{
 			var args = {
-				'keys'     : false,
-				'username' : false,
-				'password' : false,
-				'remember' : false,
-				'callback' : false,
-				'event'    : false
+				'keys'      : false,
+				'username'  : false,
+				'password'  : false,
+				'sessionid' : false,
+				'userid'    : false,
+				'fullname'  : false,
+				'remember'  : false,
+				'callback'  : false,
+				'event'     : false
 			};
-			
+
 			for( key in e.data )
 			{
 				if( e.data[key] && typeof args[key] !== 'undefined' )
@@ -2290,12 +3661,34 @@ if ( window.addEventListener )
 					args[key] = e.data[key];
 				}
 			}
-			
+
 			console.log( 'Workspace.login() from window.addEventListener: ', args );
-			
+
+			// TODO: This can probably be moved somwhere everything else related to message is ...
+
+			if( args.sessionid )
+			{
+				Workspace.loginSessionId( args.sessionid, args.callbac, args.event );
+			}
+
 			Workspace.login( args.username, args.password, args.remember, args.callback, args.event );
 		}
 	});
+	
+	// Blur events - allows us to track if we're clicking on a frame outside the Friend domain
+	Friend.canActivateWindowOnBlur = true;
+	window.addEventListener( 'blur', function( e )
+	{
+		// Canactivatewindowonblur is there to prevent loading elements from
+		// being deactivated when they emit a blur event from their iframe
+		if( !window.isMobile )
+		{
+			if( Friend.currentWindowHover && Friend.canActivateWindowOnBlur )
+			{
+				_ActivateWindow( Friend.currentWindowHover );
+			}
+		}
+	} );
 }
 
 // Global screen swap
@@ -2326,7 +3719,7 @@ function checkAppPermission( authid, permission, value )
 			// JSX apps have all rights..
 			if( eles[a].applicationType && eles[a].applicationType == 'jsx' )
 				return true;
-			
+
 			for( var b = 0; b < eles[a].permissions.length; b++ )
 			{
 				if( eles[a].permissions[b][0] == permission )

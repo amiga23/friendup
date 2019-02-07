@@ -2,27 +2,13 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
-/**
- * @file
+/** @file
  *
  * UserLogger body
  *
@@ -36,10 +22,14 @@
 #include "user_logger.h"
 #include <dlfcn.h>
 
-//
-// Filesystems
-//
-
+/**
+ * Create user function logger
+ *
+ * @param sb pointer to SystemBase
+ * @param path path where data will be stored
+ * @param name name of log entry (file name for example)
+ * @return new UserLogger structure when success, otherwise NULL
+ */
 UserLogger *UserLoggerCreate( void *sb, const char *path, const char *name )
 {
 	UserLogger *ulogger = NULL;
@@ -86,10 +76,11 @@ UserLogger *UserLoggerCreate( void *sb, const char *path, const char *name )
 	return ulogger;
 }
 
-//
-// delete UserLogger
-//
-
+/**
+ * Delete UserLogger
+ *
+ * @param log UserLogger structure which will be deleted
+ */
 void UserLoggerDelete( UserLogger *log )
 {
 	if( log != NULL )

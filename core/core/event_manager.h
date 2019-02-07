@@ -1,25 +1,12 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
 /** @file
  *
  *  Definitions used by the Friend Core system of event
@@ -28,6 +15,9 @@
  *
  *  @author PS (Pawel Stefanski)
  *  @date first pushed on 10/02/2015
+ * 
+ * \ingroup EventManager Event manager
+ * @{
  */
 
 #ifndef __CORE_EVENT_MANAGER_H__
@@ -36,6 +26,7 @@
 #include <core/types.h>
 #include <core/event.h>
 #include <util/list.h>
+
 
 //
 // EventManager structure
@@ -75,8 +66,7 @@ FUQUAD EventGetNewID( EventManager *em );
 // add new event
 //
 
-CoreEvent *EventAdd( EventManager *em, void *function, void *data, time_t nextCall, time_t deltaTime, int repeat );
-//CoreEvent *EventAdd( EventManager *em, FThread *thread, time_t nextCall, time_t deltaTime, int repeat );
+int EventAdd( EventManager *em, void *function, void *data, time_t nextCall, time_t deltaTime, int repeat );
 
 //
 // check event
@@ -87,3 +77,6 @@ CoreEvent *EventCheck( EventManager *em, CoreEvent *ev, time_t ti );
 
 
 #endif //__CORE_EVENT_MANAGER_H__
+
+/**@}*/
+// End of EventManager Doxygen group

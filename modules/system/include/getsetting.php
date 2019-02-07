@@ -1,26 +1,18 @@
 <?php
-/*©lpgl*************************************************************************
+/*©lgpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Lesser General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Lesser General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Lesser   *
+* General Public License, found in the file license_lgpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
 
-
-$settings = new object();
+$settings = new stdClass();
 $settings->Date = date( 'Y-m-d H:i:s' );
+
+$userid = $level == 'Admin' && isset( $args->args->userid ) ? $args->args->userid : $User->ID;
 
 if( isset( $args->args->settings ) )
 {
@@ -30,7 +22,7 @@ if( isset( $args->args->settings ) )
 		$s = new dbIO( 'FSetting' );
 		$s->Type = 'system';
 		$s->Key = $set;
-		$s->UserID = $User->ID;
+		$s->UserID = $userid;
 		if( $s->Load() )
 		{
 			$json = false;
@@ -58,7 +50,7 @@ else if ( isset( $args->args->setting ) )
 	$s = new dbIO( 'FSetting' );
 	$s->Type = 'system';
 	$s->Key = $args->args->setting;
-	$s->UserID = $User->ID;
+	$s->UserID = $userid;
 	if( $s->Load() )
 	{
 		$json = false;

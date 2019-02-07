@@ -1,25 +1,12 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
 /** @file
  * 
  *  Uri body
@@ -119,7 +106,6 @@ char* UriGetAuthority( char* str, unsigned int strLen, char** next )
 	*/
 	if( strLen < 3 || str[0] != '/' || str[1] != '/' )
 	{
-		//DEBUG("No authority.\n");
 		return 0;
 	}
 
@@ -281,6 +267,18 @@ char* UriGetPath( char* str, unsigned int strLen, char** next )
 	char* ptrEnd = str + strLen;
 	for( unsigned int i = 0; i < strLen; i++ )
 	{
+		// %3C <  %3E >
+		if( str[i] == '%' )
+		{
+			if( str[i+1] == '3' && (str[i+2] == 'C' || str[i+2] == 'E') )
+			{
+				str[i] = ' ';
+			}
+			else if( str[i+1] == '2' && str[i+2] == '2' )
+			{
+				str[i] = ' ';
+			}
+		}
 		if( str[i] == '?' || str[i] == '#' )
 		{
 			ptrEnd = str + i;
@@ -289,23 +287,27 @@ char* UriGetPath( char* str, unsigned int strLen, char** next )
 	}
 	if( ptrEnd == str )
 	{
-		return 0;
+		return NULL;
 	}
 
 	unsigned int len = ptrEnd - str;
-	char* out = FCalloc( len + 1, sizeof(char) );
-	if( out != NULL )
+	if( len > 0 )
 	{
-		memcpy( out, str, len );
-		out[len] = 0;
-	}
-	else
-	{
-		FERROR("Get Uri Path memory alloc error\n");
-	}
-	*next = ptrEnd;
+		char* out = FCalloc( len + 1, sizeof(char) );
+		if( out != NULL )
+		{
+			memcpy( out, str, len );
+			out[len] = 0;
+		}
+		else
+		{
+			FERROR("Get Uri Path memory alloc error\n");
+		}
+		*next = ptrEnd;
 
-	return out;
+		return out;
+	}
+	return NULL;
 }
 
 /**
@@ -364,6 +366,10 @@ Hashmap* UriParseQuery( char* query )
 	                                 '--------'
 	                   Parses this part -'
 	*/
+	if( query == NULL )
+	{
+		return NULL;
+	}
 	Hashmap* map = HashmapNew();
 	if( map == NULL )
 	{
@@ -377,8 +383,75 @@ Hashmap* UriParseQuery( char* query )
 	unsigned int keySize = 0;
 	char* valuePtr = NULL;
 	bool inValue = false;
+	int braces = 0;
+	int qbraces = 0;
+	
 	for( unsigned int i = 0 ;; i++ )
 	{
+		// getting json ( data inside braces {} )
+		if( query[i] == '{' )
+		{
+			int spos = i;	// start position
+			braces++;
+			
+			while( braces > 0 )
+			{
+				if( query[i] == '}' )
+				{
+					braces--;
+				}
+				else if( query[i] == '{' )
+				{
+					braces++;
+				}
+				else if( query[i] == 0 || query[i] == '\r' )
+				{
+					braces = 0;
+					break;
+				}
+				i++;
+			}
+			
+			char *c = StringDuplicateN( &(query[spos]), i-spos );
+			if( HashmapPut( map, StringDuplicate("post_json"), c ) == MAP_OK )
+			{
+				DEBUG("POSTJSON1 - %s -\n", c );
+			}
+			//i++;
+		}
+		else
+		// getting json ( data inside braces [] )
+		if( query[i] == '[' )
+		{
+			int spos = i;	// start position
+			qbraces++;
+			
+			while( qbraces > 0 )
+			{
+				if( query[i] == ']' )
+				{
+					qbraces--;
+				}
+				else if( query[i] == '[' )
+				{
+					qbraces++;
+				}
+				else if( query[i] == 0 || query[i] == '\r' )
+				{
+					qbraces = 0;
+					break;
+				}
+				i++;
+			}
+			
+			char *c = StringDuplicateN( &(query[spos]), i-spos );
+			if( HashmapPut( map, StringDuplicate("post_json_tab"), c ) == MAP_OK )
+			{
+				DEBUG("POSTJSON1 - %s -\n", c );
+			}
+			i++;
+		}
+		
 		// The first = is a sub-separator. Any more ='s will be assumed part of the value
 		if( !inValue && query[i] == '=' )
 		{
@@ -408,15 +481,14 @@ Hashmap* UriParseQuery( char* query )
 				if( key )
 				{
 					// TODO: Add support for ?arr[]=something&arr[]=more
-					if( HashmapPut( map, key, value ) )
+					if( HashmapPut( map, key, value ) == MAP_OK )
 					{
-						//DEBUG( "[UriParseQuery] Key:       %s => %s\n", key, value ? value : "" );
 					}
 					// Couldn't add hto hashmap sadly..
 					else 
 					{
-						if( value ) free( value );
-						free( key );
+						if( value ) FFree( value );
+						FFree( key );
 					}
 				}
 			}
@@ -472,6 +544,9 @@ char* UriGetFragment( char* str, unsigned int strLen, char** next )
  */
 Uri* UriParse( char* str )
 {
+	if (str == NULL){ //BG-355
+		return NULL;
+	}
 	Uri* uri = UriNew();
 	unsigned int strLen = strlen( str );
 	unsigned int remainingLen = strLen;
@@ -497,7 +572,6 @@ Uri* UriParse( char* str )
 	if( authority )
 	{
 		uri->authority = UriParseAuthority( authority );
-		//DEBUG( "Authority: %s\n", authority );
 		free( authority );
 	}
 	
@@ -527,7 +601,6 @@ Uri* UriParse( char* str )
 	{
 		uri->query = UriParseQuery( query );
 		uri->queryRaw = query;
-		DEBUG( "Query:     %s\n", query);
 	}
 
 	if( next >= end )
@@ -539,11 +612,8 @@ Uri* UriParse( char* str )
 	char* fragment = UriGetFragment( next, remainingLen, &next );
 	if( fragment )
 	{
-		DEBUG( "Fragment:  %s\n", fragment);
 		uri->fragment = fragment;
 	}
-
-	// ------------------------------------------------------------------------
 
 	return uri;
 }

@@ -1,24 +1,14 @@
 <?php
 
-/*©lpgl*************************************************************************
+/*©lgpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Lesser General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Lesser General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Lesser   *
+* General Public License, found in the file license_lgpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
-
 
 global $Logger, $User;
 
@@ -42,14 +32,15 @@ if( isset( $args->args->pckg ) )
 	$hashes = array();
 
 	// Now hash all files!
-	function hashEmRecursive( $p, &$hashes, $d = 0 )
+	function hashEmRecursive( $p, &$hashes, $d = 0, $rpath = '' )
 	{
+		global $Logger;
 		if( $hdir = opendir( $p ) )
 		{
 			while( $f = readdir( $hdir ) )
 			{
 				// Skip signature
-				if( $d == 0 && $f == 'Signature.sig' )
+				if( $d == 0 && ( $f == 'Signature.sig' || $f == 'package.zip' ) )
 				{
 					continue;
 				}
@@ -62,12 +53,17 @@ if( isset( $args->args->pckg ) )
 					}
 					continue;
 				}
-				$hashes[] = hash( 'sha256', $f ); // Add dir names
+				$path = $rpath . ( $rpath ? '/' : '' ) . $f; // rel path
+				$hashes[] = hash( 'sha256', $rpath ); // Add dir names
 				if( is_dir( $p . '/' . $f ) )
 				{
-					hashEmRecursive( $p . '/' . $f, $hashes, $d + 1 );
+					hashEmRecursive( $p . '/' . $f, $hashes, $d + 1, $path );
 				}
-				$hashes[] = $hash = hash_file( 'sha256', $p . '/' . $f );
+				else
+				{
+					$hashes[] = $hash = hash_file( 'sha256', $p . '/' . $f );
+					//$Logger->log( $path );
+				}
 			}
 			closedir( $hdir );
 		}
@@ -75,9 +71,10 @@ if( isset( $args->args->pckg ) )
 	hashEmRecursive( 'repository/' . $args->args->pckg, $hashes );
 	
 	// Validate signature
-	$validation = hash( 'sha256', implode( '', $hashes ) );
+	$validation = hash( 'sha256', implode( '', sort( $hashes ) ) );
 	if( $validation != $signature->signature )
 	{
+		$Logger->log( 'Validation: ' . $validation . ' != ' . $signature->signature );
 		die( 'fail<!--separate-->{"response":"invalid signature"}' );
 	}
 	

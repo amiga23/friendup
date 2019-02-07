@@ -1,25 +1,12 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
 /** @file
  * 
  *  log definitions
@@ -33,6 +20,7 @@
 
 #include <core/types.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <time.h>
 #include <pthread.h>
 
@@ -73,29 +61,28 @@ typedef struct FlogDate{
     int fd_Usec;
 } FlogDate;
 
-#ifndef FUQUAD
-typedef unsigned long long FUQUAD;
-#endif
-
 // Flags 
 typedef struct FlogFlags{
-    const char* ff_Fname;
-    short ff_FileLevel;
-    short ff_Level;
-    short ff_ToFile;
-    short ff_Pretty;
-    short ff_Time;
-    short ff_TdSafe;
-	FILE *ff_FP;
-	char			ff_DateString[ 256 ];
-	FUQUAD ff_Size;
-	FUQUAD ff_MaxSize;
-	int		ff_LogNumber;
+	const char			*ff_Fname;
+	char				*ff_Path;
+	char				*ff_DestinationPath;
+	int					ff_DestinationPathLength;
+	short				ff_FileLevel;
+	short				ff_Level;
+	short				ff_ToFile;
+	short				ff_Pretty;
+	short				ff_Time;
+	short				ff_TdSafe;
+	FILE				*ff_FP;
+	char				ff_DateString[ 256 ];
+	uint64_t			ff_Size;
+	uint64_t			ff_MaxSize;
+	int					ff_LogNumber;
 	
-	FlogDate ff_FD;
-	pthread_mutex_t logMutex;
-	int ff_ArchiveFiles;
-	char **ff_FileNames;
+	FlogDate			ff_FD;
+	pthread_mutex_t		logMutex;
+	int					ff_ArchiveFiles;
+	char				**ff_FileNames;
 } FlogFlags;
 
 
@@ -119,7 +106,7 @@ extern FlogFlags slg;
 		time_t rawtime; \
 		struct tm timeinfo; \
 		rawtime = time(NULL); \
-		localtime_r(&timeinfo,&rawtime );  \
+		localtime_r( &rawtime, &timeinfo );  \
 \
 		slg.ff_FD.fd_Year = timeinfo.tm_year+1900; \
 		slg.ff_FD.fd_Mon = timeinfo.tm_mon+1; \
@@ -128,7 +115,6 @@ extern FlogFlags slg;
 		slg.ff_FD.fd_Min = timeinfo.tm_min; \
 		slg.ff_FD.fd_Sec = timeinfo.tm_sec; \
 		\
-		printf("aaa\n"); \
 \
 		if( slg.ff_FD.fd_Day != slg.ff_Time ) \
 		{ \
@@ -147,10 +133,8 @@ extern FlogFlags slg;
 			slg.ff_Time = slg.ff_FD.fd_Day; \
 		} \
 \
-printf("mutex\n"); \
 		 if (pthread_mutex_lock(&slg.logMutex) == 0) \
 		 { \
-		 printf("-----------------------before \n"); \
 			/*fprintf( slg.ff_FP, "\x1B[34m (%s:%d) ", __FILE__, __LINE__ ); fprintf( slg.ff_FP, FIRST(__VA_ARGS__) " " REST(__VA_ARGS__) ); */ \
 			pthread_mutex_unlock(&slg.logMutex);  \
 		} \

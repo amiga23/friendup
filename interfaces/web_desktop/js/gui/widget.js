@@ -1,21 +1,14 @@
 /*©agpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Affero General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Affero General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Affero   *
+* General Public License, found in the file license_agpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
+
+var _viewType = 'iframe'; //window.friendBook ? 'webview' : 'iframe';
 
 Widget = function( flags )
 {
@@ -29,6 +22,8 @@ Widget.prototype.init = function( flags, target )
 	this.target = target;
 
 	this.tx = 0; this.ty = 0; this.tw = 0; this.th = 0;
+	this.marginTop = 0; this.marginLeft = 0; 
+	this.marginRight = 0; this.marginBottom = 0;
 
 	var t = this;
 	this.dom = document.createElement( 'div' );
@@ -44,15 +39,28 @@ Widget.prototype.init = function( flags, target )
 		return cancelBubble( e );
 	}
 	
-	target.appendChild( this.dom );
+	this.target.appendChild( this.dom );
 }
 
 Widget.prototype.calcPosition = function()
 {
 	if( this.tw <= 0 && this.th <= 0 ) return;
 	
-	var realTop = this.target.screenObject._screen.offsetTop + this.target.screenObject._screen.parentNode.offsetTop;
-	var target = this.target;	
+	var screen = this.target.screenObject;
+	if( !screen ) screen = Workspace.screen;
+	var sccont = screen.contentDiv;
+	if( !sccont ) sscont = screen;
+	
+	var realTop = sccont.offsetTop;
+	var target = this.target;
+	
+	// TODO: Support left right bottom
+	// Extra margins for screen content area
+	var inf = GetThemeInfo( 'ScreenContentMargins' );
+	if( inf && inf.top )
+	{
+		realTop += parseInt( inf.top );
+	}
 	
 	this.dom.style.width = this.tw + 'px';
 	this.dom.style.height = this.th + 'px';
@@ -63,16 +71,16 @@ Widget.prototype.calcPosition = function()
 		if( this.tx == 'left' )
 		{
 			this.dom.style.right = 'auto';
-			this.dom.style.left = '0';
+			this.dom.style.left = ( 0 + this.marginLeft ) + 'px';
 		}
 		else if( this.tx == 'right' )
 		{
-			this.dom.style.right = '0';
+			this.dom.style.right = ( 0 + this.marginRight ) + 'px';
 			this.dom.style.left = 'auto';
 		}
 		else if( this.tx == 'center' )
 		{
-			this.dom.style.left = Math.floor( target.offsetWidth * 0.5 - ( this.tw * 0.5 ) ) + 'px';
+			this.dom.style.left = ( target.offsetWidth >> 1 ) - ( this.tw >> 1 ) + 'px';
 		}
 	}
 	else
@@ -82,36 +90,36 @@ Widget.prototype.calcPosition = function()
 			this.tx = this.target.offsetWidth - this.tw;
 		else if( this.tx < 0 ) this.tx = 0;
 		//
-		var px = this.tx - this.target.offsetLeft;	
+		var px = this.tx - this.target.offsetLeft;
 		this.dom.style.left = px + 'px';
 	}
+	
 	// Calculate y axis
 	if( isNaN( this.ty ) )
 	{
 		if( this.ty == 'bottom' )
 		{
 			this.dom.style.top = 'auto';
-			this.dom.style.bottom = '0';
+			this.dom.style.bottom = ( 0 + this.marginBottom ) + 'px';
 		}
 		else if( this.ty == 'top' )
 		{
-			this.dom.style.top = realTop + 'px';
+			this.dom.style.top = ( realTop + this.marginTop ) + 'px';
 			this.dom.style.bottom = 'auto';
 		}
 		else if( this.ty == 'middle' || this.ty == 'center' )
 		{
-			this.dom.style.top = Math.floor( target.offsetHeight * 0.5 - ( this.th * 0.5 ) ) + 'px';
+			this.dom.style.top = ( target.offsetHeight >> 1 ) - ( this.th >> 1 ) + 'px';
 		}
 	}
 	else
 	{	
-		// Absolute position 50 margin
-		if( this.ty + this.th > ( this.target.offsetHeight - 50 ) )
-			this.ty = ( this.target.offsetHeight - 50 ) - this.th;
-		else if( this.ty < 0 ) this.ty = 0;
-		//
-		var py = this.ty - this.target.offsetTop + realTop;
-		this.dom.style.top = py + 'px';
+		// Absolute position
+		if( this.ty + this.th > target.offsetHeight )
+			this.ty = target.offsetHeight - this.th;
+		else if( this.ty < realTop ) this.ty = realTop;
+		
+		this.dom.style.top = this.ty + 'px';
 	}
 }
 
@@ -126,6 +134,24 @@ Widget.prototype.setFlag = function( flag, val )
 	var target = this.target;
 	switch( flag )
 	{
+		case 'margin-left':
+			if( !isNaN( val ) ) this.marginLeft = val;
+			break;
+		case 'margin-right':
+			if( !isNaN( val ) ) this.marginRight = val;
+			break;
+		case 'margin-bottom':
+			if( !isNaN( val ) ) this.marginBottom = val;
+			break;
+		case 'margin-top':
+			if( !isNaN( val ) ) this.marginTop = val;
+			break;
+		case 'fadeIn': 
+			this.fadeIn = val;
+			break;
+		case 'fadeOut':
+			this.fadeOut = val;
+			break;
 		case 'animate':
 			if( val ) this.dom.style.transition = 'width,height 0.25s,0.25s';
 			else this.dom.style.transition = '';
@@ -157,9 +183,9 @@ Widget.prototype.setFlag = function( flag, val )
 		case 'border-radius':
 			if( val )
 			{
-				this.style.borderRadius = val;
+				this.dom.style.borderRadius = val;
 			}
-			else this.style.borderRadius = '';
+			else this.dom.style.borderRadius = '';
 			break;
 		// it's a view window?
 		case 'originObject':
@@ -215,6 +241,17 @@ Widget.prototype.setFlag = function( flag, val )
 			else this.dom.style.zIndex = '';
 			break;
 		case 'below':
+			// Below widgets are below windows - in screen content
+			if( this.dom.parentNode )
+			{
+				this.dom.parentNode.removeChild( this.dom );
+				Workspace.screen.contentDiv.appendChild( this.dom );
+			}
+			else
+			{
+				this.target = Workspace.screen.contentDiv;
+			}
+			this.dom.style.position = 'fixed';
 			this.dom.style.zIndex = '';
 			break;
 	}
@@ -242,7 +279,24 @@ Widget.prototype.lower = function( callback )
 
 Widget.prototype.show = function( callback )
 {
+	var self = this;
+	this.shown = true;
 	this.calcPosition();
+	if( this.fadeIn )
+	{
+		if( this.fadeTimeout ) clearTimeout( this.fadeTimeout );
+		var fader = 0;
+		this.fadeMotion = 'in';
+		function fade()
+		{
+			if( self.fadeMotion != 'in' ) return;
+			self.dom.style.opacity = ++fader;
+			if( fader < 255 )
+				requestAnimationFrame( function(){ fade(); } );
+			console.log( fader );
+		}
+		fade();
+	}
 	this.dom.style.visibility = 'visible';
 	this.dom.style.pointerEvents = 'all';
 	if( callback ) callback();
@@ -250,9 +304,34 @@ Widget.prototype.show = function( callback )
 
 Widget.prototype.hide = function( callback )
 {
-	this.dom.style.visibility = 'hidden';
-	this.dom.style.pointerEvents = 'none';
-	if( callback ) callback();
+	var self = this;
+	function doHide()
+	{
+		self.shown = false;
+		self.dom.style.visibility = 'hidden';
+		self.dom.style.pointerEvents = 'none';
+		if( callback ) callback();
+	}
+	if( this.fadeOut )
+	{
+		if( this.fadeTimeout ) clearTimeout( this.fadeTimeout );
+		var fader = 255;
+		this.fadeMotion = 'out';
+		function fade()
+		{
+			if( self.fadeMotion != 'out' ){ doHide(); return; }
+			self.dom.style.opacity = --fader;
+			if( fader > 0 )
+				requestAnimationFrame( function(){ fade(); } );
+			else
+			{
+				doHide();
+				self.fadeTimeout = null;
+			}
+		}
+		fade();
+	}
+	else doHide();
 }
 
 Widget.prototype.setContent = function( cont, callback )
@@ -307,7 +386,7 @@ Widget.prototype.setContentIframed = function( content, domain, packet, callback
 	var c = this.dom;
 	if( c ) c.innerHTML = '';
 	
-	var ifr = document.createElement( 'iframe' );
+	var ifr = document.createElement( _viewType );
 	ifr.applicationId = self.applicationId;
 	ifr.authId = self.authId;
 	ifr.applicationName = self.applicationName;
@@ -387,13 +466,6 @@ Widget.prototype.setContentIframed = function( content, domain, packet, callback
 		msg.data = msg.data.split( /system\:/i ).join( '/webclient/' );
 		if( !msg.origin ) msg.origin = document.location.href;
 		ifr.contentWindow.postMessage( JSON.stringify( msg ), domain );
-	
-		// TODO: Reenable this functionality if we need it (but now it's a security issue with CORS)
-		/*
-		// Remove window popup menus when clicking on the app
-		if( ifr.contentWindow.addEventListener )
-			ifr.contentWindow.addEventListener( 'mousedown', function(){ removeWindowPopupMenus(); }, false );
-		else ifr.contentWindow.attachEvent( 'onmousedown', function(){ removeWindowPopupMenus(); }, false );*/
 	}
 	c.appendChild( ifr );
 }
@@ -440,8 +512,10 @@ Widget.prototype.close = function()
 			}
 			this.originObject.widgets = out;
 		}
-		this.dom.parentNode.removeChild( this.dom );
+		if( this.dom.parentNode )
+			this.dom.parentNode.removeChild( this.dom );
 		return true;
 	}
 	return false;
 }
+

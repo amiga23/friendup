@@ -1,25 +1,12 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
 /** @file
  * 
  * file contain functitons related to local files
@@ -28,20 +15,26 @@
  *  @date created 2016
  */
 
+#define _DEFAULT_SOURCE 1 //required for mmap flags
+
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <util/log/log.h>
 #include <network/locfile.h>
 #include <util/string.h>
 #include <util/buffered_string.h>
+#include <util/log/log.h>
 
-//#define _XOPEN_SOURCE 500
 #include <ftw.h>
 #include <unistd.h>
 #include <sys/statvfs.h>
+#include <util/murmurhash3.h>
+
+#if LOCFILE_USE_MMAP == 1
+#include <sys/mman.h>
+#endif
 
 /**
  * Get filename from path
@@ -50,7 +43,7 @@
  * @param len length of provided path
  * @return function returns pointer to char from which filename is started
  */
-inline char *GetFileNamePtr( char *path, int len )
+static inline char *GetFileNamePtr( char *path, int len )
 {
 	int i = len;
 	while( i != 0 )
@@ -64,6 +57,7 @@ inline char *GetFileNamePtr( char *path, int len )
 	return path;
 }
 
+#if LOCFILE_USE_MMAP == 0
 /**
  * Read a block of memory from LocFile
  *
@@ -72,7 +66,7 @@ inline char *GetFileNamePtr( char *path, int len )
  * @param size number of bytes to read
  * @return number of bytes readed from file
  */
-inline int LocFileRead( LocFile* file, long long offset, long long size )
+static inline int LocFileRead( LocFile* file, FILE *fp, long long offset, long long size )
 {
 	if( file == NULL )
 	{
@@ -80,23 +74,23 @@ inline int LocFileRead( LocFile* file, long long offset, long long size )
 		return -1;
 	}
 
-	file->buffer = (char *)FCalloc( size + 1, sizeof( char ) );
-	if( file->buffer == NULL )
+	file->lf_Buffer = (char *)FCalloc( size + 1, sizeof( char ) );
+	if( file->lf_Buffer == NULL )
 	{
 		DEBUG("Cannot allocate memory for file\n");
 		return 0;
 	}
 	
-	file->bufferSize = size;
-	FILE* fp = file->fp;
+	file->lf_FileSize = size;
 	fseek( fp, offset, SEEK_SET );
-	int result = fread( file->buffer, 1, size, fp );
+	int result = fread( file->lf_Buffer, 1, size, fp );
 	if( result < size )
 	{
 		return result; 
 	}
 	return 0;
 }
+#endif
 
 /**
  * Create new LocFile structure and read file from provided path
@@ -115,21 +109,21 @@ LocFile* LocFileNew( char* path, unsigned int flags )
 	FILE* fp = fopen( path, "rb" );
 	if( fp == NULL )
 	{
-		FERROR("Cannot open file %s (file does not exist?)..\n", path );
+		Log( FLOG_ERROR, "Cannot open file %s (file does not exist?)..\n", path );
 		return NULL;
 	}
 	
 	struct stat st;
 	if( stat( path, &st ) < 0 )
 	{
-		FERROR( "Cannot stat file.\n" );
+		FERROR( "Cannot stat file: '%s'.\n", path );
 		fclose( fp );
 		return NULL;
 	}
 	
 	if( S_ISDIR( st.st_mode ) )
 	{
-		FERROR( "Is a directory. Can not open.\n" );
+		FERROR( "'%s' is a directory. Can not open.\n", path );
 		fclose( fp );
 		return NULL;
 	}
@@ -138,33 +132,47 @@ LocFile* LocFileNew( char* path, unsigned int flags )
 	LocFile* fo = (LocFile*) FCalloc( 1, sizeof(LocFile) );
 	if( fo != NULL )
 	{
-		int len = strlen( path );
-		fo->lf_Path = StringDuplicateN( path, len );
-		fo->lf_Filename = StringDuplicate( GetFileNamePtr( path, len ) );
+		fo->lf_PathLength = strlen( path );
+		fo->lf_Path = StringDuplicateN( path, fo->lf_PathLength );
+		fo->lf_Filename = StringDuplicate( GetFileNamePtr( path, fo->lf_PathLength ) );
 		
-		DEBUG("PATH: %s FILENAME %s\n", fo->lf_Path, fo->lf_Filename );
+		MURMURHASH3( fo->lf_Path, fo->lf_PathLength, fo->hash );
 		
-		memcpy(  &(fo->info),  &st, sizeof( struct stat) );
-		//fstat( fp, &(fo->info));
-	
-		fo->fp = fp;
-		//fseek( fp, 0L, SEEK_END );
+		DEBUG("PATH: %s\n", fo->lf_Path );
 		
+		memcpy(  &(fo->lf_Info),  &st, sizeof( struct stat) );
+
 		fseek( fp, 0, SEEK_END );
 		long fsize = ftell( fp );
 		fseek( fp, 0, SEEK_SET );  //same as rewind(f);
-		fo->filesize = fsize;// st.st_size; //ftell( fp );
+		fo->lf_FileSize = fsize;// st.st_size; //ftell( fp );
 
 		if( flags & FILE_READ_NOW )
 		{
-			LocFileRead( fo, 0, fo->filesize );
+#if LOCFILE_USE_MMAP == 0
+			LocFileRead( fo, fp, 0, fo->lf_FileSize );
+#else
+
+			fo->lf_Buffer = mmap(NULL/*address can be anywhere*/,
+					fo->lf_FileSize/*map whole file*/,
+					PROT_READ,
+					MAP_SHARED | MAP_POPULATE,
+					fileno(fp),
+					0/*beginning of file*/);
+			//DEBUG("***************** Mapping length: %d at %p\n", fo->lf_FileSize, fo->lf_Buffer);
+
+#endif
 		}
 	}
 	else
 	{
 		FERROR("Cannot allocate memory for LocFile\n");
 	}
-
+	
+#if LOCFILE_USE_MMAP == 0
+	fclose( fp );
+#endif
+	
 	return fo;
 }
 
@@ -177,8 +185,6 @@ LocFile* LocFileNew( char* path, unsigned int flags )
  */
 LocFile* LocFileNewFromBuf( char* path, BufString *bs )
 {
-	DEBUG("\n------------------------------\n\n");
-	
 	if( path == NULL )
 	{
 		FERROR("File path is null\n");
@@ -193,19 +199,18 @@ LocFile* LocFileNewFromBuf( char* path, BufString *bs )
 	LocFile* fo = (LocFile*) FCalloc( 1, sizeof(LocFile) );
 	if( fo != NULL )
 	{
-		int len = strlen( path );
-		fo->lf_Path = StringDuplicateN( path, len );
-		fo->lf_Filename = StringDuplicateN( path, len );//StringDuplicate( GetFileNamePtr( path, len ) );
+		fo->lf_PathLength = strlen( path );
+		fo->lf_Path = StringDuplicateN( path, fo->lf_PathLength );
+		//fo->lf_Filename = StringDuplicateN( path, fo->lf_PathLength );//StringDuplicate( GetFileNamePtr( path, len ) );
+		MURMURHASH3( fo->lf_Path, fo->lf_PathLength, fo->hash );
 		
-		DEBUG("PATH: %s FILENAME %s\n", fo->lf_Path, fo->lf_Filename );
+		DEBUG("PATH: %s \n", fo->lf_Path );
 
-		fo->filesize = bs->bs_Size;
+		fo->lf_FileSize = bs->bs_Size;
 		
-		//DEBUG("Converted \n\n%s\n\n", bs->bs_Buffer );
-
-		if( ( fo->buffer = FMalloc( fo->filesize ) ) != NULL )
+		if( ( fo->lf_Buffer = FMalloc( fo->lf_FileSize ) ) != NULL )
 		{
-			memcpy( fo->buffer, bs->bs_Buffer, fo->filesize );
+			memcpy( fo->lf_Buffer, bs->bs_Buffer, fo->lf_FileSize );
 		}
 	}
 	else
@@ -216,6 +221,7 @@ LocFile* LocFileNewFromBuf( char* path, BufString *bs )
 	return fo;
 }
 
+#if LOCFILE_USE_MMAP == 0
 /**
  * Reload content from file
  *
@@ -223,26 +229,14 @@ LocFile* LocFileNewFromBuf( char* path, BufString *bs )
  * @param path pointer to path from which data will be reloaded
  * @return 0 when success, otherwise error number
  */
-int LocFileReload( LocFile *file,  char *path )
+int LocFileReload( LocFile *file, char *path )
 {
 	DEBUG("File %s will be reloaded\n", path );
-	//char *tmpPath = NULL;
 	
-	if( file->fp )
+	if( file->lf_Buffer )
 	{
-		fclose( file->fp );
-		file->fp = NULL;
-	}
-	
-	//if( file->lf_Path )
-	{
-	//	tmpPath =  file->lf_Path;
-	}
-	
-	if( file->buffer )
-	{
-		FFree( file->buffer );
-		file->buffer = NULL;
+		FFree( file->lf_Buffer );
+		file->lf_Buffer = NULL;
 	}
 	
 	FILE* fp = fopen( path, "rb" );
@@ -258,26 +252,27 @@ int LocFileReload( LocFile *file,  char *path )
 		FERROR("Cannot run stat on file: %s!\n", path);
 		return -2;
 	}
-	memcpy(  &(file->info),  &st, sizeof(stat) );
+	memcpy(  &(file->lf_Info),  &st, sizeof(stat) );
 	
-	file->fp = fp;
-	//file->filesize = file->info.st_size; //ftell( fp );
 	fseek( fp, 0, SEEK_END );
 	long fsize = ftell( fp );
 	fseek( fp, 0, SEEK_SET );  //same as rewind(f);
-	file->filesize = fsize;
+	file->lf_FileSize = fsize;
 
-	LocFileRead( file, 0, file->filesize );
+	LocFileRead( file, fp, 0, file->lf_FileSize );
+	
+	fclose( fp );
 	
 	return 0;
 }
+#endif
 
 /**
  * Delete LocFile structure
  *
  * @param file pointer to LocFile which will be deleted
  */
-void LocFileFree( LocFile* file )
+void LocFileDelete( LocFile* file )
 {
 	if( file == NULL )
 	{
@@ -287,21 +282,33 @@ void LocFileFree( LocFile* file )
 	if( file->lf_Filename != NULL )
 	{
 		FFree( file->lf_Filename );
+		file->lf_Filename = NULL;
 	}
-	if( file->fp )
+	/*
+	if( file->lf_Fp )
 	{
-		fclose( file->fp );
-		file->fp = NULL;
+		fclose( file->lf_Fp );
+		file->lf_Fp = NULL;
 	}
+	*/
 	if( file->lf_Path )
 	{
 		FFree( file->lf_Path );
 		file->lf_Path = NULL;
 	}
-	if( file->buffer )
+	if( file->lf_Buffer )
 	{
-		FFree( file->buffer );
-		file->buffer = NULL;
+#if LOCFILE_USE_MMAP == 0
+		FFree( file->lf_Buffer );
+#else
+		munmap(file->lf_Buffer, file->lf_FileSize);
+#endif
+		file->lf_Buffer = NULL;
+	}
+	if( file->lf_Mime != NULL )
+	{
+		FFree( file->lf_Mime );
+		file->lf_Mime = NULL;
 	}
 
 	FFree( file );	
@@ -312,7 +319,7 @@ void LocFileFree( LocFile* file )
 // internal function
 //
 
-int UnlinkCB( const char *fpath, const struct stat *sb, int typeflag, struct FTW *ftwbuf )
+int UnlinkCB( const char *fpath, const struct stat *sb __attribute__((unused)), int typeflag __attribute__((unused)), struct FTW *ftwbuf __attribute__((unused)))
 {
 	int rv = remove( fpath );
 	if( rv != 0 )
@@ -351,3 +358,35 @@ FLONG LocFileAvaiableSpace( const char *path )
 	return stat.f_bsize * stat.f_bavail;
 }
 
+/**
+ * Function returns file extension
+ *
+ * @param name pointer to file path
+ * @return extension as string
+ */
+char * GetExtension( char* name )
+{
+	char *reverse = FCalloc( 1, 16 ); // 16 characters extension!
+	int cmode = 0, cz = 0;
+	int len = strlen( name ) - 1;
+	for( cz = len; cz > 0 && cmode < 16; cz--, cmode++ )
+	{
+		if( name[cz] == '.' )
+		{
+			break;
+		}
+		reverse[len-cz] = name[cz];
+	}
+	len = strlen( reverse );
+	char *extension = FCalloc( 1, len + 1 );
+	for( cz = 0; cz < len; cz++ )
+	{
+		extension[cz] = reverse[len-1-cz];
+	}
+	FFree( reverse );
+	return extension;
+}
+
+#ifndef LOCFILE_USE_MMAP
+#error "LOCFILE_USE_MMAP must be defined to 0 or 1"
+#endif

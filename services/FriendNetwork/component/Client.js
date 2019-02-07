@@ -2,25 +2,12 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
 
 
 const log = require( './Log')( 'Client' );
@@ -95,8 +82,8 @@ ns.TCPClient.prototype.unsetSession = function( callback ) {
 
 ns.TCPClient.prototype.close = function() {
 	const self = this;
+	log( 'tcp-close' );
 	self.clearTimeouts();
-	log( 'close' );
 	if ( self.socket ) {
 		self.releaseSocket();
 		self.socket.destroy();
@@ -202,6 +189,7 @@ ns.TCPClient.prototype.startPingTimeout = function() {
 	self.stopPing();
 	self.pingTimeoutId = setTimeout( pingTimeout, self.sessionTimeout );
 	function pingTimeout() {
+		log( 'pingTimeout' );
 		self.kill();
 	}
 }
@@ -269,7 +257,9 @@ ns.TCPClient.prototype.handleClosed = function() {
 
 ns.TCPClient.prototype.kill = function() {
 	const self = this;
+	log( 'kill' );
 	self.emit( 'close', null );
+	//self.close();
 }
 
 ns.TCPClient.prototype.handleSocketData = function( str ) {
@@ -305,8 +295,9 @@ ns.TCPClient.prototype.handleConnMsg = function( event ) {
 	handler( event.data );
 }
 
-ns.TCPClient.prototype.handleSession = function( sessionId ) { 
+ns.TCPClient.prototype.handleSession = function( sessionId ) {
 	const self = this;
+	log( 'handleSession', sessionId );
 	if ( !sessionId )
 		self.kill();
 	else
@@ -371,6 +362,8 @@ util.inherits( ns.WSClient, ns.TCPClient );
 
 ns.WSClient.prototype.close = function() {
 	const self = this;
+	log( 'ws-close' );
+	self.clearTimeouts();
 	if ( self.socket ) {
 		self.releaseSocket();
 		self.socket.close();

@@ -1,19 +1,10 @@
 /*©agpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Affero General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Affero General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Affero   *
+* General Public License, found in the file license_agpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
 
@@ -132,7 +123,6 @@ Calendar.prototype.render = function( skipOnRender )
 							var out = this.events[key][aa];
 							var ev = new CalendarEvent( out );
 							eventsToday.push( ev );
-							//eventsToday += '<div class="CalendarDetailEvent"><div class="IconSmall FloatRight MousePointer fa-remove" onclick="Workspace.removeCalendarEvent(\'' + out.ID + '\')"></div><p>' + out.Title + '</p><p>' + out.Description + '</p><p><em>' + i18n( 'i18n_from' ) + ':</em> ' + out.TimeFrom + '</p><p><em>' + i18n( 'i18n_to' ) + ':</em> ' + out.TimeTo + '</p></div>';
 						}
 					}
 				
@@ -173,7 +163,8 @@ Calendar.prototype.render = function( skipOnRender )
 		}
 		ml += '</div>';
 	}
-	if( eventsToday.length ) {
+	if( eventsToday.length )
+	{
 		var eventsTodayContainer = '<div id="calendarEventsToday" class="Padding"><p><strong>' + i18n( 'i18n_calendar_events' ) + ':</strong></p></div>';
 		ml += eventsTodayContainer;
 		this.calendar.innerHTML = ml;
@@ -181,8 +172,11 @@ Calendar.prototype.render = function( skipOnRender )
 		eventsToday.forEach( function( item ) {
 			container.appendChild( item );
 		});
-	} else
+	} 
+	else
+	{
 		this.calendar.innerHTML = ml;
+	}
 	
 	// Set events
 	var eles = this.calendar.getElementsByTagName( 'div' );
@@ -230,7 +224,9 @@ Calendar.prototype.drawMonthname = function()
 	var year = this.date.getFullYear();
 	var month = this.date.getMonth() + 1;
 
-	this.monthName.innerHTML = this.monthNames[ month-1 ] + ' ' + year + '<div class="Navigation">' + nav + '</div>';
+	var mn = this.monthNames[ month-1 ];
+	mn = mn.substr( 0, 1 ).toUpperCase() + mn.substr( 1, mn.length - 1 );
+	this.monthName.innerHTML = ( isMobile ? 'Friend Workspace' : ( mn + ' ' + year ) ) + '<div class="Navigation">' + nav + '</div>';
 	
 	// Add extra buttons
 	if( this.buttons )
@@ -317,15 +313,28 @@ CalendarEvent.prototype.close = function()
 CalendarEvent.prototype.init = function()
 {
 	var self = this;
+	
+	console.log( self );
+	
+	var title = self.data.Title;
+	
 	self.element = document.createElement( 'div' );
 	self.element.className = "CalendarDetailEvent";
 	// remove
-	var remove = document.createElement( 'div' );
-	remove.className = "IconSmall FloatRight MousePointer fa-remove";
-	remove.onclick = function() { Workspace.removeCalendarEvent( self.data.ID ); }
-	self.element.appendChild( remove );
+	if( self.data.ID.indexOf( '_' ) < 0 )
+	{
+		var remove = document.createElement( 'div' );
+		remove.className = "IconSmall FloatRight MousePointer fa-remove";
+		remove.onclick = function() { Workspace.removeCalendarEvent( self.data.ID ); }
+		self.element.appendChild( remove );
+	}
+	else
+	{
+		var off = self.data.ID.indexOf( '_' );
+		title += ' (' + self.data.ID.substr( off + 1, self.data.ID.length - off - 1 ) + ')';
+	}
 	// Title
-	setP( self.data.Title );
+	setP( title );
 	// Description
 	setP( self.data.Description );
 	// From
@@ -355,26 +364,28 @@ CalendarEvent.prototype.init = function()
 CalendarEvent.prototype.bind = function()
 {
 	var self = this;
-	self.element.onmousedown = function() {
-		console.log( 'mousedown' );
+	self.element.onmousedown = function()
+	{
 		window.mouseDown = self.element;
 		self.pickupTimer = window.setTimeout( doPickup, 100 );
-		function doPickup() {
+		function doPickup()
+		{
 			self.pickupTimer = null;
 			self.hasPickup = true;
 			mousePointer.pickup( self.element );
 		}
 	}
 	
-	self.element.onmouseup = function() {
-		console.log( 'onmouseup' );
-		if ( self.pickupTimer )
+	self.element.onmouseup = function()
+	{
+		if( self.pickupTimer )
 			window.clearTimeout( self.pickupTimer );
 		
-		if ( self.hasPickup ) {
+		if( self.hasPickup )
+		{
 			window.targetMovable = false;
 			self.hasPickup = false;
 		}
 	}
-	
 }
+

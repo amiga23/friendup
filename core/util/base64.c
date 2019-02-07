@@ -1,25 +1,12 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
 
 
 #include <stdio.h>
@@ -76,7 +63,7 @@ void base64_cleanup()
 //
 //
 
-char *Base64Encode( const unsigned char* data, int length )
+char *Base64Encode( const unsigned char* data, int length, int *dstlen )
 {
 	int outSize = (int)ceil( (float)length / 3.0f ) << 2;
 	int reminder = length % 3;
@@ -86,7 +73,7 @@ char *Base64Encode( const unsigned char* data, int length )
 	unsigned char c1 = 0, c2 = 0, c3 = 0;
 	int j = 0, i;
 
-	char* encoded = FCalloc( outSize + 1, sizeof( char ) );
+	char* encoded = FMalloc( outSize + 1 );
 	if( encoded == NULL )
 	{
 		FERROR("Cannot allocate memory in Base64Encode\n");
@@ -120,6 +107,8 @@ char *Base64Encode( const unsigned char* data, int length )
 	if( padding > 1 )
 		encoded[i++] = '=';
 	encoded[i] = 0;
+	
+	*dstlen = outSize;
 
 	return encoded;
 }
@@ -127,7 +116,8 @@ char *Base64Encode( const unsigned char* data, int length )
 // Single argument version
 char *Base64EncodeString( const unsigned char *chr )
 {
-	return Base64Encode( chr, strlen( chr ) );
+	int size = 0;
+	return Base64Encode( chr, strlen( (const char *)chr ), &size );
 }
 
 // Mark the base64 encoded string and return it
@@ -157,13 +147,14 @@ char *Base64Decode( const unsigned char* data, int length, int *finalLength )
 
 	if( length % 4 != 0 )
 	{
-		FERROR("Cannot decode entry, beacouse size is incorect\n");
+		FERROR("Cannot decode entry, beacouse size is incorect: %d\n", length );
 		return NULL;
 	}
 
 	// Length / 4 * 3
-	int output_length = ( ( ( length >> 4 ) + ( length >> 4 ) ) );
-	output_length += output_length << 1;
+	//int output_length = ( ( ( length >> 4 ) + ( length >> 4 ) ) );
+	//output_length += output_length << 1;
+	int output_length = ((length + 3) / 4) * 3;
     
 	if( data[ length - 1 ] == '=' ) ( output_length )--;
 	if( data[ length - 2 ] == '=' ) ( output_length )--;
@@ -185,9 +176,11 @@ char *Base64Decode( const unsigned char* data, int length, int *finalLength )
 									+ ( sextet_c << 6  )  // 1 * 6
 									+ ( sextet_d       ); // 0 * 6
 
+		int x = j;
 		if( j < output_length) decoded_data[j++] = (triple >> 16 ) & 0xFF; // 2 * 8
 		if( j < output_length) decoded_data[j++] = (triple >> 8  ) & 0xFF; // 1 * 8
 		if( j < output_length) decoded_data[j++] = (triple       ) & 0xFF; // 0 * 8
+		//printf(" %c %c %c", decoded_data[x], decoded_data[x+1], decoded_data[x+2] );
 	}
 	
 	*finalLength = output_length;

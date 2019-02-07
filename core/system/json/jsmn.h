@@ -1,29 +1,17 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
 
 #ifndef __JSMN_H_
 #define __JSMN_H_
 
+#include <stdbool.h>
 #include <stddef.h>
 
 #ifdef __cplusplus
@@ -90,6 +78,56 @@ void jsmn_init(jsmn_parser *parser);
  */
 jsmnerr_t jsmn_parse(jsmn_parser *parser, const char *js, size_t len,
 		jsmntok_t *tokens, unsigned int num_tokens);
+
+
+/**
+ * This struct holds everything needed by json_get_element_string.
+ */
+typedef struct {
+	char *string;
+	int string_length;
+	const jsmntok_t *tokens;
+	int token_count;
+} json_t;
+
+/**
+ * Compare json token name to provided string
+ *
+ * @param json pointer to json memory where json is placed
+ * @param tok pointer to json token
+ * @param s name which will be used to compare with token name
+ * @return 0 when success, otherwise error number
+ */
+int jsoneq(const char *json, const jsmntok_t *tok, const char *s);
+
+/**
+ * Returns a string described by a token. Example: {"t":"someting"} when asked for "t" it will return pointer
+ * to "something". Returned string will be NULL-terminated.
+ *
+ * @param json JSON struct to look in
+ * @param needle key to look for
+ * @return pointer to NULL-terminated string (within json_string) or NULL in case of failure
+ */
+char* json_get_element_string(json_t *json, const char *needle);
+
+/**
+ * Extracts an integer described by a token. Example: {"t":123} when asked for "t" it will return true
+ * and set target_int to its value.
+ *
+ * @param json JSON struct to look in
+ * @param needle key to look for
+ * @param target_int pointer where to place the parsed int
+ * @return true on success, false otherwise (target_int is not modified on failure)
+ */
+bool json_get_element_int(json_t *json, const char *needle, int *target_int);
+
+/**
+ * Returns a string that is JSON-escaped.
+ *
+ * @param string_to_escape string that should be escaped
+  * @return pointer to NULL-terminated string or NULL in case of failure
+ */
+char* json_escape_string(const char *string_to_escape);
 
 #ifdef __cplusplus
 }

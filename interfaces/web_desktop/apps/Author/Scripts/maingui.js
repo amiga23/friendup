@@ -1,19 +1,10 @@
 /*©agpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Affero General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Affero General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Affero   *
+* General Public License, found in the file license_agpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
 
@@ -48,7 +39,7 @@ Application.run = function( msg, iface )
 			} );
 			Application.contentTimeout = false;
 		}, 250 );
-	}
+	}	
 }
 
 Application.checkWidth = function()
@@ -482,6 +473,11 @@ Application.initializeToolbar = function()
 		f.onLoad = function( data )
 		{
 			d.innerHTML = data;
+			if( window.innerWidth < 600 )
+			{
+				ge( 'zoom' ).style.display = 'none';
+				ge( 'zoomd' ).style.display = 'none';
+			}
 		}
 		f.i18n();
 		f.load();
@@ -511,13 +507,20 @@ Application.initializeBody = function()
 	f.document.body.style.backgroundPosition = 'top left';
 	f.document.body.style.backgroundRepeat = 'repeat';
 	f.document.body.style.padding = '20pt 20pt';
-	f.document.body.style.borderRadius = '15px';
-	f.document.body.style.width = '595pt';
-	f.document.body.style.minHeight = '842pt';
+	f.document.body.style.borderRadius = '3px';
+	if( window.innerWidth < 600 )
+	{
+	}
+	else
+	{
+		f.document.body.style.width = '595pt';
+		f.document.body.style.minHeight = '842pt';
+	}
 	f.document.body.style.boxSizing = 'border-box';
 	f.document.body.style.margin = '20pt 0 20pt 0';
 	f.document.body.style.fontSize = '12pt';
 	f.document.body.style.color = 'black';
+	f.document.body.classList.add( 'activated' );
 	editorCommand( 'zoom100%', 'store' );
 	AddEvent( 'onmouseup', MyMouseListener, f );
 	AddEvent( 'onkeyup', MyKeyListener, f );
@@ -942,12 +945,110 @@ function metaSearch( keywords )
 	m.execute( 'metasearch', { keywords: keywords } );
 }
 
+// Apply style from style information
+var styleElement = null;
+function ApplyStyle( styleObject, depth )
+{
+	if( !depth ) depth = 0;
+	if( !styleElement )
+	{
+		styleElement = document.createElement( 'style' );
+		var d = document.getElementsByTagName( 'iframe' )[0].contentWindow.document;
+		d.getElementsByTagName( 'head' )[0].appendChild( styleElement );
+	}
+	var style = '';
+	for( var a in styleObject )
+	{
+		var el = styleObject[a];
+		if( depth > 0 )
+		{
+			switch( a )
+			{
+				case 'Standard format':
+					style += "html body {\n";
+					break;
+				case 'Headings':
+					style += ApplyStyle( styleObject[a], depth + 1 );
+					break;
+				case 'Heading 1':
+					style += "html h1 {\n";
+					break;
+				case 'Heading 2':
+					style += "html h2 {\n";
+					break;
+				case 'Heading 3':
+					style += "html h3 {\n";
+					break;
+				case 'Heading 4':
+					style += "html h4 {\n";
+					break;
+				case 'Heading 5':
+					style += "html h5 {\n";
+					break;
+				case 'Heading 6':
+					style += "html h6 {\n";
+					break;
+				case 'Paragraph':
+					style += "html p {\n";
+					break;
+				default:
+					style += a + " {\n";
+					break;
+			}
+			for( var b in el )
+			{
+				switch( b )
+				{
+					case 'border':
+						style += 'border: ' + el.border.borderSize + ' ' + el.border.borderStyle + ' ' + el.border.borderColor + ";\n";
+						break;
+					case 'color':
+						style += 'color: ' + el.color + ";\n";
+						break;
+					case 'fontFamily':
+						style += 'font-family: ' + el.fontFamily + ";\n";
+						break;
+					case 'textDecoration':
+						style += 'text-decoration: ' + el.textDecoration + ";\n";
+						break;
+					case 'fontSize':
+						style += 'font-size: ' + el.fontSize + ";\n";
+					case 'fontStyle':
+						style += 'font-style: ' + el.fontStyle + ";\n";
+						break;
+					case 'fontWeight':
+						style += 'font-weight: ' + el.fontWeight + ";\n";
+						break;
+				}
+			}
+			style += "}\n";
+		}
+		else
+		{
+			style += ApplyStyle( styleObject[a], depth + 1 );
+		}
+	}
+	if( depth > 0 ) return style;
+	styleElement.innerHTML = style;
+}
+
 Application.receiveMessage = function( msg )
 {
 	if( !msg.command ) return;
 	
 	switch( msg.command )
 	{
+		case 'applystyle':
+			if( msg.style )
+			{
+				ApplyStyle( msg.style );
+			}
+			break;
+		case 'print_iframe':
+			var f = document.getElementsByTagName( 'iframe' )[0];
+			f.contentWindow.document.title = 'Document';
+			f.contentWindow.print();
+			break;
 		case 'makeinlineimages':
 			/*var eles = ge( 'Editor' ).getElementsByTagName( 'img' );
 			for( var a = 0; a < eles.length; a++ )
@@ -1133,13 +1234,16 @@ function editorCommand( command, value )
 		ed.style.width = Math.floor( defWidth ) + 'px';
 		f.body.style.zoom = 0.6;
 		f.body.style.left = 'calc(50% - 297.5pt)';
-	}
-	else if( command == 'zoom70%' )
+	}*/
+	else if( command == 'zoom75%' )
 	{
-		ed.style.width = Math.floor( defWidth ) + 'px';
-		f.body.style.zoom = 0.7;
-		f.body.style.left = 'calc(50% - 297.5pt)';
-	}
+		if( window.innerWidth >= 600 )
+		{
+			ed.style.width = Math.floor( defWidth ) + 'px';
+			f.body.style.zoom = 0.75;
+			f.body.style.left = 'calc(50% - 297.5pt)';
+		}
+	}/*
 	else if( command == 'zoom80%' )
 	{
 		ed.style.width = Math.floor( defWidth ) + 'px';
@@ -1154,30 +1258,42 @@ function editorCommand( command, value )
 	}*/
 	else if( command == 'zoom100%' )
 	{
-		ed.style.width = Math.floor( defWidth ) + 'px';
-		f.body.style.zoom = 1;
-		f.body.style.left = 'calc(50% - 297.5pt)';
+		if( window.innerWidth >= 600 )
+		{
+			ed.style.width = Math.floor( defWidth ) + 'px';
+			f.body.style.zoom = 1;
+			f.body.style.left = 'calc(50% - 297.5pt)';
+		}
 	}
 	else if( command == 'zoom125%' )
 	{
-		ed.style.width = Math.floor( defWidth * 1.25 ) + 'px';
-		f.body.style.zoom = 1.25;
-		var c = Math.floor( defWidth * 1.25 * 0.5 );
-		f.body.style.left = 'calc(50% - 297.5pt)';
+		if( window.innerWidth >= 600 )
+		{
+			ed.style.width = Math.floor( defWidth * 1.25 ) + 'px';
+			f.body.style.zoom = 1.25;
+			var c = Math.floor( defWidth * 1.25 * 0.5 );
+			f.body.style.left = 'calc(50% - 297.5pt)';
+		}
 	}
 	else if( command == 'zoom150%' )
 	{
-		ed.style.width = Math.floor( defWidth * 1.5 ) + 'px';
-		f.body.style.zoom = 1.5;
-		var c = Math.floor( defWidth * 1.5 * 0.5 );
-		f.body.style.left = 'calc(50% - 297.5pt)';
+		if( window.innerWidth >= 600 )
+		{
+			ed.style.width = Math.floor( defWidth * 1.5 ) + 'px';
+			f.body.style.zoom = 1.5;
+			var c = Math.floor( defWidth * 1.5 * 0.5 );
+			f.body.style.left = 'calc(50% - 297.5pt)';
+		}
 	}
 	else if( command == 'zoom200%' )
 	{
-		ed.style.width = Math.floor( defWidth * 2 ) + 'px';
-		f.body.style.zoom = 2;
-		var c = Math.floor( defWidth * 2 * 0.5 );
-		f.body.style.left = 'calc(50% - 297.5pt)';
+		if( window.innerWidth >= 600 )
+		{
+			ed.style.width = Math.floor( defWidth * 2 ) + 'px';
+			f.body.style.zoom = 2;
+			var c = Math.floor( defWidth * 2 * 0.5 );
+			f.body.style.left = 'calc(50% - 297.5pt)';
+		}
 	}
 	else if( command == 'staticWidth' )
 	{
@@ -1207,6 +1323,81 @@ function editorCommand( command, value )
 	}
 }
 
+var documentStyles = [
+	{
+		name: 'Headings',
+		children: [
+			{
+				name: 'Heading 1',
+				rule: 'h1',
+				data: ''
+			},
+			{
+				name: 'Heading 2',
+				rule: 'h2',
+				data: ''
+			},
+			{
+				name: 'Heading 3',
+				rule: 'h3',
+				data: ''
+			},
+			{
+				name: 'Heading 4',
+				rule: 'h4',
+				data: ''
+			},
+			{
+				name: 'Heading 5',
+				rule: 'h5',
+				data: ''
+			},
+			{
+				name: 'Heading 6',
+				rule: 'h6',
+				data: ''
+			}
+		]
+	},
+	{
+		name: 'Standard format',
+		rule: 'html body',
+		data: ''
+	},
+	{
+		name: 'Paragraph',
+		rule: 'p',
+		data: ''
+	}
+];
+var styleView = null;
+function editStyles()
+{
+	if( styleView ) return;
+	var v = new View( {
+		title: i18n( 'i18n_edit_styles' ),
+		width: 600,
+		height: 500
+	} );
+	v.onClose = function()
+	{
+		styleView = null;
+	};
+	var f = new File( 'Progdir:Templates/style_editor.html' );
+	f.i18n();
+	f.onLoad = function( data )
+	{
+		v.setContent( data, function()
+		{
+			v.sendMessage( {
+				command: 'renderstyles',
+				styles: JSON.stringify( documentStyles )
+			} );
+		} );
+	}
+	f.load();
+};
+
 // 
 function imageWindow( currentImage )
 {
@@ -1226,5 +1417,4 @@ function imageWindow( currentImage )
 	
 	Application.sendMessage( { command: 'insertimage' } );
 }
-
 

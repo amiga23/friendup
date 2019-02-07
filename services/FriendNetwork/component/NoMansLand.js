@@ -2,25 +2,12 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
 
 
 const log = require( './Log')( 'NoMansLand' );
@@ -134,6 +121,7 @@ ns.NoMansLand.prototype.checkClientAuth = function( auth, cid ) {
 ns.NoMansLand.prototype.authFailed = function( err, cid, callback ) {
 	const self = this;
 	const client = self.getClient( cid );
+	log( 'authFailed', err );
 	if ( !client )
 		return;
 	
@@ -176,22 +164,32 @@ ns.NoMansLand.prototype.sendSession = function( cid, sessionId ) {
 ns.NoMansLand.prototype.validate = function( bundle, callback ) {
 	const self = this;
 	log( 'validate', bundle );
-	if ( 'sessionid' === bundle.type ) {
+	if ( 'workspace' === bundle.type ) {
 		checkSessionId( bundle.data );
+		return;
+	}
+	
+	if ( 'application' === bundle.type ) {
+		checkAuthId( bundle.data );
 		return;
 	}
 	
 	callback( 'ERR_AUTH_UNKNOWN_TYPE', null );
 	
 	function checkSessionId( data ) {
-		getFCUser( data.sessionId, userBack );
+		let req = {
+			module    : 'system',
+			command   : 'userinfoget',
+			sessionid : data.token,
+		};
+		getFCUser( req, userBack );
 		function userBack( err, res ) {
 			if ( err ) {
 				callback( err, null );
 				return;
 			}
 			
-			log( 'userBack', res );
+			log( 'sessionId.userBack', res );
 			if ( !res || !res.Name ) {
 				callback( 'ERR_AUTH_INVALID_SESSIONID', null );
 				return;
@@ -208,16 +206,34 @@ ns.NoMansLand.prototype.validate = function( bundle, callback ) {
 		}
 	}
 	
-	function getFCUser( sessionId, reqBack ) {
-		var data = {
-			module    : 'system',
-			command   : 'userinfoget',
-			sessionid : sessionId,
+	function checkAuthId( data ) {
+		log( 'checkAuthId', data );
+		let req = {
+			module  : 'system',
+			command : 'userinfoget',
+			authid  : data.token,
 		};
-		
+		getFCUser( req, userBack );
+		function userBack( err, res ) {
+			if ( err ) {
+				callback( err, null );
+				return;
+			}
+			
+			log( 'authId.userBack', res );
+			if ( !res || !res.Name ) {
+				callback( 'ERR_AUTH_INVALID_AUTHID', null );
+				return;
+			}
+			
+			callback( null, res );
+		}
+	}
+	
+	function getFCUser( auth, reqBack ) {
 		var req = {
 			path : '/system.library/module/',
-			data : data,
+			data : auth,
 			success : success,
 			error : error,
 		};

@@ -1,24 +1,14 @@
 <?php
 
-/*©lpgl*************************************************************************
+/*©lgpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Lesser General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Lesser General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Lesser   *
+* General Public License, found in the file license_lgpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
-
 
 global $Logger, $User;
 
@@ -36,6 +26,18 @@ if( $dir = opendir( 'repository' ) )
 		$p = 'repository/' . $file . '/';
 		$c = new stdClass();
 		$c->Filename = $file;
+		if( isset( $args->packageget ) && $file == $args->packageget )
+		{
+			if( file_exists( 'repository/' . $file . '/package.zip' ) )
+			{
+				FriendHeader( 'Content-Type: application/octet-stream' );
+				FriendHeader( 'Content-Disposition: attachment; filename=package.zip' );
+				closedir( $dir );
+				die( file_get_contents( 'repository/' . $file . '/package.zip' ) );
+			}
+			closedir( $dir );
+			die( 'fail<!--separate-->{"response":"package file does not exist!"}' ); 
+		}
 		if( file_exists( $p . 'Signature.sig' ) )
 		{
 			$c->Signature = file_get_contents( $p . 'Signature.sig' );

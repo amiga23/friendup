@@ -1,25 +1,12 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
 /** @file
  * 
  *  Module definitions
@@ -43,10 +30,14 @@
 #include <util/hashmap.h>
 #include <util/tagitem.h>
 
-#include <system/handler/fsys.h>
+#include <system/fsys/fsys.h>
 #include <util/buffered_string.h>
-#include <mysql/mysqllibrary.h>
+#include <db/sqllib.h>
 #include <application/applicationlibrary.h>
+
+struct EModule;
+
+typedef char *(*module_run_func_t)(struct EModule *em, const char *path, const char *args, FULONG *length);
 
 //
 // Execute Module structure
@@ -54,15 +45,13 @@
 
 typedef struct EModule
 {
-	struct MinNode node;		// list of modules
-	char *Name;					// name of module
-	char *Path;					// full path to module
-	void *handle;				// handle to dynamic object
-
-	char         *(*Run)( struct EModule *em, const char *path, const char *args, FULONG *length );
-	char         *(*GetSuffix)( );
-	
-	void          *em_SB;
+	struct MinNode					node;		// list of modules
+	char							*em_Name;					// name of module
+	char							*em_Path;					// full path to module
+	void							*em_Handle;				// handle to dynamic object
+	module_run_func_t				Run;
+	char							*(*GetSuffix)( );
+	void							*em_SB;
 
 }EModule;
 
@@ -77,12 +66,5 @@ EModule *EModuleCreate( void *sb, const char *path, const char *name );
 //
 
 void EModuleDelete( EModule *mod );
-
-/*
- * type = module;
-handler = treeroot;
-language = php;
-version = 1;
- */
 
 #endif // __MODULE_MODULE_H__

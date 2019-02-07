@@ -1,25 +1,12 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
 /*
  * Generic map implementation.
  */
@@ -32,11 +19,6 @@
 
 #define INITIAL_SIZE (256)
 #define MAX_CHAIN_LENGTH (8)
-
-#define MAP_MISSING -3 // No such element
-#define MAP_FULL -2    // Hashmap is full
-#define MAP_OMEM -1    // Out of Memory
-#define MAP_OK 0       // OK
 
 #include "string.h"
 
@@ -180,7 +162,6 @@ unsigned long lcrc32( const unsigned char *s, unsigned int len )
 	crc32val = 0;
 	for (i = 0;  i < len;  i ++)
 	{
-		//DEBUG("pos %d tabsize %d hash\n", len, sizeof( crc32_tab ) );
 		crc32val = crc32_tab[(crc32val ^ s[i]) & 0xff] ^ (crc32val >> 8);
 	}
 	return crc32val;
@@ -190,22 +171,22 @@ unsigned long lcrc32( const unsigned char *s, unsigned int len )
 // Hash a string
 //
 
-unsigned int HashmapHashInt( Hashmap* in, char* key )
+unsigned int HashmapHashInt( Hashmap* in, const char* key )
 {
     unsigned long hash = lcrc32( (unsigned char*) key, strlen( key ) );
 
 	// Robert Jenkins' 32 bit Mix Function
-	hash += (hash << 12);
-	hash ^= (hash >> 22);
-	hash += (hash << 4);
-	hash ^= (hash >> 9);
-	hash += (hash << 10);
-	hash ^= (hash >> 2);
-	hash += (hash << 7);
-	hash ^= (hash >> 12);
+	hash += SHIFT_LEFT(hash, 12);
+	hash ^= SHIFT_RIGHT(hash, 22);
+	hash += SHIFT_LEFT(hash, 4);
+	hash ^= SHIFT_RIGHT(hash, 9);
+	hash += SHIFT_LEFT(hash, 10);
+	hash ^= SHIFT_RIGHT(hash, 2);
+	hash += SHIFT_LEFT(hash, 7);
+	hash ^= SHIFT_RIGHT(hash, 12);
 
 	// Knuth's Multiplicative Method
-	hash = (hash >> 3) * 2654435761;
+	hash = (SHIFT_RIGHT(hash, 3)) * 2654435761;
 
 	return hash % in->table_size;
 }
@@ -215,7 +196,7 @@ unsigned int HashmapHashInt( Hashmap* in, char* key )
  // to store the point to the item, or MAP_FULL.
  //
  
-int HashmapHash( Hashmap* in, char* key )
+int HashmapHash( Hashmap* in, const char* key )
 {
 	// If full, return immediately
 	if( in->size >= ( in->table_size >> 1 ) )
@@ -252,69 +233,85 @@ int HashmapHash( Hashmap* in, char* key )
 
 int HashmapRehash( Hashmap* in )
 {
-	// Setup the new elements
-	HashmapElement* temp = (HashmapElement*) calloc( in->table_size << 1, sizeof( HashmapElement ) );
-	if(!temp)
+	int i;
+	int oldSize;
+	HashmapElement* curr;
+
+	/* Setup the new elements */
+	Hashmap *m = (Hashmap *) in;
+	HashmapElement* temp = (HashmapElement *) FCalloc( (2 * m->table_size), sizeof( HashmapElement ) );
+	if( temp  == NULL )
 	{
-		FERROR("Cannot allocate memory for temporary hashmap\n");
-		return 0;
+		return MAP_OMEM;
 	}
 
-	// Update the array
-	HashmapElement* curr = in->data;
-	in->data = temp;
+	// Update the array 
+	curr = m->data;
+	m->data = temp;
 
-	// Update the size
-	unsigned int old_size = in->table_size;
-	in->table_size = in->table_size << 1;
-	in->size = 0;
+	// Update the size 
+	oldSize = m->table_size;
+	m->table_size = 2 * m->table_size;
+	m->size = 0;
 
-	// Rehash the elements
-	for( unsigned int i = 0; i < old_size; i++ )
+	/* Rehash the elements */
+	for( i = 0; i < oldSize; i++ )
 	{
-		if( !curr[i].inUse )
-		{
-			continue;
-		}
+        int status;
 
-		if( HashmapPut( in, curr[i].key, curr[i].data ) )
+        if (curr[i].inUse == 0)
 		{
-			return 1;
+            continue;
+		}
+            
+		status = HashmapPut( m, curr[i].key, curr[i].data );
+		if( status != MAP_OK )
+		{
+			FFree(curr);
+			return status;
 		}
 	}
 
-	FFree( curr );
+	FFree(curr);
 
-	return 1;
+	return MAP_OK;
 }
 
 //
 // Add a pointer to the hashmap with some key
 // No data is copied!
-//
+// 'key' MUST BE PERMANENTLY ALLOCATED AND NOT FREED AFTER CALLING THIS FUNCTION
 
-FBOOL HashmapPut( Hashmap* in, char* key, void* value )
+int HashmapPut( Hashmap* in, char* key, void* value )
 {
 	// Find a place to put our value
 	int index = HashmapHash( in, key );
 	while( index == MAP_FULL )
 	{
-		if( !HashmapRehash( in ) )
+		if( HashmapRehash( in ) == MAP_OMEM )
 		{
-			return FALSE;
+			FFree( key );
+			FFree( value );
+			return MAP_OMEM;
 		}
 		index = HashmapHash( in, key );
 	}
 
 	// Set the data
-	if( in->data[index].data ) free( in->data[index].data );
+	if( in->data[index].data )
+	{
+		FFree( in->data[index].data );
+	}
 	in->data[index].data = value;
-	if( in->data[index].key ) free( in->data[index].key );
+	if( in->data[index].key )
+	{
+		FFree( in->data[index].key );
+	}
 	in->data[index].key = key;
 	in->data[index].inUse = TRUE;
 	in->size++; 
 
-	return TRUE;
+	return MAP_OK;
 }
 
 //
@@ -335,7 +332,6 @@ HashmapElement* HashmapGet( Hashmap* in, char* key )
 	// Linear probing, if necessary
 	for( unsigned int i = 0; i < MAX_CHAIN_LENGTH; i++ )
 	{
-		//DEBUG("---------->key %s ----------- data %s \n", key, in->data[curr].data );
 		if( in->data[curr].inUse && strcmp( in->data[curr].key, key ) == 0 )
 		{
 			return &in->data[curr];
@@ -351,7 +347,7 @@ HashmapElement* HashmapGet( Hashmap* in, char* key )
 // Get pointer to data from Hashmap
 //
 
-void* HashmapGetData( Hashmap* in, char* key )
+void* HashmapGetData( Hashmap* in, const char* key )
 {
 	// We need data!
 	if( in == NULL || key == NULL )
@@ -365,14 +361,9 @@ void* HashmapGetData( Hashmap* in, char* key )
 	// Linear probing, if necessary
 	for( unsigned int i = 0; i < MAX_CHAIN_LENGTH; i++ )
 	{
-		//DEBUG("---------->key %s ----------- data %s \n", key, in->data[curr].data );
 		if( in->data[curr].inUse && strcmp( in->data[curr].key, key ) == 0 )
 		{
-			//if( &in->data[curr] != NULL )
-			//{
-				return (in->data[curr].data);
-			//}
-			
+			return (in->data[curr].data);
 		}
 		curr = (curr + 1) % in->table_size;
 	}
@@ -414,6 +405,10 @@ HashmapElement* HashmapIterate( Hashmap* in, unsigned int* iterator )
 
 void HashmapFree( Hashmap* in )
 {
+	if( in == NULL )
+	{
+		return;
+	}
 	HashmapElement e;
 	unsigned int i = 0;
 	
@@ -424,18 +419,14 @@ void HashmapFree( Hashmap* in )
 		e = in->data[i];
 		if( e.inUse == TRUE )
 		{
-			//DEBUG("Remove key %s\n", e.data );
-		
 			if( e.data != NULL ) FFree( e.data );
 			if( e.key  != NULL ) FFree( e.key );
 		}
 	}
-	//DEBUG("hashmap free data\n");
 	if( in->data != NULL )
 	{
 		FFree( in->data );
 	}
-	//DEBUG("Free hashmap\n");
 	FFree( in );
 }
 
@@ -488,44 +479,50 @@ int HashmapAdd( Hashmap *src, Hashmap *hm )
 	return 0;
 }
 
-/*
- * Remove an element with that key from the map
- */
- /*
-TODO: IMPLEMENT ME!!!
-int hashmap_remove(Map_t in, char* key){
+//
+// Remove an element with that key from the map
+//
+
+int HashmapRemove( Hashmap *in, char* key  )
+{
 	int i;
 	int curr;
-	hashmap_map* m;
+	Hashmap* m;
+	
+	m = (Hashmap *) in;
 
-	// Cast the hashmap
-	m = (hashmap_map *) in;
-
-	// Find key
-	curr = hashmap_hash_int(m, key);
+	// Find key 
+	curr = HashmapHashInt( m, key );
 
 	// Linear probing, if necessary
-	for(i = 0; i<MAX_CHAIN_LENGTH; i++){
+	for(i = 0; i<MAX_CHAIN_LENGTH; i++)
+	{
+		int locInUse = m->data[curr].inUse;
+		if( locInUse == 1 )
+		{
+			if( m->data[curr].key != NULL )
+			{
+				if(  strcmp( m->data[curr].key, key ) == 0 )
+				{
+					// Blank out the fields
+					m->data[curr].inUse = 0;
+					if(	m->data[curr].data != NULL )
+					{
+						m->data[curr].data = NULL;
+					}
+				
+					FFree( m->data[curr].key );
+					m->data[curr].key = NULL;
 
-        int inUse = m->data[curr].inUse;
-        if (inUse == 1){
-            if (strcmp(m->data[curr].key,key)==0){
-                // Blank out the fields
-                m->data[curr].inUse = 0;
-                m->data[curr].data = NULL;
-                m->data[curr].key = NULL;
-
-                // Reduce the size
-                m->size--;
-                return MAP_OK;
-            }
+					// Reduce the size
+					m->size--;
+					return MAP_OK;
+				}
+			}
 		}
 		curr = (curr + 1) % m->table_size;
 	}
 
-	// Data not found
+	// Data not found 
 	return MAP_MISSING;
 }
-*/
-
-

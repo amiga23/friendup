@@ -3,7 +3,7 @@ PROJECT_NAME = FriendUp
 INPUT =
 HTML_OUTPUT = html
 RECURSIVE = YES
-EXCLUDE_PATTERNS = ../../build/*
+EXCLUDE_PATTERNS = /home/francois%friendup/build/*
 
 
 ##©#############################################################################

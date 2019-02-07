@@ -1,19 +1,10 @@
 /*©agpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Affero General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Affero General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Affero   *
+* General Public License, found in the file license_agpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
 
@@ -81,7 +72,8 @@ var system = window.system || {};
 		}
 	}
 	
-	ns.Account.prototype.tryLogin = function( resolve, reject ) {
+	ns.Account.prototype.tryLogin = function( resolve, reject )
+	{
 		
 		var self = this;
 		console.log( 'checking account data: ', self );
@@ -109,6 +101,8 @@ var system = window.system || {};
 				Source : self.source,
 				Encoding : self.encoding
 			}
+			
+			console.log( 'self.request( uIdReq ) ', uIdReq );
 			
 			self.request( uIdReq )
 				.then( haveUniqueId )
@@ -184,6 +178,8 @@ var system = window.system || {};
 				tmpPassReq[ 'RecoveryKey' ] = self.recoverykey;
 			}
 			
+			console.log( 'self.request( tmpPassReq ) ', tmpPassReq );
+			
 			self.request( tmpPassReq )
 				.then( gotTmpPass )
 				.catch( tmpPassFailed );
@@ -217,12 +213,16 @@ var system = window.system || {};
 				Source : self.source,
 				Encoding : self.encoding
 			};
+			
+			console.log( 'self.request( signedPassReq ) ', signedPassReq );
+			
 			self.request( signedPassReq )
 				.then( authSuccess )
 				.catch( authFailed );
 				
 			function authSuccess( data )
 			{
+				console.log( 'authSuccess( data ) ', data );
 				loggedIn( data.sessionid );
 			}
 			
@@ -273,7 +273,7 @@ var system = window.system || {};
 	ns.Account.prototype.request = function( req )
 	{
 		var self = this;
-		console.log( 'request', req );
+		console.log( 'request ...', req );
 		if ( self.sessionId )
 			req[ 'SessionID' ] = self.sessionId;
 		
@@ -297,3 +297,4 @@ var system = window.system || {};
 	}
 	
 })( system );
+

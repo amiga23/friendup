@@ -1,31 +1,19 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
-
-//
-// 
-// System/Command
-// 
-//
+/** @file
+ * 
+ * System/Command Body
+ *
+ *  @author PS (Pawel Stefanski)
+ *  @date created 2015
+ */
 
 #include <stdio.h>
 #include <unistd.h>
@@ -54,7 +42,11 @@ FILE * CommandRun( char *command, char *type, int *pid )
 {
 	int child_pid;
 	int fd[2];
-	pipe(fd);
+	if (pipe(fd) != 0)
+	{
+		FERROR("pipe call failed");
+		exit(5);
+	}
 
 	if( ( child_pid = fork() ) == -1 )
 	{
@@ -140,7 +132,6 @@ int main()
     //Using read() so that I have the option of using select() if I want non-blocking flow
     while (read(fileno(fp), command_out, sizeof(command_out)-1) != 0)
     {
-        DEBUG( " %d: %s\n", j++, command_out );
         kill(pid, 9);
         memset(&command_out, 0, sizeof(command_out));
     }
@@ -154,7 +145,6 @@ int main()
 		buffer[ i ] = (char) getc( fp );
 		if( buffer[ i ] == '\n' )
 		{
-		DEBUG("OUT: %s\n", buffer );
 			break;
 		}
 		i++;
@@ -163,7 +153,6 @@ int main()
 	
     //string token;
     //while (getline(output, token, '\n'))
-    //    DEBUG("OUT: %s\n", token.c_str());
 
     CommandClose(fp, pid);
 

@@ -1,25 +1,12 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
 /** @file systembase.c
  * 
  *  Systembase functionality
@@ -45,27 +32,36 @@
 #include <util/string.h>
 #include <dirent.h> 
 #include <stdio.h> 
-#include <unistd.h>
-#include <service/service_manager.h>
-#include <properties/propertieslibrary.h>
+#include <system/services/service_manager.h>
+#include <interface/properties_interface.h>
 #include <ctype.h>
 #include <magic.h>
 #include "web_util.h"
-#include <network/websocket_client.h>
-#include <system/handler/device_handling.h>
+#include <network/websocket_server_client.h>
+#include <system/fsys/device_handling.h>
 #include <core/functions.h>
 #include <util/md5.h>
 #include <network/digcalc.h>
 #include <network/mime.h>
-#include <private-libwebsockets.h>
-#include <system/handler/door_notification.h>
+#include <libwebsockets.h>
+#include <system/fsys/door_notification.h>
+#include <communication/comm_service.h>
+#include <communication/comm_service_remote.h>
+#include <libxml2/libxml/tree.h>
+#include <libxml2/libxml/parser.h>
+#include <hardware/network.h>
+#include <libxml2/libxml/xmlversion.h>
+#include <unistd.h>
+#include <mobile_app/notifications_sink_websocket.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <security/server_checker.h>
+#include <network/websocket_client.h>
 
 #define LIB_NAME "system.library"
 #define LIB_VERSION 		1
 #define LIB_REVISION		0
 #define CONFIG_DIRECTORY	"cfg/"
-//#define LOGOUT_TIME         86400	// one day
-//#define LOGOUT_TIME         3600 // one hour
 
 
 //
@@ -82,13 +78,25 @@ DOSDriver *DOSDriverCreate( SystemBase *sl, const char *path, const char *name )
 
 void DOSDriverDelete( DOSDriver *ddrive );
 
-void SetFriendCoreManager( struct SystemBase *l, FriendCoreManager *lfcm );
-
 void SystemClose( struct SystemBase *l );
 
-Http *SysWebRequest( struct SystemBase *l, char **urlpath, Http **request, UserSession *loggedSession );
+Http *SysWebRequest( struct SystemBase *l, char **urlpath, Http **request, UserSession *loggedSession, int *result );
+
+void RemoveOldLogs( SystemBase *l );
 
 FBOOL skipDBUpdate = FALSE;
+
+int globalFriendCorePort = 0;
+
+// internal
+
+void handle_sigchld( int sig )
+{
+	int saved_errno = errno;
+	DEBUG("SIGCHLD handled!\n");
+	while( waitpid( (pid_t)(-1), 0, WNOHANG) > 0 ){ }
+	errno = saved_errno;
+}
 
 /**
  * SystemBase init function
@@ -98,13 +106,85 @@ FBOOL skipDBUpdate = FALSE;
 
 SystemBase *SystemInit( void )
 {
-	struct SystemBase *l = NULL;
-	char tempString[ 1024 ];
-	Log( FLOG_INFO,  "SystemBase Init\n");
+	
+	//char *tmp = "{\"type\":\"authenticate\",\"data\":{\"serviceKey\":\"qwerty123456789\",\"serviceName\":\"presence\"}}";
+	//int size = strlen ( tmp );
+	//ProcessIncomingRequest( NULL, tmp, size, NULL );
+	
+	socket_init_once();
 
+	struct SystemBase *l = NULL;
+	char tempString[ PATH_MAX ];
+	Log( FLOG_INFO,  "SystemBase Init\n");
+	
+	mkdir( DEFAULT_TMP_DIRECTORY, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH );
+	
 	if( ( l = FCalloc( 1, sizeof( struct SystemBase ) ) ) == NULL )
 	{
 		return NULL;
+	}
+	
+	PropertiesInterfaceInit( &(l->sl_PropertiesInterface) );
+	
+	LIBXML_TEST_VERSION;
+	
+	l->sl_RemoveSessionsAfterTime = 10800;
+	
+	//
+	// sl_Autotask
+	//
+	
+	struct dirent *asdir;
+	
+	l->sl_AutotaskPath = FCalloc( PATH_MAX, sizeof(char) );
+	if( l->sl_AutotaskPath != NULL )
+	{
+		Log( FLOG_INFO, "[SystemBase] ----------------------------------------\n");
+		Log( FLOG_INFO, "[SystemBase] Starting autoscripts\n");
+		Log( FLOG_INFO, "[SystemBase] ----------------------------------------\n");
+		
+		// internal
+
+		struct sigaction sa;
+		sa.sa_handler = &handle_sigchld;
+		sigemptyset(&sa.sa_mask);
+		sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
+		if( sigaction(SIGCHLD, &sa, 0) == -1 )
+		{
+			perror(0);
+		}
+		
+		if( getcwd( l->sl_AutotaskPath, sizeof ( tempString ) ) == NULL )
+		{
+			FERROR("getcwd failed!");
+			exit(5);
+		}
+		strcat( l->sl_AutotaskPath, "/autostart/");
+
+		DIR *asd = opendir( l->sl_AutotaskPath );
+	 
+		if( asd != NULL )
+		{
+			while( ( asdir = readdir( asd ) ) != NULL )
+			{
+				if( asdir->d_name[0] == '.' ) continue;
+				Log( FLOG_INFO,  "[SystemBase] Reading autostart scripts:  %s\n", asdir->d_name );
+			
+				snprintf( tempString, sizeof(tempString), "%s%s", l->sl_AutotaskPath, asdir->d_name );
+				
+				Autotask *loctask = AutotaskNew( "/bin/bash", tempString );
+				if( loctask != NULL )
+				{
+					loctask->node.mln_Succ = (MinNode *)l->sl_Autotasks;
+					l->sl_Autotasks = loctask;
+				}
+			}
+			closedir( asd );
+		}
+		
+		Log( FLOG_INFO, "[SystemBase] ----------------------------------------\n");
+		Log( FLOG_INFO, "[SystemBase] Starting autoscripts END\n");
+		Log( FLOG_INFO, "[SystemBase] ----------------------------------------\n");
 	}
 	
 	SLIB = l;
@@ -121,13 +201,11 @@ SystemBase *SystemInit( void )
 	pthread_mutex_init( &l->sl_InternalMutex, NULL );
 	pthread_mutex_init( &l->sl_ResourceMutex, NULL );
 
-	FriendCoreManager	*fcm    = NULL;				// connection with FriendCores
-	
-	int 				msqllibc;
-	
-	int				sl_Error;					// last error
-
-	getcwd( tempString, sizeof ( tempString ) );
+	if( getcwd( tempString, sizeof ( tempString ) ) == NULL )
+	{
+		FERROR("getcwd failed!");
+		exit(5);
+	}
 	l->handle = dlopen( 0, RTLD_LAZY );
 	
 	l->SystemClose = SystemClose;
@@ -141,30 +219,30 @@ SystemBase *SystemInit( void )
 
 	l->AuthModuleGet = AuthModuleGet;
 	l->AuthModuleDrop = AuthModuleDrop;
-	l->LibraryMYSQLGet = LibraryMYSQLGet;
-	l->LibraryMYSQLDrop = LibraryMYSQLDrop;
+	l->LibrarySQLGet = LibrarySQLGet;
+	l->LibrarySQLDrop = LibrarySQLDrop;
 	l->LibraryApplicationGet = LibraryApplicationGet;
 	l->LibraryApplicationDrop = LibraryApplicationDrop;
-	l->LibraryPropertiesGet = LibraryPropertiesGet;
-	l->LibraryPropertiesDrop = LibraryPropertiesDrop;
 	l->LibraryZGet = LibraryZGet;
 	l->LibraryZDrop = LibraryZDrop;
 	l->LibraryImageGet = LibraryImageGet;
 	l->LibraryImageDrop = LibraryImageDrop;
 	l->WebSocketSendMessage = WebSocketSendMessage;
 	l->WebSocketSendMessageInt = WebSocketSendMessageInt;
+	l->WebsocketWrite = WebsocketWrite;
 	l->SendProcessMessage = SendProcessMessage;
+	l->GetRootDeviceByName = GetRootDeviceByName;
 	l->SystemInitExternal = SystemInitExternal;
 	l->RunMod = RunMod;
 	l->GetSentinelUser = GetSentinelUser;
 	l->UserDeviceMount = UserDeviceMount;
 	l->UserDeviceUnMount = UserDeviceUnMount;
-	l->AddWebSocketConnection = AddWebSocketConnection;
 	l->GetError = GetError;
-	l->SetFriendCoreManager = SetFriendCoreManager;
 	l->Log = Log;
-
-	Log( FLOG_INFO,  "Systembase: Create SQL pooled connections\n");
+	
+	Log( FLOG_INFO, "[SystemBase] ----------------------------------------\n");
+	Log( FLOG_INFO, "[SystemBase] Reading configuration\n");
+	Log( FLOG_INFO, "[SystemBase] ----------------------------------------\n");
 	
 	// open mysql.library
 	
@@ -173,31 +251,54 @@ SystemBase *SystemInit( void )
 	char *pass = "root";
 	char *dbname = "FriendMaster";
 	int port = 3306;
+	char *options = NULL;
 	l->sqlpoolConnections = DEFAULT_SQLLIB_POOL_NUMBER;
 	Props *prop = NULL;
 
 	// Get a copy of the properties.library
-	struct PropertiesLibrary *plib = ( struct PropertiesLibrary *)l->LibraryPropertiesGet( l );
+	//struct PropertiesLibrary *plib = ( struct PropertiesLibrary *)l->LibraryPropertiesGet( l );
+	PropertiesInterface *plib = &(l->sl_PropertiesInterface);
 	
-	//DEBUG("Plibcheck %p lsb %p\n", plib, lsb );
+	if( l->sl_ActiveModuleName )
+	{
+		FFree( l->sl_ActiveModuleName );
+	}
+	l->sl_ActiveModuleName = StringDuplicate( "fcdb.authmod" );
+	l->sl_CacheFiles = TRUE;
+	l->sl_UnMountDevicesInDB =TRUE;
+	l->sl_SocketTimeout = 10000;
+	l->sl_WorkersNumber = WORKERS_MAX;
+	l->sl_USFCacheMax = 102400000;
+	l->sl_DefaultDBLib = StringDuplicate("mysql.library");
+	l->sl_XFrameOption = NULL;
+	l->l_EnableHTTPChecker = 0;
+	
+	strcpy( l->RSA_CLIENT_KEY_PEM, "/home/stefkos/development/friendup/build/testkeys/client.pem" );
+	l->RSA_CLIENT_KEY_PEM[ 0 ] = 0;
+	
 	if( plib != NULL && plib->Open != NULL )
 	{
 		char *ptr = getenv("FRIEND_HOME");
-		char *path = FCalloc( 1000, sizeof( char ) );
+		char *path = FCalloc( 1024, sizeof( char ) );
 		
 		if( ptr != NULL )
 		{
-			sprintf( path, "%scfg/cfg.ini", ptr );
+			snprintf( path, 1024, "%scfg/cfg.ini", ptr );
 		}
 		
 		DEBUG( "[SystemBase] Opening config file: %s\n", path );
+		
+		sprintf( l->RSA_SERVER_CERT, "%s/crt/certificate.pem", ptr );
+		sprintf( l->RSA_SERVER_KEY, "%s/crt/key.pem", ptr );
+		sprintf( l->RSA_SERVER_CA_CERT, "%s/crt/certificate.pem", ptr );
+		sprintf( l->RSA_SERVER_CA_PATH, "%s/crt/", ptr );
 		
 		prop = plib->Open( path );
 		FFree( path );
 		
 		if( prop != NULL)
 		{
-			char *skipUpdate = plib->ReadString( prop, "Core:skipDBUpdate", "false" );
+			char *skipUpdate = plib->ReadStringNCS( prop, "Core:skipDBUpdate", "false" );
 			if( skipUpdate != NULL )
 			{
 				if( strcmp( skipUpdate, "true" ) == 0 )
@@ -205,46 +306,200 @@ SystemBase *SystemInit( void )
 					skipDBUpdate = TRUE;
 				}
 			}
+			char *tmp = plib->ReadStringNCS( prop, "core:DBLib", "mysql.library" );
+			if( tmp != NULL )
+			{
+				if( l->sl_DefaultDBLib != NULL ){ FFree( l->sl_DefaultDBLib ); }
+				l->sl_DefaultDBLib = StringDuplicate( tmp );
+			}
 			
 			DEBUG("[SystemBase] reading login\n");
-			login = plib->ReadString( prop, "DatabaseUser:login", "root" );
+			login = plib->ReadStringNCS( prop, "databaseuser:login", "root" );
 			DEBUG("[SystemBase] user %s\n", login );
-			pass = plib->ReadString( prop, "DatabaseUser:password", "root" );
+			pass = plib->ReadStringNCS( prop, "databaseuser:password", "root" );
 			DEBUG("[SystemBase] password %s\n", pass );
-			host = plib->ReadString( prop, "DatabaseUser:host", "localhost" );
+			host = plib->ReadStringNCS( prop, "databaseuser:host", "localhost" );
 			DEBUG("[SystemBase] host %s\n", host );
-			dbname = plib->ReadString( prop, "DatabaseUser:dbname", "FriendMaster" );
+			dbname = plib->ReadStringNCS( prop, "databaseuser:dbname", "FriendMaster" );
 			DEBUG("[SystemBase] dbname %s\n",dbname );
-			port = plib->ReadInt( prop, "DatabaseUser:port", 3306 );
+			port = plib->ReadIntNCS( prop, "databaseuser:port", 3306 );
 			DEBUG("[SystemBase] port read %d\n", port );
-			l->sqlpoolConnections = plib->ReadInt( prop, "DatabaseUser:connections", DEFAULT_SQLLIB_POOL_NUMBER );
+			l->sqlpoolConnections = plib->ReadIntNCS( prop, "databaseuser:connections", DEFAULT_SQLLIB_POOL_NUMBER );
 			DEBUG("[SystemBase] connections read %d\n", l->sqlpoolConnections );
+			options = plib->ReadStringNCS( prop, "databaseuser:options", NULL );
+			DEBUG("[SystemBase] options %s\n",options );
+			
+			l->sl_CacheFiles = plib->ReadIntNCS( prop, "Options:CacheFiles", 1 );
+			l->sl_UnMountDevicesInDB = plib->ReadIntNCS( prop, "Options:UnmountInDB", 1 );
+			l->sl_SocketTimeout  = plib->ReadIntNCS( prop, "core:SSLSocketTimeout", 10000 );
+			l->sl_USFCacheMax = plib->ReadIntNCS( prop, "core:USFCachePerDevice", 102400000 );
+			
+			l->l_EnableHTTPChecker = plib->ReadIntNCS( prop, "Options:HttpChecker", 0 );
+			
+			char *tptr  = plib->ReadStringNCS( prop, "core:ClientCert", NULL );
+			if( tptr != NULL )
+			{
+				strcpy( l->RSA_CLIENT_KEY_PEM, tptr );
+			}
+			
+			int val = plib->ReadIntNCS( prop, "core:RequireClientCert", 0 );
+			if( val == 1 )
+			{
+				l->l_SSLAcceptFlags = SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT;
+			}
+			else
+			{
+				l->l_SSLAcceptFlags = SSL_VERIFY_PEER;
+			}
+			
+			tptr  = plib->ReadStringNCS( prop, "Core:Certpath", "cfg/crt/" );
+			if( tptr != NULL )
+			{
+				if( tptr[ 0 ] == '/' )
+				{
+					sprintf( l->RSA_SERVER_CERT, "%s%s", tptr, "certificate.pem" );
+					sprintf( l->RSA_SERVER_KEY, "%s%s", tptr, "key.pem" );
+					sprintf( l->RSA_SERVER_CA_CERT, "%s%s", tptr, "certificate.pem" );
+					sprintf( l->RSA_SERVER_CA_PATH, "%s%s", tptr, "/" );
+				}
+				else
+				{
+					sprintf( l->RSA_SERVER_CERT, "%s%s%s", ptr, tptr, "certificate.pem" );
+					sprintf( l->RSA_SERVER_KEY, "%s%s%s", ptr, tptr, "key.pem" );
+					sprintf( l->RSA_SERVER_CA_CERT, "%s%s%s", ptr, tptr, "certificate.pem" );
+					sprintf( l->RSA_SERVER_CA_PATH, "%s%s%s", ptr, tptr, "/" );
+				}
+			}
+			
+			l->sl_WorkersNumber = plib->ReadIntNCS( prop, "Core:Workers", WORKERS_MAX );
+			if( l->sl_WorkersNumber < WORKERS_MIN )
+			{
+				l->sl_WorkersNumber = WORKERS_MIN;
+			}
+			
+			if( l->sl_ActiveModuleName != NULL )
+			{
+				FFree( l->sl_ActiveModuleName );
+			}
+			
+			tptr  = plib->ReadStringNCS( prop, "LoginModules:use", "fcdb.authmod" );
+			if( tptr != NULL )
+			{
+				l->sl_ActiveModuleName = StringDuplicate( tptr );
+			}
+			else
+			{
+				l->sl_ActiveModuleName = StringDuplicate( "fcdb.authmod" );
+			}
+
+			const char *notifications_auth_key = plib->ReadStringNCS( prop, "ServiceKeys:presence", NULL );
+			if( notifications_auth_key )
+			{
+				if( strlen( notifications_auth_key ) > 10 )
+				{
+					WebsocketNotificationsSetAuthKey(notifications_auth_key);
+				}
+				else
+				{
+					Log( FLOG_INFO, "Mobile notifications service - auth key is too short!\n");
+					return NULL;
+				}
+			}
+			else
+			{
+				Log( FLOG_INFO, "Mobile notifications service - no auth key, service will be disabled\n");
+			}
+			
+			l->l_AppleServerHost = StringDuplicate( plib->ReadStringNCS( prop, "NotificationService:host", NULL ) );
+			
+			l->l_AppleServerPort = plib->ReadIntNCS( prop, "NotificationService:port", 9000 );
+
+			l->l_AppleKeyAPI = StringDuplicate( plib->ReadStringNCS( prop, "ServiceKeys:apns", NULL ) );
+			
+			l->l_PresenceKey = StringDuplicate( plib->ReadStringNCS( prop, "ServiceKeys:presence", NULL ) );
+			
+			tptr = plib->ReadStringNCS( prop, "Core:XFrameOption", NULL );
+			if( tptr != NULL )
+			{
+				l->sl_XFrameOption = StringDuplicate( tptr );
+			}
+			
+			globalFriendCorePort = plib->ReadIntNCS( prop, "core:port", FRIEND_CORE_PORT );
 		}
 		else
 		{
 			FERROR( "Prop is just NULL!\n" );
 		}
+		
+		/*
+		if( FriendCoreLockCheckOrCreate() == FALSE )
+		{
+			char *ptr = getenv("FRIEND_HOME");
+			char path[ 2048 ];
+			if( ptr != NULL )
+			{
+				snprintf( path, sizeof(path), "%s.friend_lock%d", ptr, globalFriendCorePort );
+			}
+			else
+			{
+				snprintf( path, sizeof(path), ".friend_lock%d", globalFriendCorePort );
+			}
+			
+			FERROR("Cannot run FriendCore instance on same port\nPlease check if FriendCore is running on same server/port\nPlease check and remove file/dir: '%s' if neccessary\n", path );
+			FFree( l );
+			LogDelete();
+			return NULL;
+		}
+		*/
+		
+		Log( FLOG_INFO, "----------------------------------------\n");
+		Log( FLOG_INFO, "-----Database configuration-------------\n");
+		Log( FLOG_INFO, "-----Host: %s\n", host );
+		Log( FLOG_INFO, "-----Port: %d\n", port );
+		Log( FLOG_INFO, "-----DBName: %s\n", dbname );
+		Log( FLOG_INFO, "-----User: %s\n", login );
+		Log( FLOG_INFO, "----------------------------------------\n");
 
 		l->sqlpool = FCalloc( l->sqlpoolConnections, sizeof( SQLConPool) );
 		if( l->sqlpool != NULL )
 		{
 			unsigned int i = 0;
+			int error = 0;
 
 			for( ; i < (unsigned int)l->sqlpoolConnections; i++ )
 			{
-				l->sqlpool[i ].sqllib = (struct MYSQLLibrary *)LibraryOpen( l,  "mysql.library", 0 );
+				l->sqlpool[i ].sqllib = (struct SQLLibrary *)LibraryOpen( l, l->sl_DefaultDBLib, 0 );
 				if( l->sqlpool[i ].sqllib != NULL )
 				{
-					l->sqlpool[i ].sqllib->Connect( l->sqlpool[i ].sqllib, host, dbname, login, pass, port );
+					error = l->sqlpool[i ].sqllib->SetOption( l->sqlpool[i ].sqllib, options );
+					error = l->sqlpool[i ].sqllib->Connect( l->sqlpool[i ].sqllib, host, dbname, login, pass, port );
+					if( error != 0 )
+					{
+						break;
+					}
+				}
+			}
+			
+			if( error != 0 )
+			{
+				i = 0;
+				for( ; i < (unsigned int)l->sqlpoolConnections; i++ )
+				{
+					LibraryClose( l->sqlpool[ i ].sqllib );
+					l->sqlpool[i ].sqllib = NULL;
 				}
 			}
 		}
 		if( prop ) plib->Close( prop );
 	
-		l->LibraryPropertiesDrop( l, plib );
+		//l->LibraryPropertiesDrop( l, plib );
 	}
 	
-	if( l->sqlpool[ 0 ].sqllib == NULL )
+	Log( FLOG_INFO, "[SystemBase] ----------------------------------------\n");
+	Log( FLOG_INFO, "[SystemBase] Reading configuration END\n");
+	Log( FLOG_INFO, "[SystemBase] ----------------------------------------\n");
+	
+	if( l->sqlpool == NULL || l->sqlpool[ 0 ].sqllib == NULL )
 	{
 		FERROR("Cannot open 'mysql.library' in first slot\n");
 		FFree( l->sqlpool );
@@ -253,7 +508,105 @@ SystemBase *SystemInit( void )
 		return NULL;
 	}
 	
-	//Log( FLOG_INFO,  "Systembase: SQL pooled connections created. DB: %s Host: %s Port: %d Connections: %d\n", dbname, host, port, DEFAULT_SQLLIB_POOL_NUMBER );
+	if( skipDBUpdate == FALSE )
+	{
+		CheckAndUpdateDB( l );
+	}
+	else
+	{
+		Log( FLOG_INFO, "----------------------------------------------------\n");
+		Log( FLOG_INFO, "---------Autoupdatedatabase process skipped---------\n");
+		Log( FLOG_INFO, "----------------------------------------------------\n");
+	}
+	
+	SQLLibrary *lsqllib  = l->LibrarySQLGet( l );
+	if( lsqllib != NULL )
+	{
+		// session timeout
+		
+		char query[ 1024 ];
+		snprintf( query, sizeof(query), "SELECT * FROM `FGlobalVariables` WHERE `Key`='USERSESSION_TIMEOUT'" );
+		
+		void *res = lsqllib->Query( lsqllib, query );
+		if( res != NULL )
+		{
+			char **row;
+			while( ( row = lsqllib->FetchRow( lsqllib, res ) ) ) 
+			{
+				// Id, Key, Value, Comment, date
+			
+				DEBUG("[SystemBase] \tFound database entry-> ID '%s' Key '%s', Value '%s', Comment '%s', Date '%s'\n", row[ 0 ], row[ 1 ], row[ 2 ], row[ 3 ], row[ 4 ] );
+			
+				FLONG tmp = atol( row[ 2 ] );
+				if( tmp > 30 )
+				{
+					l->sl_RemoveSessionsAfterTime = tmp;
+				}
+				else
+				{
+					l->sl_RemoveSessionsAfterTime = 30;
+				}
+			}
+			lsqllib->FreeResult( lsqllib, res );
+		}
+		
+		// Log size
+		
+		l->sl_MaxLogsInMB = 0;
+		
+		snprintf( query, sizeof(query), "SELECT * FROM `FGlobalVariables` WHERE `Key`='MAX_MB_LOGS_SIZE'" );
+		
+		res = lsqllib->Query( lsqllib, query );
+		if( res != NULL )
+		{
+			char **row;
+			while( ( row = lsqllib->FetchRow( lsqllib, res ) ) ) 
+			{
+				// Id, Key, Value, Comment, date
+			
+				DEBUG("[SystemBase] \tFound database entry-> ID '%s' Key '%s', Value '%s', Comment '%s', Date '%s'\n", row[ 0 ], row[ 1 ], row[ 2 ], row[ 3 ], row[ 4 ] );
+			
+				FLONG tmp = atol( row[ 2 ] );
+				l->sl_MaxLogsInMB = tmp;
+			}
+			lsqllib->FreeResult( lsqllib, res );
+		}
+		
+		// dictionary
+		
+		l->sl_Dictionary = DictionaryNew( lsqllib );
+		l->LibrarySQLDrop( l, lsqllib );
+	}
+	else
+	{
+		FERROR("Cannot open 'mysql.library' instance!\n");
+		return NULL;
+	}
+	
+	
+	l->fcm = FriendCoreManagerNew();
+
+	l->sl_WorkerManager = WorkerManagerNew( l->sl_WorkersNumber );
+	if( FriendCoreManagerInit( l->fcm ) != 0 )
+	{
+		FriendCoreInstance *fci = l->fcm->fcm_FriendCores;
+		while( fci != NULL )
+		{
+			fci->fci_Closed = TRUE;
+			
+			fci = (FriendCoreInstance *) fci->node.mln_Succ;
+		}
+		
+		if( l->fcm->fcm_WebSocket != NULL )
+		{
+			WebSocketDelete( l->fcm->fcm_WebSocket );
+			l->fcm->fcm_WebSocket = NULL;
+		}
+		
+		FERROR("FriendCoreManagerInit fail!\n");
+		SystemClose( l );
+		return NULL;
+	}
 	
 	Log( FLOG_INFO,  "[SystemBase] Systembase: Initialize interfaces\n" );
 	
@@ -265,20 +618,7 @@ SystemBase *SystemInit( void )
 	CommServiceInterfaceInit( &(l->sl_CommServiceInterface) );
 	CommServiceRemoteInterfaceInit( &(l->sl_CommServiceRemoteInterface) );
 
-	l->alib = l->LibraryApplicationGet( l );
-	// dictionary
-	
-	MYSQLLibrary *lsqllib  = l->LibraryMYSQLGet( l );
-	if( lsqllib != NULL )
-	{
-		l->sl_Dictionary = DictionaryNew( lsqllib );
-	}
-	else
-	{
-		FERROR("Cannot open 'mysql.library' instance!\n");
-		return NULL;
-	}
-	l->LibraryMYSQLDrop( l, lsqllib );
+	l->alib = (struct ApplicationLibrary *)LibraryOpen( l, "application.library", 0 ); //l->LibraryApplicationGet( l );
 
 	l->ilib = l->LibraryImageGet( l );
 	
@@ -288,7 +628,11 @@ SystemBase *SystemInit( void )
 		FERROR("[ERROR]: CANNOT OPEN z.library!\n");
 	}
 	
-	DIR *d;
+	Log( FLOG_INFO, "[SystemBase] ----------------------------------------\n");
+	Log( FLOG_INFO, "[SystemBase] Create modules\n");
+	Log( FLOG_INFO, "[SystemBase] ----------------------------------------\n");
+	
+//	DIR *d;
 	struct dirent *dir;
 	
 	// modules
@@ -305,7 +649,7 @@ SystemBase *SystemInit( void )
 	
 	// all modules will be avaiable in system.library folder/emod/ subfolder
 
-	d = opendir( l->sl_ModPath );
+	DIR *d = opendir( l->sl_ModPath );
 	
 	if( d )
 	{
@@ -320,28 +664,14 @@ SystemBase *SystemInit( void )
 			if( locmod != NULL )
 			{
 				DEBUG("[SystemBase] mod created, adding to list\n");
-				if( l->sl_Modules == NULL )
-				{
-					l->sl_Modules = locmod;
-				}
-				else
-				{
-					EModule *lmod = l->sl_Modules;
-
-					while( lmod->node.mln_Succ != NULL )
-					{
-						lmod = (EModule *)lmod->node.mln_Succ;
-					}
-					lmod->node.mln_Succ = (struct MinNode *)locmod;	// add new module to list
-
-				}
+				locmod->node.mln_Succ = (MinNode *)l->sl_Modules;
+				l->sl_Modules = locmod;
 			}
 			else
 			{
 				DEBUG("Cannot load mod %s\n", dir->d_name );
 			}
 		}
-		
 		closedir( d );
 	}
 	
@@ -355,8 +685,6 @@ SystemBase *SystemInit( void )
 	{
 		if( lmod->GetSuffix != NULL )
 		{
-			//DEBUG("SEARCHING FILESYSTEM %s found %s\n", type, lmod->GetSuffix() );
-			
 			if( strcmp( lmod->GetSuffix(), "php" ) == 0 )
 			{
 				l->sl_PHPModule = lmod;
@@ -366,11 +694,23 @@ SystemBase *SystemInit( void )
 		lmod = (EModule *)lmod->node.mln_Succ;
 	}
 	
+	Log( FLOG_INFO, "[SystemBase] ----------------------------------------\n");
+	Log( FLOG_INFO, "[SystemBase] Create modules END\n");
+	Log( FLOG_INFO, "[SystemBase] ----------------------------------------\n");
+	
 	//
 	// login modules
 	//
 	
-	getcwd( tempString, sizeof ( tempString ) );
+	Log( FLOG_INFO, "[SystemBase] ----------------------------------------\n");
+	Log( FLOG_INFO, "[SystemBase] Create authentication modules\n");
+	Log( FLOG_INFO, "[SystemBase] ----------------------------------------\n");
+	
+	if (getcwd( tempString, sizeof ( tempString ) ) == NULL)
+	{
+		FERROR("getcwd failed!");
+		exit(5);
+	}
 	
 	l->sl_LoginModPath = FCalloc( 1025, sizeof( char ) );
 	if( l->sl_LoginModPath == NULL )
@@ -383,37 +723,44 @@ SystemBase *SystemInit( void )
 	strcpy( l->sl_LoginModPath, tempString );
 	strcat( l->sl_LoginModPath, "/authmods/");
 	
-	// all modules will be avaiable in system.library folder/emod/ subfolder
+	// all modules will be avaiable in system.library folder/authmods/ subfolder
 
-	l->sl_ActiveAuthModule = l->sl_AuthModules;
+	l->sl_ActiveAuthModule = NULL;
 	
 	d = opendir( l->sl_LoginModPath );
 	
 	if( d != NULL )
 	{
+		// we are loading default authentication module
+		
+		AuthMod *locmod = AuthModNew( l,  l->sl_LoginModPath, "fcdb.authmod", 0, NULL );
+		if( locmod != NULL )
+		{
+			l->sl_DefaultAuthModule = locmod;
+			l->sl_ActiveAuthModule = locmod;
+		}
+		
+		// loading additional developer modules
+		
 		while( ( dir = readdir( d ) ) != NULL )
 		{
-			if( dir->d_name[0] == '.' ) continue;
+			if( dir->d_name[0] == '.' || strcmp( dir->d_name, "fcdb.authmod" ) == 0 ) continue;
 			Log( FLOG_INFO,  "[SystemBase] Reading auth modules:  %s fullauthmodpath %s\n", dir->d_name, tempString );
 			
-			AuthMod *locmod = AuthModNew( l,  l->sl_LoginModPath, dir->d_name, 0 );
+			locmod = AuthModNew( l,  l->sl_LoginModPath, dir->d_name, 0, l->sl_DefaultAuthModule );
 			if( locmod != NULL )
 			{
+				locmod->node.mln_Succ = (MinNode *)l->sl_AuthModules;
+				l->sl_AuthModules = locmod;
+				
+				if( strcmp( locmod->am_Name, l->sl_ActiveModuleName ) == 0 )
+				{
+					l->sl_ActiveAuthModule = locmod;
+					INFO("[SystemBase] Default login module set to : %s\n", l->sl_ActiveAuthModule->am_Name );
+					break;
+				}
+				
 				DEBUG("[SystemBase] AUTHMOD created, adding to list\n");
-				if( l->sl_AuthModules == NULL )
-				{
-					l->sl_AuthModules = locmod;
-				}
-				else
-				{
-					AuthMod *lmod = l->sl_AuthModules;
-
-					while( lmod->node.mln_Succ != NULL )
-					{
-						lmod = (AuthMod *)lmod->node.mln_Succ;
-					}
-					lmod->node.mln_Succ = (struct MinNode *)locmod;	// add new module to list
-				}
 			}
 			else
 			{
@@ -423,91 +770,51 @@ SystemBase *SystemInit( void )
 		closedir( d );
 	}
 	
-	char defaultAuth[ 128 ];
-	defaultAuth[ 0 ] = 0;
-	char *def = "fcdb.authmod";
-	strcpy( defaultAuth, def );
-	
-/*
+	if( l->sl_ActiveModuleName != NULL )
 	{
-		struct PropertiesLibrary *plib = NULL;
-		Props *prop = NULL;
-	
-		if( ( plib = (struct PropertiesLibrary *)LibraryOpen( l, "properties.library", 0 ) ) != NULL )
-		{
-			char *ptr, path[ 1024 ];
-			path[ 0 ] = 0;
-	
-			ptr = getenv("FRIEND_HOME");
-			if( ptr != NULL )
-			{
-				sprintf( path, "%scfg/cfg.ini", ptr );
-			}
 
-			prop = plib->Open( path );
-			if( prop != NULL)
-			{
-
-				char *tmp  = plib->ReadString( prop, "LoginModules:use", "fcdb.authmod" );
-				if( tmp != NULL )
-				{
-					strcpy( defaultAuth, tmp );
-				}
-				
-				plib->Close( prop );
-			}
-			
-			LibraryClose( ( struct Library *)plib );
-		}
-	}
-*/
-	// Get auth module
-	if( strlen( defaultAuth ) > 0 )
-	{
-		AuthMod *mod = l->sl_AuthModules;
-		l->sl_ActiveModuleName = StringDuplicate( defaultAuth );
-		while( mod != NULL )
-		{
-			if( strcmp( mod->am_Name, l->sl_ActiveModuleName ) == 0 )
-			{
-				l->sl_ActiveAuthModule = mod;
-				INFO("[SystemBase] Default login module set to : %s\n", l->sl_ActiveAuthModule->am_Name );
-				break;
-			}
-			mod = (AuthMod *) mod->node.mln_Succ;
-		}
-		if( l->sl_ActiveAuthModule == NULL )
-		{
-			FFree( l->sl_ActiveModuleName );
-			l->sl_ActiveModuleName = NULL;
-			FERROR("ActiveAuthModule = NULL!\n");
-			return NULL;
-		}
 	}
 	else
 	{
-		FERROR("Default path not provided\n");
+		FERROR("Authentication module not provided\n");
 		return NULL;	
 	}
 	
 	Log( FLOG_INFO, "AUTHOD master set to %s\n", l->sl_ActiveAuthModule->am_Name );
 	
-	// open fcdb.logmod
+	Log( FLOG_INFO, "[SystemBase] ----------------------------------------\n");
+	Log( FLOG_INFO, "[SystemBase] Create authentication modules END\n");
+	Log( FLOG_INFO, "[SystemBase] ----------------------------------------\n");
 	
-	l->sl_ActiveAuthModule = l->AuthModuleGet( l );
-	
-	Log( FLOG_INFO,  "[SystemBase] scanning drivers\n");
+	Log( FLOG_INFO, "[SystemBase] ----------------------------------------\n");
+	Log( FLOG_INFO, "[SystemBase] Create filesystem handlers\n");
+	Log( FLOG_INFO, "[SystemBase] ----------------------------------------\n");
 	
 	RescanHandlers( l );
 	
+	Log( FLOG_INFO, "[SystemBase] ----------------------------------------\n");
+	Log( FLOG_INFO, "[SystemBase] Create filesystem handlers END\n");
+	Log( FLOG_INFO, "[SystemBase] ----------------------------------------\n");
+	
+	Log( FLOG_INFO, "[SystemBase] ----------------------------------------\n");
+	Log( FLOG_INFO, "[SystemBase] Create DOSDrivers\n");
+	Log( FLOG_INFO, "[SystemBase] ----------------------------------------\n");
+	
 	RescanDOSDrivers( l );
 	
+	Log( FLOG_INFO, "[SystemBase] ----------------------------------------\n");
+	Log( FLOG_INFO, "[SystemBase] Create DOSDrivers END\n");
+	Log( FLOG_INFO, "[SystemBase] ----------------------------------------\n");
+	
+#ifdef __DEBUG
 	if( ( l->sl_Magic = magic_open(MAGIC_CHECK|MAGIC_MIME_TYPE) ) != NULL )
+#else
+	if( ( l->sl_Magic = magic_open(MAGIC_NONE|MAGIC_MIME_TYPE) ) != NULL )
+#endif
 	{
-		// TODO: Do we really need "/usr/share/file/magic.mgc" ? (static path)
-		int err = magic_load( l->sl_Magic, "/usr/share/file/magic.mgc" );
+		int err = magic_load( l->sl_Magic, NULL/*use default database*/ ); // @BG-655
 		DEBUG("[SystemBase] Magic load return %d\n", err );
-		err = magic_compile( l->sl_Magic, "/usr/share/file/magic.mgc" );
+		err = magic_compile( l->sl_Magic, NULL/*use default database*/ ); // @BG-655
 		DEBUG("[SystemBase] Magic compile return %d\n", err );
 	}
 	else
@@ -519,9 +826,29 @@ SystemBase *SystemInit( void )
 	//
 	//
 	
-	Log( FLOG_INFO,  "[SystemBase] create managers\n");
+	Log( FLOG_INFO, "[SystemBase] ----------------------------------------\n");
+	Log( FLOG_INFO, "[SystemBase] Create Managers\n");
+	Log( FLOG_INFO, "[SystemBase] ----------------------------------------\n");
 	
 	// create all managers
+	
+	l->sl_WDavTokM = WebdavTokenManagerNew( l );
+	if( l->sl_WDavTokM == NULL )
+	{
+		Log( FLOG_ERROR, "Cannot initialize WebdavTokenManager\n");
+	}
+	
+	l->sl_KeyM = FKeyManagerNew( l );
+	if( l->sl_KeyM == NULL )
+	{
+		Log( FLOG_ERROR, "Cannot initialize FKeyManager\n");
+	}
+	
+	l->sl_CacheUFM = CacheUFManagerNew( l->sl_USFCacheMax, 0 );
+	if( l->sl_CacheUFM == NULL )
+	{
+		Log( FLOG_ERROR, "Cannot initialize CacheUFManager\n");
+	}
 	
 	l->sl_FSM = FSManagerNew( l );
 	if( l->sl_FSM == NULL )
@@ -591,28 +918,79 @@ SystemBase *SystemInit( void )
 		Log( FLOG_ERROR, "Cannot initialize AppSessionManager\n");
 	}
 	
+	l->sl_DOSTM = DOSTokenManagerNew( l );
+	if( l->sl_DOSTM == NULL )
+	{
+		Log( FLOG_ERROR, "Cannot initialize DOSTokenManager\n");
+	}
+	
+	l->sl_CalendarManager = CalendarManagerNew( l );
+	if( l->sl_CalendarManager == NULL )
+	{
+		Log( FLOG_ERROR, "Cannot initialize sl_MobileManager\n");
+	}
+	
+	l->sl_NotificationManager = NotificationManagerNew( l );
+	if( l->sl_NotificationManager == NULL )
+	{
+		Log( FLOG_ERROR, "Cannot initialize sl_NotificationManager\n");
+	}
+	
+	
+	Log( FLOG_INFO, "[SystemBase] ----------------------------------------\n");
+	Log( FLOG_INFO, "[SystemBase] Create Managers END\n");
+	Log( FLOG_INFO, "[SystemBase] ----------------------------------------\n");
+	
 	//
 	//
 	//
 	
-	Log( FLOG_INFO,  "[SystemBase] create default events\n");
+	Log( FLOG_INFO, "[SystemBase] ----------------------------------------\n");
+	Log( FLOG_INFO, "[SystemBase] Register Events\n");
+	Log( FLOG_INFO, "[SystemBase] ----------------------------------------\n");
 	
+	#define MINS1 60
 	#define MINS5 300
 	#define MINS6 460
 	#define MINS30 1800
 	#define MINS60 MINS6*10
 	#define MINS360 6*MINS60
+	#define HOUR12 12*MINS60
+	#define DAYS1 24*MINS60
+	#define DAYS5 5*24*MINS60
 
-	CoreEvent *nce = EventAdd( l->sl_EventManager, DoorNotificationRemoveEntries, l, time( NULL )+MINS30, MINS30, -1 );
-	nce = EventAdd( l->sl_EventManager, USMRemoveOldSessions, l, time( NULL )+MINS360, MINS360, -1 );
-	//TODO test, to remove
-	//nce = EventAdd( l->sl_EventManager, USMRemoveOldSessions, l, time( NULL )+130, 130, -1 );
-	nce = EventAdd( l->sl_EventManager, PIDThreadManagerRemoveThreads, l->sl_PIDTM, time( NULL )+MINS60, MINS60, -1 );
+	EventAdd( l->sl_EventManager, DoorNotificationRemoveEntries, l, time( NULL )+MINS30, MINS30, -1 );
+	EventAdd( l->sl_EventManager, USMRemoveOldSessions, l, time( NULL )+MINS360, MINS360, -1 );
+	// test, to remove
+	EventAdd( l->sl_EventManager, PIDThreadManagerRemoveThreads, l->sl_PIDTM, time( NULL )+MINS60, MINS60, -1 );
+	EventAdd( l->sl_EventManager, CacheUFManagerRefresh, l->sl_CacheUFM, time( NULL )+DAYS5, DAYS5, -1 );
+	
+	EventAdd( l->sl_EventManager, WebdavTokenManagerDeleteOld, l->sl_WDavTokM, time( NULL )+MINS360, MINS360, -1 );
+	
+	EventAdd( l->sl_EventManager, CommServicePING, l->fcm->fcm_CommService, time( NULL )+MINS1, MINS1, -1 );
+	
+	EventAdd( l->sl_EventManager, DOSTokenManagerAutoDelete, l->sl_DOSTM, time( NULL )+MINS5, MINS5, -1 );
+	
+	EventAdd( l->sl_EventManager, RemoveOldLogs, l, time( NULL )+HOUR12, HOUR12, -1 );
+	
+	//@BG-678 
+	//EventAdd( l->sl_EventManager, USMCloseUnusedWebSockets, l->sl_USM, time( NULL )+MINS5, MINS5, -1 );
+	
+	if( l->l_EnableHTTPChecker == 1 )
+	{
+		EventAdd( l->sl_EventManager, CheckServerAndRestart, l, time( NULL )+30, 30, -1 );
+	}
 	
 	l->sl_USM->usm_UM = l->sl_UM;
 	l->sl_UM->um_USM = l->sl_USM;
 	
+	Log( FLOG_INFO, "[SystemBase] ----------------------------------------\n");
+	Log( FLOG_INFO, "[SystemBase] Register Events END\n");
+	Log( FLOG_INFO, "[SystemBase] ----------------------------------------\n");
+	
 	Log( FLOG_INFO,  "[SystemBase] base initialized properly\n");
+	
+	// we cannot open libs inside another init
 
 	return ( void *)l;
 }
@@ -629,6 +1007,29 @@ void SystemClose( SystemBase *l )
 	{
 		FERROR("SystemBase is NULL\n");
 		return;
+	}
+	
+	if( l->l_APNSConnection != NULL )
+	{
+		WebsocketAPNSConnectorDelete( l->l_APNSConnection );
+		l->l_APNSConnection = NULL;
+	}
+	
+	if( l->sl_MobileManager != NULL )
+	{
+		MobileManagerDelete( l->sl_MobileManager );
+	}
+	
+	DEBUG("[SystemBase] close event manager\n");
+	if( l->sl_EventManager != NULL )
+	{
+		EventManagerDelete( l->sl_EventManager );
+	}
+	
+	if( l->fcm != NULL )
+	{
+		FriendCoreManagerDelete( l->fcm );
+		l->fcm = NULL;
 	}
 	
 	Log( FLOG_INFO, "[SystemBase] SystemClose in progress\n");
@@ -663,12 +1064,6 @@ void SystemClose( SystemBase *l )
 		}
 	}*/
 	
-	DEBUG("[SystemBase] close event manager\n");
-	if( l->sl_EventManager != NULL )
-	{
-		EventManagerDelete( l->sl_EventManager );
-	}
-	
 	if( l->cm != NULL )
 	{
 		CacheManagerDelete( l->cm );
@@ -681,7 +1076,6 @@ void SystemClose( SystemBase *l )
 	if( l->sl_Dictionary )
 	{
 		DictionaryDelete( l->sl_Dictionary );
-		l->sl_Dictionary = NULL;
 	}
 	
 	// Close image library
@@ -694,10 +1088,20 @@ void SystemClose( SystemBase *l )
 	{
 		EModule *remm = lmod;
 		lmod = (EModule *)lmod->node.mln_Succ;
-		DEBUG("[SystemBase] Remove module %s\n", remm->Name );
+		DEBUG("[SystemBase] Remove module %s\n", remm->em_Name );
 		EModuleDelete( remm );
 	}
 
+	DEBUG("Delete Managers\n");
+	
+	if( l->sl_NotificationManager != NULL )
+	{
+		NotificationManagerDelete( l->sl_NotificationManager );
+	}
+	if( l->sl_CalendarManager != NULL )
+	{
+		CalendarManagerDelete( l->sl_CalendarManager );
+	}
 	if( l->sl_USM != NULL )
 	{
 		USMDelete( l->sl_USM );
@@ -725,6 +1129,22 @@ void SystemClose( SystemBase *l )
 	if( l->sl_ULM != NULL )
 	{
 		UserLoggerManagerDelete( l->sl_ULM );
+	}
+	if( l->sl_CacheUFM != NULL )
+	{
+		CacheUFManagerDelete( l->sl_CacheUFM );
+	}
+	if( l->sl_KeyM != NULL )
+	{
+		FKeyManagerDelete( l->sl_KeyM );
+	}
+	if( l->sl_WDavTokM != NULL )
+	{
+		WebdavTokenManagerDelete( l->sl_WDavTokM );
+	}
+	if( l->sl_DOSTM != NULL )
+	{
+		DOSTokenManagerDelete( l->sl_DOSTM );
 	}
 	
 	// Remove sentinel from active memory
@@ -756,12 +1176,20 @@ void SystemClose( SystemBase *l )
 	Log( FLOG_INFO,  "[SystemBase] Release filesystems\n");
 	// release fsystems
 	FHandler *lsys = l->sl_Filesystems;
+
 	while( lsys != NULL )
 	{
 		FHandler *rems = lsys;
 		lsys = (FHandler *)lsys->node.mln_Succ;
 		DEBUG("[SystemBase] Remove fsys %s\n", rems->Name );
 		FHandlerDelete( rems );
+	}
+	
+	if( l->sl_WorkerManager != NULL )
+	{
+		DEBUG( "[FriendCore] Shutting down worker manager.\n" );
+		WorkerManagerDelete( l->sl_WorkerManager );
+		l->sl_WorkerManager = NULL;
 	}
 	
 	// Close user library
@@ -785,8 +1213,14 @@ void SystemClose( SystemBase *l )
 		AuthModDelete( rmod );
 	}
 	
+	if( l->sl_DefaultAuthModule != NULL )
+	{
+		AuthModDelete( l->sl_DefaultAuthModule );
+	}
+	
 	Log( FLOG_INFO,  "[SystemBase] Closing application.library\n");
 	// Application lib
+	
 	if( l->alib != NULL )
 	{
 		LibraryClose( l->alib );
@@ -810,8 +1244,7 @@ void SystemClose( SystemBase *l )
 		
 		FFree( l->sqlpool );
 	}
-	mysql_library_end();
-	
+
 	// release them all strings ;)
 	if( l->sl_ModPath )
 	{
@@ -822,13 +1255,6 @@ void SystemClose( SystemBase *l )
 	{
 		FFree( l->sl_FSysPath );
 		l->sl_FSysPath = NULL;
-	}
-	
-	// Close properties.library
-	if( l->plib ) 
-	{
-		DEBUG( "[SystemBase] Seems we still have the properties library. Remove it.\n" );
-		LibraryClose( l->plib );
 	}
 	
 	// close magic door of awesomeness!
@@ -848,7 +1274,51 @@ void SystemClose( SystemBase *l )
 	pthread_mutex_destroy( &l->sl_ResourceMutex );
 	pthread_mutex_destroy( &l->sl_InternalMutex );
 	
+	Autotask *at = l->sl_Autotasks;
+	while( at != NULL )
+	{
+		Autotask *rem = at;
+		at = (Autotask *)at->node.mln_Succ;
+		
+		AutotaskDelete( rem );
+	}
+	
+	// delete autotasks
+	if( l->sl_AutotaskPath )
+	{
+		FFree( l->sl_AutotaskPath );
+	}
+	
+	if( l->sl_DefaultDBLib != NULL )
+	{ 
+		FFree( l->sl_DefaultDBLib ); 
+	}
+	
+	if( l->sl_XFrameOption != NULL )
+	{
+		FFree( l->sl_XFrameOption );
+	}
+	
+	if( l->l_AppleServerHost != NULL )
+	{
+		FFree( l->l_AppleServerHost );
+	}
+
+	if( l->l_AppleKeyAPI != NULL )
+	{
+		FFree( l->l_AppleKeyAPI );
+	}
+	
+	if( l->l_PresenceKey != NULL )
+	{
+		FFree( l->l_PresenceKey );
+	}
+	
+	xmlCleanupParser();
+	
 	Log( FLOG_INFO,  "[SystemBase] Systembase closed.\n");
+	
+	FriendCoreLockRelease();
 }
 
 /**
@@ -864,14 +1334,9 @@ int SystemInitExternal( SystemBase *l )
 	DEBUG("[SystemBase] SystemInitExternal\n");
 	
 	USMRemoveOldSessionsinDB( l );
-	
-	if( skipDBUpdate == FALSE )
-	{
-		CheckAndUpdateDB( l );
-	}
-	
+
 	DEBUG("[SystemBase] init users and all stuff connected to them\n");
-	MYSQLLibrary *sqllib  = l->LibraryMYSQLGet( l );
+	SQLLibrary *sqllib  = l->LibrarySQLGet( l );
 	if( sqllib != NULL )
 	{
 		//  get all users active
@@ -891,23 +1356,24 @@ int SystemInitExternal( SystemBase *l )
 		if( l->sl_Sentinel == NULL )
 		{
 			DEBUG( "[SystemBase] Creating sentinel.\n" );
-			Props *prop = SLIB->plib->Open( "cfg/cfg.ini" );
+			PropertiesInterface *plib = &(SLIB->sl_PropertiesInterface);
+			Props *prop = plib->Open( "cfg/cfg.ini" );
 			if( prop != NULL )
 			{
 				// Do we even want a sentinel?
-				char *userTest = SLIB->plib->ReadString( prop, "Core:SentinelUsername", NULL );
+				char *userTest = plib->ReadStringNCS( prop, "Core:SentinelUsername", NULL );
 				if( userTest != NULL )
 				{
 					l->sl_Sentinel = FCalloc( 1, sizeof( Sentinel ) );
 					if( l->sl_Sentinel != NULL )
 					{
 						l->sl_Sentinel->s_ConfigUsername = StringDuplicate( userTest );
-						l->sl_Sentinel->s_ConfigPassword = StringDuplicate( SLIB->plib->ReadString( prop, "Core:SentinelPassword", NULL ) );
+						l->sl_Sentinel->s_ConfigPassword = StringDuplicate( plib->ReadStringNCS( prop, "Core:SentinelPassword", NULL ) );
 					
 						memcpy( l->sl_Sentinel->s_FCID, l->fcm->fcm_ID, FRIEND_CORE_MANAGER_ID_SIZE );
 					}
 				}
-				SLIB->plib->Close( prop );
+				plib->Close( prop );
 			}
 			
 			if( l->sl_Sentinel != NULL )
@@ -933,13 +1399,15 @@ int SystemInitExternal( SystemBase *l )
 		// get all user sessions from DB
 		//
 	
-		l->sl_USM->usm_Sessions = USMGetSessionsByTimeout( l->sl_USM, LOGOUT_TIME );
+		l->sl_USM->usm_Sessions = USMGetSessionsByTimeout( l->sl_USM, l->sl_RemoveSessionsAfterTime );
 		UserSession *usess = l->sl_USM->usm_Sessions;
 		DEBUG("[SystemBase] Got users by timeout\n");
 		
 		while( usess != NULL )
 		{
 			DEBUG("[SystemBase] Assigning sessions to users by ID %ld\n", usess->us_ID );
+			
+			l->sl_USM->usm_SessionCounter++;
 			
 			// checking if user exist, if not it is created
 			User *usr = l->sl_UM->um_Users;
@@ -1020,6 +1488,7 @@ int SystemInitExternal( SystemBase *l )
 			}
 			else
 			{
+				DEBUG("[SystemBase] Sentinel user is not avaiable\n");
 			}
 		}
 		
@@ -1051,7 +1520,7 @@ int SystemInitExternal( SystemBase *l )
 		if( l->sl_Sentinel != NULL && l->sl_Sentinel->s_User != NULL )
 		{
 			FBOOL foundRemoteSession = FALSE;
-			UserSessList *sl = l->sl_Sentinel->s_User->u_SessionsList;
+			UserSessListEntry *sl = l->sl_Sentinel->s_User->u_SessionsList;
 			while( sl != NULL )
 			{
 				UserSession *locses = sl->us;
@@ -1059,14 +1528,14 @@ int SystemInitExternal( SystemBase *l )
 				{
 					foundRemoteSession = TRUE;
 				}
-				sl = (UserSessList *) sl->node.mln_Succ;
+				sl = (UserSessListEntry *) sl->node.mln_Succ;
 			}
 			
 			// remote session is missing, we are adding it
 			
 			if( foundRemoteSession == FALSE )
 			{
-				DEBUG("[SystemBase] REMOTE SESSION WILL BE CREATED FOR SENTINEL\n");
+				DEBUG("[SystemBase] Remote session will be created for Sentinel\n");
 				
 				UserSession *ses = UserSessionNew( "remote", "remote" );
 				if( ses != NULL )
@@ -1076,6 +1545,8 @@ int SystemInitExternal( SystemBase *l )
 					
 					UserAddSession( l->sl_Sentinel->s_User, ses );
 					
+					USMUserSessionAddToList( l->sl_USM, ses );
+					/*
 					UserSession *nextses = NULL;
 					if( l->sl_USM->usm_Sessions != NULL )
 					{
@@ -1087,6 +1558,7 @@ int SystemInitExternal( SystemBase *l )
 					{
 						nextses->node.mln_Pred = (MinNode *)ses;
 					}
+					*/
 					
 					//
 					//if( sqllib->NumberOfRecordsCustomQuery( sqllib, "select * from `FUserSession` where UserID='1' AND DeviceIdentity='remote'") < 1)
@@ -1101,24 +1573,48 @@ int SystemInitExternal( SystemBase *l )
 			// regenerate sessionid for User
 			//
 			
-			if(  (timestamp - l->sl_Sentinel->s_User->u_LoggedTime) > LOGOUT_TIME )
+			if(  (timestamp - l->sl_Sentinel->s_User->u_LoggedTime) > l->sl_RemoveSessionsAfterTime )
 			{
 				UserRegenerateSessionID( l->sl_Sentinel->s_User, NULL );
 			}
 		}
+		
+		UMCheckAndLoadAPIUser( l->sl_UM );
+		
+		Log( FLOG_INFO, "----------------------------------------------------\n");
+		Log( FLOG_INFO, "---------Mount user devices-------------------------\n");
+		Log( FLOG_INFO, "----------------------------------------------------\n");
 	
 		User *tmpUser = l->sl_UM->um_Users;
 		while( tmpUser != NULL )
 		{
-			DEBUG( "[SystemBase] FINDING DRIVES FOR USER %s.....\n\n", tmpUser->u_Name );
-			UserDeviceMount( l, sqllib, tmpUser, 1 );
-			DEBUG( "[SystemBase] DONE FINDING DRIVES FOR USER %s.....\n\n", tmpUser->u_Name );
+			DEBUG( "[SystemBase] FINDING DRIVES FOR USER %s\n", tmpUser->u_Name );
+			UserDeviceMount( l, sqllib, tmpUser, 1, TRUE );
+			DEBUG( "[SystemBase] DONE FINDING DRIVES FOR USER %s\n", tmpUser->u_Name );
 			tmpUser = (User *)tmpUser->node.mln_Succ;
 		}
 		
-		l->LibraryMYSQLDrop( l, sqllib );
+		Log( FLOG_INFO, "----------------------------------------------------\n");
+		Log( FLOG_INFO, "---------Mount user group devices-------------------\n");
+		Log( FLOG_INFO, "----------------------------------------------------\n");
+		
+		UserGroup *ug = l->sl_UM->um_UserGroups;
+		/*
+		User *sentUser = NULL;
+		if( l->sl_Sentinel != NULL )
+		{
+			sentUser = l->sl_Sentinel->s_User;
+		}*/
+		
+		while( ug != NULL )
+		{
+			//UserGroupDeviceMount( l, sqllib, ug, NULL );
+			UserGroupDeviceMount( l, sqllib, ug, l->sl_UM->um_APIUser );
+			ug = (UserGroup *)ug->node.mln_Succ;
+		}
+		
+		l->LibrarySQLDrop( l, sqllib );
 	}
-	
 	
 	// mount INRAM drive
 	/*
@@ -1136,6 +1632,38 @@ int SystemInitExternal( SystemBase *l )
 		//l->sl_INRAM->f_Mounted = TRUE;
 	}*/
 	
+	
+	// test websocket client connection
+	
+	// we must launch mobile manager when all sessions and users are loaded
+	
+	l->sl_MobileManager = MobileManagerNew( l );
+	if( l->sl_MobileManager == NULL )
+	{
+		Log( FLOG_ERROR, "Cannot initialize sl_MobileManager\n");
+	}
+	
+	DEBUG("[SystembaseInitExternal]APNS init\n" );
+	
+	//l->l_APNSConnection = WebsocketAPNSConnectorNew( l->l_AppleServerHost, l->l_AppleServerPort );
+	if( l->l_APNSConnection != NULL )
+	{
+		/*
+		if( WebsocketClientConnect( l->l_APNSConnection->wapns_Connection ) > 0 )
+		{
+			DEBUG("APNS server connected\n");
+		}
+		else
+		{
+			DEBUG("APNS server not connected\n");
+		}
+		*/
+	}
+	else
+	{
+		FERROR("[SystembaseInitExternal]APNS init ERROR!\n");
+	}
+	
 	return 0;
 }
 
@@ -1152,14 +1680,16 @@ typedef struct DBUpdateEntry
 /**
  * Check and Update FC database
  *
- * @param sb pointer to SystemBase
+ * @param l pointer to SystemBase
  */
 
 void CheckAndUpdateDB( struct SystemBase *l )
 {
-	DEBUG("------------------------------------------------------------------------\n");
-	DEBUG("---------Autoupdatedatabase in progress-------------\n");
-	MYSQLLibrary *sqllib  = l->LibraryMYSQLGet( l );
+	Log( FLOG_INFO, "----------------------------------------------------\n");
+	Log( FLOG_INFO, "---------Autoupdatedatabase process start-----------\n");
+	Log( FLOG_INFO, "----------------------------------------------------\n");
+	
+	SQLLibrary *sqllib  = l->LibrarySQLGet( l );
 	if( sqllib != NULL )
 	{
 		int startUpdatePosition = 0;
@@ -1168,10 +1698,10 @@ void CheckAndUpdateDB( struct SystemBase *l )
 		char query[ 1024 ];
 		snprintf( query, sizeof(query), "SELECT * FROM `FGlobalVariables` WHERE `Key`='DB_VERSION'" );
 		
-		MYSQL_RES *res = sqllib->Query( sqllib, query );
+		void *res = sqllib->Query( sqllib, query );
 		if( res != NULL )
 		{
-			MYSQL_ROW row;
+			char **row;
 			while( ( row = sqllib->FetchRow( sqllib, res ) ) ) 
 			{
 				// Id, Key, Value, Comment, date
@@ -1224,6 +1754,7 @@ void CheckAndUpdateDB( struct SystemBase *l )
 						continue;
 					}
 				
+					DEBUG("[SystemBase] get number from name\n");
 					// we must extract number from filename
 					strcpy( number, dptr->d_name );
 					for( i=0 ; i < strlen( number ) ; i++ )
@@ -1235,12 +1766,18 @@ void CheckAndUpdateDB( struct SystemBase *l )
 						}
 					}
 					
+					DEBUG("[SystemBase] number found: '%s'\n", number );
+					
 					dbentries[ position ].number = atoi( number );
 					if( dbentries[ position ].number > startUpdatePosition )
 					{
 						DEBUG("[SystemBase] Found script with number %d, script added: %s\n", dbentries[ position ].number, dptr->d_name );
 						strcpy( dbentries[ position ].name, dptr->d_name );
 						position++;
+					}
+					else
+					{
+						DEBUG("[SystemBase] !!!! dbentries[ position ].number <= startUpdatePosition\n");
 					}
 				}
 				closedir( dp );
@@ -1273,8 +1810,6 @@ void CheckAndUpdateDB( struct SystemBase *l )
 							long fsize = ftell( fp );
 							fseek( fp, 0, SEEK_SET );
 							
-							DEBUG("[SystemBase] File opened\n");
-							
 							char *script;
 							if( ( script = FCalloc( fsize+1, sizeof(char) ) ) != NULL )
 							{
@@ -1286,27 +1821,53 @@ void CheckAndUpdateDB( struct SystemBase *l )
 
 									for( i=1 ; i < fsize ; i++ )
 									{
-										if( script[ i ] == ';' )
+										if( strncmp( &(script[ i ]), "----script----" , 14 ) == 0 )
 										{
-											script[ i ] = 0;
-											DEBUG("[SystemBase] Running script: %s from file: %s on database\n", command, scriptfname ); 
-											if( strlen( command) > 10 )
+											char *start = &(script[ i ]);
+											char *end = strstr( start, "----script-end----" );
+											int len = (end - start)-1;
+											i += len;
+											
+											start += 14;
+											*end = 0;
+											
+											DEBUG("[SystemBase] Running script1 : %s from file: %s on database\n", start, scriptfname );
+											
+											if( sqllib->QueryWithoutResults( sqllib, start ) != 0 )
 											{
-												if( sqllib->QueryWithoutResults( sqllib, command ) != 0 )
-												{
-													error = 1;
-												}
-												else
-												{
-													lastSQLname = dbentries[j].name;
-												}
+												error = 1;
 											}
+											else
+											{
+												lastSQLname = dbentries[ j ].name;
+											}
+											
 											command = &script[ i+1 ];
 										}
+										else
+										{
+											if( script[ i ] == ';' )
+											{
+												script[ i ] = 0;
+												DEBUG("[SystemBase] Running script: %s from file: %s on database\n", command, scriptfname ); 
+												if( strlen( command) > 10 )
+												{
+													if( sqllib->QueryWithoutResults( sqllib, command ) != 0 )
+													{
+														error = 1;
+													}
+													else
+													{
+														lastSQLname = dbentries[j].name;
+													}
+												}
+												command = &script[ i+1 ];
+											}
+										}
 									}
-									
-									DEBUG("[SystemBase] Running script2 : %s from file: %s on database\n", command, scriptfname ); 
-									if( strlen( command) > 10 )
+									// error: Duplicate column name
+									DEBUG("[SystemBase] Running script : %s from file: %s on database\n", command, scriptfname ); 
+									if( strlen( command ) > 10 )
 									{
 										if( sqllib->QueryWithoutResults( sqllib, command ) != 0 )
 										{
@@ -1320,10 +1881,8 @@ void CheckAndUpdateDB( struct SystemBase *l )
 								}
 								FFree( script );
 							}
-							
 							fclose( fp );
 						}
-						
 						break;
 					}
 					
@@ -1349,12 +1908,14 @@ void CheckAndUpdateDB( struct SystemBase *l )
 				snprintf( query, sizeof(query), "UPDATE `FGlobalVariables` SET `Value`='%d', `Date`='%lu', `Comment`='%s' WHERE `Key`='DB_VERSION'", startUpdatePosition, time(NULL), lastSQLname );
 				sqllib->QueryWithoutResults( sqllib, query );
 			}
-			
 			FFree( dbentries );
 		}
-		
-		l->LibraryMYSQLDrop( l, sqllib );
+		l->LibrarySQLDrop( l, sqllib );
 	}
+	
+	Log( FLOG_INFO, "----------------------------------------------------\n");
+	Log( FLOG_INFO, "---------Autoupdatedatabase process END-------------\n");
+	Log( FLOG_INFO, "----------------------------------------------------\n");
 }
 
 /**
@@ -1367,14 +1928,13 @@ void CheckAndUpdateDB( struct SystemBase *l )
 UserGroup *LoadGroups( struct SystemBase *sb )
 {
 	UserGroup *groups = NULL;
-	UserGroup *newGroup = NULL, *lastGroup = NULL;
 	
-	MYSQLLibrary *sqlLib = sb->LibraryMYSQLGet( sb );
+	SQLLibrary *sqlLib = sb->LibrarySQLGet( sb );
 	if( sqlLib != NULL )
 	{
 		int entries;
 		groups = sqlLib->Load( sqlLib, GroupDesc, NULL, &entries );
-		sb->LibraryMYSQLDrop( sb, sqlLib );
+		sb->LibrarySQLDrop( sb, sqlLib );
 	}
 	return groups;
 }
@@ -1386,10 +1946,11 @@ UserGroup *LoadGroups( struct SystemBase *sb )
  * @param sqllib pointer to sql.library
  * @param usr pointer to user to which doors belong
  * @param force integer 0 = don't force 1 = force
+ * @param unmountIfFail should be device unmounted in DB if mount will fail
  * @return 0 if everything went fine, otherwise error number
  */
 
-int UserDeviceMount( SystemBase *l, MYSQLLibrary *sqllib, User *usr, int force )
+int UserDeviceMount( SystemBase *l, SQLLibrary *sqllib, User *usr, int force, FBOOL unmountIfFail )
 {	
 	Log( FLOG_INFO,  "[UserDeviceMount] Mount user device from Database\n");
 	
@@ -1408,24 +1969,24 @@ int UserDeviceMount( SystemBase *l, MYSQLLibrary *sqllib, User *usr, int force )
 	char temptext[ 1024 ];
 
 	sqllib->SNPrintF( sqllib, temptext, sizeof(temptext) ,"\
-		SELECT \
-			`Name`, `Type`, `Server`, `Port`, `Path`, `Mounted`, `UserID`, `ID`\
-		FROM `Filesystem` f\
-		WHERE\
-		(\
-			f.UserID = '%ld' OR\
-			f.GroupID IN (\
-				SELECT ug.UserGroupID FROM FUserToGroup ug, FUserGroup g\
-				WHERE \
-					g.ID = ug.UserGroupID AND g.Type = \'Workgroup\' AND\
-					ug.UserID = '%ld'\
-			)\
-		)\
-		AND f.Mounted = \'1\'", 
-		usr->u_ID , usr->u_ID
+SELECT \
+`Name`, `Type`, `Server`, `Port`, `Path`, `Mounted`, `UserID`, `ID` \
+FROM `Filesystem` f \
+WHERE \
+( \
+f.UserID = '%lu' OR ( \
+f.GroupID IN ( \
+SELECT ug.UserGroupID FROM FUserToGroup ug, FUserGroup g \
+WHERE \
+g.ID = ug.UserGroupID AND g.Type = \'Workgroup\' AND \
+ug.UserID = '%ld' \
+) \
+) \
+)AND ( (f.Owner='0' OR f.Owner IS NULL) AND f.Mounted=\'1\')", 
+usr->u_ID , usr->u_ID, usr->u_ID
 	);
 	DEBUG("[UserDeviceMount] Finding drives in DB\n");
-	MYSQL_RES *res = sqllib->Query( sqllib, temptext );
+	void *res = sqllib->Query( sqllib, temptext );
 	if( res == NULL )
 	{
 		Log( FLOG_ERROR,  "[UserDeviceMount] UserDeviceMount fail: database results = NULL\n");
@@ -1433,9 +1994,9 @@ int UserDeviceMount( SystemBase *l, MYSQLLibrary *sqllib, User *usr, int force )
 	}
 	DEBUG("[UserDeviceMount] Finding drives in DB no error during select:\n\n");
 	
-	if( pthread_mutex_lock( &l->sl_InternalMutex ) == 0 )
+	if( FRIEND_MUTEX_LOCK( &l->sl_InternalMutex ) == 0 )
 	{
-		MYSQL_ROW row;
+		char **row;
 		while( ( row = sqllib->FetchRow( sqllib, res ) ) ) 
 		{
 			// Id, UserId, Name, Type, ShrtDesc, Server, Port, Path, Username, Password, Mounted
@@ -1458,41 +2019,38 @@ int UserDeviceMount( SystemBase *l, MYSQLLibrary *sqllib, User *usr, int force )
 				{ FSys_Mount_Mount,   (FULONG)mount },
 				{ FSys_Mount_SysBase, (FULONG)SLIB },
 				{ FSys_Mount_Visible, (FULONG)1 },     // Assume visible
-				//{ FSys_Mount_Execute, (FULONG)NULL },  // Assume no executable
 				{TAG_DONE, TAG_DONE}
 			};
 
-			pthread_mutex_unlock( &l->sl_InternalMutex );
+			FRIEND_MUTEX_UNLOCK( &l->sl_InternalMutex );
 
 			File *device = NULL;
-			DEBUG("[UserDeviceMount] \tBefore mounting\n");
+			DEBUG("[UserDeviceMount] Before mounting\n");
 			int err = MountFS( l, (struct TagItem *)&tags, &device, usr );
 
-			pthread_mutex_lock( &l->sl_InternalMutex );
+			FRIEND_MUTEX_LOCK( &l->sl_InternalMutex );
 
 			if( err != 0 && err != FSys_Error_DeviceAlreadyMounted )
 			{
 				Log( FLOG_ERROR,"[UserDeviceMount] \tCannot mount device, device '%s' will be unmounted. ERROR %d\n", row[ 0 ], err );
-				if( mount == 1 )
+				if( mount == 1 && unmountIfFail == TRUE )
 				{
-					//sprintf( temptext, "
-					
 					sqllib->SNPrintF( sqllib, temptext, sizeof(temptext), "\
-						UPDATE Filesystem f SET `Mounted` = '0'\
-						WHERE\
-						(\
-							f.UserID = '%ld' OR\
-							f.GroupID IN (\
-								SELECT ug.UserGroupID FROM FUserToGroup ug, FUserGroup g\
-								WHERE \
-									g.ID = ug.UserGroupID AND g.Type = \'Workgroup\' AND\
-									ug.UserID = '%ld'\
-							)\
-						)\
-						AND LOWER(f.Name) = LOWER('%s')", 
+UPDATE Filesystem f SET `Mounted` = '0' \
+WHERE \
+( \
+f.UserID = '%ld' OR \
+f.GroupID IN ( \
+SELECT ug.UserGroupID FROM FUserToGroup ug, FUserGroup g \
+WHERE \
+g.ID = ug.UserGroupID AND g.Type = \'Workgroup\' AND \
+ug.UserID = '%ld' \
+) \
+) \
+AND LOWER(f.Name) = LOWER('%s')", 
 						usr->u_ID, usr->u_ID, (char *)row[ 0 ] 
 					);
-					MYSQL_RES *resx = sqllib->Query( sqllib, temptext );
+					void *resx = sqllib->Query( sqllib, temptext );
 					if( resx != NULL )
 					{
 						sqllib->FreeResult( sqllib, resx );
@@ -1514,7 +2072,7 @@ int UserDeviceMount( SystemBase *l, MYSQLLibrary *sqllib, User *usr, int force )
 
 		usr->u_InitialDevMount = TRUE;
 
-		pthread_mutex_unlock( &l->sl_InternalMutex );
+		FRIEND_MUTEX_UNLOCK( &l->sl_InternalMutex );
 	}
 	
 	return 0;
@@ -1524,12 +2082,12 @@ int UserDeviceMount( SystemBase *l, MYSQLLibrary *sqllib, User *usr, int force )
  * Unmount user doors
  *
  * @param l pointer to SystemBase
- * @param sqllib pointer to sql.library
+ * @param sqllib pointer to sql.library UNUSED
  * @param usr pointer to user to which doors belong
  * @return 0 if everything went fine, otherwise error number
  */
 
-int UserDeviceUnMount( SystemBase *l, MYSQLLibrary *sqllib, User *usr )
+int UserDeviceUnMount( SystemBase *l, SQLLibrary *sqllib __attribute__((unused)), User *usr )
 {
 	DEBUG("UserDeviceUnMount\n");
 	if( usr != NULL )
@@ -1544,15 +2102,14 @@ int UserDeviceUnMount( SystemBase *l, MYSQLLibrary *sqllib, User *usr )
 				remdev = dev;
 				dev = (File *)dev->node.mln_Succ;
 				
-				FHandler *handler = remdev->f_FSys;
-				if( handler != NULL )
-				{
-					handler->UnMount( handler, remdev, usr );
-				}
+				DeviceUnMount( l, remdev, usr );
 				
 				FFree( remdev );
 			}
 		}
+		
+		//TODO
+		// unmount also disks shared by usergroups
 	}
 	else
 	{
@@ -1562,28 +2119,13 @@ int UserDeviceUnMount( SystemBase *l, MYSQLLibrary *sqllib, User *usr )
 }
 
 /**
- * Set pointer to FrriendCoreManager
- *
- * @param l pointer to SystemBase
- * @param lfcm pointer to FriendCoreManager
- */
-
-void SetFriendCoreManager( SystemBase *l, FriendCoreManager *lfcm )
-{
-	if( l != NULL )
-	{
-		l->fcm = lfcm;
-	}
-}
-
-/**
  * Run module
  *
  * @param l pointer to SystemBase
  * @param type type of module which will be used to make call
  * @param path path to module exe file
  * @param args additional parameters to module
- * @param pointer to integer where length of answer will be stored
+ * @param length pointer to integer where length of answer will be stored
  * @return string with answer from module
  */
 
@@ -1596,7 +2138,7 @@ char *RunMod( SystemBase *l, const char *type, const char *path, const char *arg
 	EModule *lmod = l->sl_Modules;
 	EModule *workmod = NULL;
 
-	DEBUG("[SystemBase] Checking modules '%s'\n", type );
+	DEBUG("[SystemBase] Run module '%s'\n", type );
 
 	while( lmod != NULL )
 	{
@@ -1652,13 +2194,13 @@ struct AuthMod *AuthModuleGet( SystemBase *l )
 }
 
 /**
- * Close authentication module
+ * Close authentication module UNIMPLEMENTED
  *
  * @param l pointer to SystemBase
  * @param uclose pointer to module which will closed
  */
 
-void AuthModuleDrop( SystemBase *l, AuthMod *uclose )
+void AuthModuleDrop( SystemBase *l __attribute__((unused)), AuthMod *uclose __attribute__((unused)))
 {
 }
 
@@ -1669,30 +2211,28 @@ void AuthModuleDrop( SystemBase *l, AuthMod *uclose )
  * @return pointer to mysql.library
  */
 
-MYSQLLibrary *LibraryMYSQLGet( SystemBase *l )
+SQLLibrary *LibrarySQLGet( SystemBase *l )
 {
-	MYSQLLibrary *retlib = NULL;
+	SQLLibrary *retlib = NULL;
 	int i ;
 	int timer = 0;
-	int retries = 0;
-	int usingSleep = 0;
 	
 	while( TRUE )
 	{
-		if( pthread_mutex_lock( &l->sl_ResourceMutex ) == 0 )
+		if( FRIEND_MUTEX_LOCK( &l->sl_ResourceMutex ) == 0 )
 		{
 			if( l->sqlpool[ l->MsqLlibCounter ].inUse == FALSE )
 			{
-				pthread_mutex_unlock( &l->sl_ResourceMutex );
+				//FRIEND_MUTEX_UNLOCK( &l->sl_ResourceMutex );
 			
-				pthread_mutex_lock( &l->sl_ResourceMutex );
+				//FRIEND_MUTEX_LOCK( &l->sl_ResourceMutex );
 				retlib = l->sqlpool[l->MsqLlibCounter ].sqllib;
-				if( retlib == NULL || retlib->con.sql_Con->status != MYSQL_STATUS_READY )
+				if( retlib == NULL || retlib->GetStatus( (void *)retlib ) != SQL_STATUS_READY ) //retlib->con.sql_Con->status != MYSQL_STATUS_READY )
 				{
 					FERROR( "[LibraryMYSQLGet] We found a NULL pointer on slot %d!\n", l->MsqLlibCounter );
 					// Increment and check
 					if( ++l->MsqLlibCounter >= l->sqlpoolConnections ) l->MsqLlibCounter = 0;
-					pthread_mutex_unlock( &l->sl_ResourceMutex );
+					FRIEND_MUTEX_UNLOCK( &l->sl_ResourceMutex );
 					continue;
 				}
 				l->sqlpool[ l->MsqLlibCounter ].inUse = TRUE;
@@ -1706,12 +2246,12 @@ MYSQLLibrary *LibraryMYSQLGet( SystemBase *l )
 			
 				// Increment and check
 				if( ++l->MsqLlibCounter >= l->sqlpoolConnections ) l->MsqLlibCounter = 0;
-				pthread_mutex_unlock( &l->sl_ResourceMutex );
+				FRIEND_MUTEX_UNLOCK( &l->sl_ResourceMutex );
 				break;
 			}
 			else
 			{
-				pthread_mutex_unlock( &l->sl_ResourceMutex );
+				FRIEND_MUTEX_UNLOCK( &l->sl_ResourceMutex );
 			}
 		}
 		
@@ -1719,7 +2259,7 @@ MYSQLLibrary *LibraryMYSQLGet( SystemBase *l )
 		if( timer >= l->sqlpoolConnections )
 		{
 			timer = 0;
-			usleep( 20000 );
+			usleep( 5000 );
 		}
 		
 		l->MsqLlibCounter++;
@@ -1752,7 +2292,7 @@ MYSQLLibrary *LibraryMYSQLGet( SystemBase *l )
  * @param mclose pointer to mysql.library which will be returned to pool
  */
 
-void LibraryMYSQLDrop( SystemBase *l, MYSQLLibrary *mclose )
+void LibrarySQLDrop( SystemBase *l, SQLLibrary *mclose )
 {
 	int i = 0;
 	int closed = -1;
@@ -1761,9 +2301,9 @@ void LibraryMYSQLDrop( SystemBase *l, MYSQLLibrary *mclose )
 	{
 		if( l->sqlpool[ i ].sqllib == mclose )
 		{
-			pthread_mutex_lock( &l->sl_ResourceMutex );
+			FRIEND_MUTEX_LOCK( &l->sl_ResourceMutex );
 			l->sqlpool[ i ].inUse = FALSE;
-			pthread_mutex_unlock( &l->sl_ResourceMutex );
+			FRIEND_MUTEX_UNLOCK( &l->sl_ResourceMutex );
 			closed = i;
 		}
 		
@@ -1809,7 +2349,7 @@ ApplicationLibrary *LibraryApplicationGet( SystemBase *l )
  * @param aclose pointer to application.library which will be returned to pool
  */
 
-void LibraryApplicationDrop( SystemBase *l, ApplicationLibrary *aclose )
+void LibraryApplicationDrop( SystemBase *l, ApplicationLibrary *aclose __attribute__((unused)) )
 {
 	if( l->AppLibCounter > 0 )
 	{
@@ -1818,56 +2358,6 @@ void LibraryApplicationDrop( SystemBase *l, ApplicationLibrary *aclose )
 	else
 	{
 		LibraryClose( (struct Library *)l->alib );
-	}
-}
-
-/**
- * Get properties.library from SystemBase
- *
- * @param l pointer to SystemBase
- * @return pointer to properties.library
- */
-
-PropertiesLibrary *LibraryPropertiesGet( SystemBase *l )
-{
-	if( l->PropLibCounter == 0 )
-	{
-		l->plib = (PropertiesLibrary *)LibraryOpen( l, "properties.library", 0 );
-		if( l->plib == NULL )
-		{
-			DEBUG("[SystemBase] CANNOT OPEN properties.library!\n");
-			return NULL;
-		}
-		DEBUG("[SystemBase] properties.library opened %p (count %d)!\n", l->plib, l->PropLibCounter );
-		
-		// We start on 1, just so that we leave one open until quitting (will be
-		// closed when system deinits..)
-		
-		l->PropLibCounter = 1;
-	}
-	l->PropLibCounter++;
-
-	return l->plib;
-}
-
-/**
- * Drop properties.library to pool
- *
- * @param l pointer to SystemBase
- * @param pclose pointer to properties.library which will be returned to pool
- */
-
-void LibraryPropertiesDrop( SystemBase *l, PropertiesLibrary *pclose )
-{
-	if( l->PropLibCounter > 0 )
-	{
-		l->PropLibCounter--;
-	}
-	else if ( l->PropLibCounter == 0 )
-	{
-		DEBUG( "[SystemBase] Finally close properties.library\n" );
-		LibraryClose( (struct Library *)l->plib );
-		l->plib = NULL;
 	}
 }
 
@@ -1900,13 +2390,13 @@ ZLibrary *LibraryZGet( SystemBase *l )
 }
 
 /**
- * Drop z.library to pool
+ * Drop z.library to pool UNIMPLEMENTED
  *
  * @param l pointer to SystemBase
  * @param aclose pointer to z.library which will be returned to pool
  */
 
-void LibraryZDrop( SystemBase *l, ZLibrary *closelib )
+void LibraryZDrop( SystemBase *l __attribute__((unused)), ZLibrary *closelib __attribute__((unused)) )
 {
 	/*
 	if( l->ZLibCounter > 0 )
@@ -1936,7 +2426,7 @@ ImageLibrary *LibraryImageGet( SystemBase *l )
 		l->ilib = (ImageLibrary *)LibraryOpen( l, "image.library", 0 );
 		if( l->ilib == NULL )
 		{
-			DEBUG("[SystemBase] CANNOT OPEN image.library!\n");
+			DEBUG("[SystemBase] Cannot open image.library!\n");
 			return NULL;
 		}
 		l->ImageLibCounter++;
@@ -1950,10 +2440,10 @@ ImageLibrary *LibraryImageGet( SystemBase *l )
  * Drop image.library to pool
  *
  * @param l pointer to SystemBase
- * @param aclose pointer to image.library which will be returned to pool
+ * @param closelib pointer to image.library which will be returned to pool
  */
 
-void LibraryImageDrop( SystemBase *l, ImageLibrary *closelib )
+void LibraryImageDrop( SystemBase *l, ImageLibrary *closelib __attribute__((unused)) )
 {
 	if( l->ImageLibCounter > 0 )
 	{
@@ -1972,7 +2462,7 @@ void LibraryImageDrop( SystemBase *l, ImageLibrary *closelib )
  * @return Sentinel user
  */
 
-Sentinel* GetSentinelUser(SystemBase* l)
+Sentinel* GetSentinelUser( SystemBase* l )
 {
 	if( l != NULL )
 	{
@@ -1991,46 +2481,41 @@ Sentinel* GetSentinelUser(SystemBase* l)
  * @return 0 if message was sent otherwise error number
  */
 
-int WebSocketSendMessage( SystemBase *l, UserSession *usersession, char *msg, int len )
+int WebSocketSendMessage( SystemBase *l __attribute__((unused)), UserSession *usersession, char *msg, int len )
 {
 	unsigned char *buf;
 	int bytes = 0;
 	
-	//DEBUG("\n\n\nWebSocketSendMessage start %p device %s\n", usersession, usersession->us_DeviceIdentity );
-	
-	if( pthread_mutex_lock( &usersession->us_WSMutex ) == 0 )
 	{
-		buf = (unsigned char *)FCalloc( LWS_SEND_BUFFER_PRE_PADDING + len + LWS_SEND_BUFFER_POST_PADDING + 128, sizeof( unsigned char ) );
+		buf = (unsigned char *)FCalloc( len + 128, sizeof( unsigned char ) );
 		if( buf != NULL )
 		{
-			memcpy( buf + LWS_SEND_BUFFER_PRE_PADDING, msg,  len );
+			memcpy( buf, msg, len );
 		
 			DEBUG("[SystemBase] Writing to websockets, string '%s' size %d\n",msg, len );
 
-			WebsocketClient *wsc = usersession->us_WSConnections;
+			WebsocketServerClient *wsc = usersession->us_WSClients;
 			while( wsc != NULL )
 			{
-				DEBUG("[SystemBase] Writing to websockets, pointer to ws %p\n", wsc->wc_Wsi );
-				if( wsc->wc_Wsi != NULL )
+				DEBUG("[SystemBase] Writing to websockets, pointer to ws %p\n", wsc->wsc_Wsi );
+
+				if( FRIEND_MUTEX_LOCK( &(usersession->us_Mutex) ) == 0 )
 				{
-					bytes += lws_write( wsc->wc_Wsi , buf + LWS_SEND_BUFFER_PRE_PADDING , len, LWS_WRITE_TEXT );
+					bytes += WebsocketWrite( wsc , buf , len, LWS_WRITE_TEXT );
+
+					FRIEND_MUTEX_UNLOCK( &(usersession->us_Mutex) );
 				}
-				else
-				{
-					DEBUG("[SystemBase] User session do not have WS connection\n");
-				}
-				wsc = (WebsocketClient *)wsc->node.mln_Succ;
+
+				wsc = (WebsocketServerClient *)wsc->node.mln_Succ;
 			}
-		
+			
 			FFree( buf );
 		}
 		else
 		{
 			Log( FLOG_ERROR,"Cannot allocate memory for message\n");
-			pthread_mutex_unlock( &usersession->us_WSMutex );
 			return 0;
 		}
-		pthread_mutex_unlock( &usersession->us_WSMutex );
 	}
 	DEBUG("[SystemBase] WebSocketSendMessage end, wrote %d bytes\n", bytes );
 	
@@ -2051,25 +2536,20 @@ int WebSocketSendMessageInt( UserSession *usersession, char *msg, int len )
 	unsigned char *buf;
 	int bytes = 0;
 	
-	if( pthread_mutex_lock( &usersession->us_WSMutex ) == 0 )
 	{
-		buf = (unsigned char *)FCalloc( LWS_SEND_BUFFER_PRE_PADDING + len + LWS_SEND_BUFFER_POST_PADDING + 128+24, sizeof( unsigned char ) );
+		buf = (unsigned char *)FCalloc( len + 128+24, sizeof( unsigned char ) );
 		if( buf != NULL )
 		{
-			memcpy( buf + LWS_SEND_BUFFER_PRE_PADDING, msg,  len );
+			memcpy( buf, msg,  len );
 
-			WebsocketClient *wsc = usersession->us_WSConnections;
+			WebsocketServerClient *wsc = usersession->us_WSClients;
 		
 			DEBUG("[SystemBase] Writing to websockets, string '%s' size %d ptr to websocket connection %p\n",msg, len, wsc );
 		
 			while( wsc != NULL )
 			{
-				DEBUG("[SystemBase] send message to user session %p, pointer to websocket connection %p\n", usersession, wsc->wc_Wsi );
-				if( wsc->wc_Wsi != NULL )
-				{
-					bytes += lws_write( wsc->wc_Wsi , buf + LWS_SEND_BUFFER_PRE_PADDING , len, LWS_WRITE_TEXT );
-				}
-				wsc = (WebsocketClient *)wsc->node.mln_Succ;
+				bytes += WebsocketWrite( wsc , buf , len, LWS_WRITE_TEXT );
+				wsc = (WebsocketServerClient *)wsc->node.mln_Succ;
 			}
 		
 			FFree( buf );
@@ -2077,133 +2557,13 @@ int WebSocketSendMessageInt( UserSession *usersession, char *msg, int len )
 		else
 		{
 			Log( FLOG_ERROR,"Cannot allocate memory for message\n");
-		
-			pthread_mutex_unlock( &usersession->us_WSMutex );
-		
+
 			return 0;
 		}
-		pthread_mutex_unlock( &usersession->us_WSMutex );
 	}
 	
 	return bytes;
 }
-
-/**
- * Add websocket connection to user session
- *
- * @param l pointer to SystemBase
- * @param wsi pointer to libwebsockets
- * @param sessionid sessionid to which 
- * @param len length of the message
- * @return 0 if connection was added without problems otherwise error number
- */
-
-int AddWebSocketConnection( SystemBase *l, struct lws *wsi, const char *sessionid, const char *authid, FCWSData *data )
-{
-	UserSession *actUserSess = NULL;
-	char lsessionid[ DEFAULT_SESSION_ID_SIZE ];
-	
-	Log( FLOG_INFO, "[SystemBase] Addwebsocket connection. SessionID %s. Authid %s\n", sessionid, authid );
-	
-	if( authid != NULL )
-	{
-		MYSQLLibrary *sqllib  = l->LibraryMYSQLGet( l );
-
-		// Get authid from mysql
-		if( sqllib != NULL )
-		{
-			char qery[ 1024 ];
-			
-			sqllib->SNPrintF( sqllib, qery,  sizeof(qery), \
-				 "SELECT * FROM ( ( SELECT u.SessionID FROM FUserSession u, FUserApplication a WHERE a.AuthID=\"%s\" AND a.UserID = u.UserID LIMIT 1 ) \
-				UNION ( SELECT u2.SessionID FROM FUserSession u2, Filesystem f WHERE f.Config LIKE \"%s%s%s\" AND u2.UserID = f.UserID LIMIT 1 ) ) z LIMIT 1",
-				( char *)authid, "%", ( char *)authid, "%"
-			);
-
-			MYSQL_RES *res = sqllib->Query( sqllib, qery );
-			if( res != NULL )
-			{
-				DEBUG("[SystemBase] Called %s\n",  qery );
-				
-				MYSQL_ROW row;
-				if( ( row = sqllib->FetchRow( sqllib, res ) ) )
-				{
-					snprintf( lsessionid, sizeof(lsessionid), "%s", row[ 0 ] );
-					sessionid = lsessionid;
-				}
-				sqllib->FreeResult( sqllib, res );
-			}
-			l->LibraryMYSQLDrop( l, sqllib );
-		}
-		DEBUG( "[SystemBase] Ok, SQL phase complete\n" );
-	}
-	
-	actUserSess = USMGetSessionBySessionID( l->sl_USM, (char *)sessionid );
-	
-	if( actUserSess == NULL )
-	{
-		Log( FLOG_ERROR,"Cannot find user in session with sessionid %s\n", sessionid );
-		return -1;
-	}
-	
-	DEBUG("[SystemBase] AddWSCon session pointer %p\n", actUserSess );
-	pthread_mutex_lock( &actUserSess->us_WSMutex );
-	
-	WebsocketClient *listEntry = actUserSess->us_WSConnections;
-	while( listEntry != NULL )
-	{
-		DEBUG("[SystemBase] wsclientptr %p\n", listEntry );
-		if( listEntry->wc_Wsi == wsi )
-		{
-			break;
-		}
-		listEntry = (WebsocketClient *)listEntry->node.mln_Succ;
-	}
-	
-	DEBUG("[SystemBase] AddWSCon entry found %p\n", listEntry );
-	
-	if( listEntry != NULL )
-	{
-		INFO("[SystemBase] User already have this websocket connection\n");
-		pthread_mutex_unlock( &actUserSess->us_WSMutex );
-		return 1;
-	}
-	
-	WebsocketClient *nwsc = FCalloc( 1, sizeof( WebsocketClient ) );
-	if( nwsc != NULL )
-	{
-		DEBUG("[SystemBase] AddWSCon new connection created\n");
-		nwsc->wc_Wsi = wsi;
-		nwsc->node.mln_Succ = (MinNode *)actUserSess->us_WSConnections;
-		actUserSess->us_WSConnections = nwsc;
-		
-		User *actUser = actUserSess->us_User;
-		if( actUser != NULL )
-		{
-			Log( FLOG_INFO,"[SystemBase] WebSocket connection set for user %s  sessionid %s\n", actUser->u_Name, actUserSess->us_SessionID );
-
-			INFO("[SystemBase] ADD WEBSOCKET CONNECTION TO USER %s\n\n",  actUser->u_Name );
-		}
-		else
-		{
-			FERROR("User sessions %s is not attached to user %lu\n", actUserSess->us_SessionID, actUserSess->us_UserID );
-		}
-
-		data->fcd_ActiveSession = actUserSess;
-		data->fcd_WSClient  = nwsc;
-		data->fcd_SystemBase = l;
-		nwsc->wc_WebsocketsData = data;
-	}
-	else
-	{
-		Log( FLOG_ERROR,"Cannot allocate memory for WebsocketClient\n");
-		pthread_mutex_unlock( &actUserSess->us_WSMutex );
-		return 2;
-	}
-	pthread_mutex_unlock( &actUserSess->us_WSMutex );
-	return 0;
-}
-
 
 /**
  * Send data
@@ -2227,22 +2587,181 @@ int SendProcessMessage( Http *request, char *data, int len )
 		
 		if( ( sendbuf = FCalloc( msglen, sizeof( char ) ) ) != NULL )
 		{
-			int newmsglen = snprintf( sendbuf, msglen, "{\"type\":\"msg\", \"data\":{\"type\":\"%llu\",\"data\":{%.*s}}}", pidt->pt_PID, len, data );
+			int newmsglen = snprintf( sendbuf, msglen, "{\"type\":\"msg\", \"data\":{\"type\":\"%lu\",\"data\":{%.*s}}}", pidt->pt_PID, len, data );
 			SystemBase *sb = (SystemBase *)pidt->pt_SB;
 			
 			DEBUG("[SystemBase] SendProcessMessage message '%s'\n", sendbuf );
 			
-			sb->WebSocketSendMessage( sb, pidt->pt_UserSession, sendbuf, newmsglen );
+			WebSocketSendMessage( sb, pidt->pt_UserSession, sendbuf, newmsglen );
 			
 			FFree( sendbuf );
 		}
 	}
 	else
 	{
-		DEBUG("SendProcessMessage end\n");
+		
 	}
+	DEBUG("SendProcessMessage end\n");
 	
 	return 0;
 }
 
+/**
+ * Check if another FriendCore is working or launch it and create lock which prevent to launch another FriendCore on same port.
+ * 
+ * @return TRUE if lock can be created
+ */
 
+FBOOL FriendCoreLockCheckOrCreate( )
+{
+	char *ptr = getenv("FRIEND_HOME");
+	char path[ 2048 ];
+	if( ptr != NULL )
+	{
+		int size = snprintf( path, sizeof(path), "%s.friend_lock%d", ptr, globalFriendCorePort );
+		if( mkdir( path, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH ) == 0 )
+		{
+			return TRUE;
+		}
+		else
+		{
+			return FALSE;
+		}
+	}
+
+	return FALSE;
+}
+
+/**
+ * Release FriendCore lock
+ */
+void FriendCoreLockRelease()
+{
+	char *ptr = getenv("FRIEND_HOME");
+	char path[ 2048 ];
+	if( ptr != NULL )
+	{
+		int size = snprintf( path, sizeof(path), "%s.friend_lock%d", ptr, globalFriendCorePort );
+		LocFileDeleteWithSubs( path );
+	}
+}
+
+#define NORMAL_COLOR  "\x1B[0m"
+#define GREEN  "\x1B[32m"
+#define BLUE  "\x1B[34m"
+
+#define LFILENAME_MAX_LENGTH 256
+
+typedef struct LFile
+{
+	char		lf_Name[ LFILENAME_MAX_LENGTH ];
+	size_t		lf_Size;
+	size_t		lf_ModDate;
+}LFile;
+
+
+static int LFileCompare(const void * a, const void * b)
+{
+    LFile *aa = (LFile *)a;
+	LFile *bb = (LFile *)b;
+	if( aa->lf_ModDate > bb->lf_ModDate ) return -1;
+	else return 1;
+}
+
+/**
+ * Remove old logs from log directory
+ *
+ * @param l pointer to SystemBase
+ */
+
+void RemoveOldLogs( SystemBase *l )
+{
+ 	//l->sl_MaxLogsInMB = 40; // test 40MB
+	if( l->sl_MaxLogsInMB > 0 )
+	{
+		int numberOfFiles = 0;
+		int64_t bytes = 0;
+		
+		DIR * d; // open the path
+		if( ( d = opendir("log/")) != NULL )
+		{
+			struct dirent * dir;
+			while( (dir = readdir(d)) != NULL ) 
+			{
+				if( strcmp( dir->d_name,".")==0 || strcmp(dir->d_name,"..") ==0 )continue;
+			
+				if( dir->d_type == 0x8 && (strncmp( dir->d_name, "friend_core", 11 ) == 0) ) // if the type is not directory just print it with blue
+				{
+					char path[ 1024 ];
+					snprintf( path, sizeof(path), "log/%s", dir->d_name );
+				
+					struct stat attr;
+					stat( path, &attr );
+				
+					numberOfFiles++;
+					bytes += attr.st_size;
+				}
+			}
+			closedir( d ); // finally close the directory
+		} // opendir
+		
+		int maxLogsBytes = l->sl_MaxLogsInMB * 1024 * 1000;
+		// too much logs (in MB)
+		if( bytes > maxLogsBytes )
+		{
+			LFile *files = FCalloc( numberOfFiles, sizeof(LFile) );
+			if( files != NULL )
+			{
+				LFile **filesPtr = FCalloc( numberOfFiles, sizeof(LFile *) );
+				if( filesPtr != NULL )
+				{
+					int pos = 0;
+					if( ( d = opendir("log/")) != NULL )
+					{
+						struct dirent * dir;
+						while( (dir = readdir(d)) != NULL ) 
+						{
+							if( strcmp( dir->d_name,".")==0 || strcmp(dir->d_name,"..") ==0 )continue;
+	   
+							if( dir->d_type == 0x8 && (strncmp( dir->d_name, "friend_core", 11 ) == 0) ) // if the type is not directory just print it with blue
+							{
+								snprintf( files[ pos ].lf_Name, LFILENAME_MAX_LENGTH, "log/%.250s", dir->d_name );
+								struct stat attr;
+								stat( files[ pos ].lf_Name, &attr );
+								files[ pos ].lf_Size = attr.st_size;
+								files[ pos ].lf_ModDate = attr.st_mtime;
+								filesPtr[ pos ] = &files[ pos ];
+								pos++;
+							}
+						}
+						closedir( d ); // finally close the directory
+						
+						qsort( filesPtr, (sizeof(filesPtr)/sizeof(LFile **)), sizeof (LFile *), LFileCompare);
+					} // opendir
+					
+					int i;
+					for( i = 0 ; i < numberOfFiles ; i++ )
+					{
+						
+						DEBUG1("maxbytes %d will survive %d MB %d\n", bytes, maxLogsBytes, (bytes/(1024*1000)) );
+						if( bytes > maxLogsBytes )
+						{
+							DEBUG1("Delete file %s modification date %lu\n", filesPtr[ i ]->lf_Name, filesPtr[ i ]->lf_ModDate );
+							remove( filesPtr[ i ]->lf_Name );
+							bytes -= filesPtr[ i ]->lf_Size;
+						}
+						else
+						{
+							DEBUG("No more files to remove\n");
+							break;
+						}
+					}
+					
+					FFree( filesPtr );
+				}
+				FFree( files );
+			}
+		}
+		
+	}
+}

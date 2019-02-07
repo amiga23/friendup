@@ -1,19 +1,10 @@
 /*©agpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Affero General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Affero General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Affero   *
+* General Public License, found in the file license_agpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
 
@@ -24,6 +15,7 @@
 DeepestField = {
 	zones: [],
 	connections: {},
+	available: true,
 	// For measuring network activity
 	networkActivity: {
 		frame: 0,
@@ -32,8 +24,14 @@ DeepestField = {
 		frameLength: window.innerWidth,
 		timeToFinish: []
 	},
+	// Initialize deepest field
 	init: function()
 	{
+		// No need to reinitialize
+		if( this.initialized ) return;
+		
+		this.initialized = true;
+		
 		// Cound network activity
 		if( !window.isMobile )
 		{
@@ -43,12 +41,13 @@ DeepestField = {
 			}, 250 );
 		}
 		
+		// Stats...
 		var d = document.createElement( 'canvas' );
 		ge( 'DeepestField' ).appendChild( d );
 		d.id = 'DeepestCanvas';
 		d.style.position = 'absolute';
-		d.style.top = '0px';
-		d.style.left = '0px';
+		d.style.top = ge( 'Capabilities' ).offsetTop + ge( 'Capabilities' ).offsetHeight + 20 + 'px';
+		d.style.left = '20px';
 		this.canvas = d;
 		this.ctx = d.getContext( '2d' );
 		
@@ -63,53 +62,11 @@ DeepestField = {
 		
 		function resizeField()
 		{
-			d.setAttribute( 'width', document.body.offsetWidth );
-			d.setAttribute( 'height', document.body.offsetHeight );
+			d.setAttribute( 'width', document.body.offsetWidth - 40 );
+			d.setAttribute( 'height', document.body.offsetHeight - ( d.offsetTop + 20 ) );
 			DeepestField.redraw();
 		}
 		window.addEventListener( 'resize', resizeField );
-		window.addEventListener( 'mousemove', function( e )
-		{
-			// Only allow on canvas
-			var tg = e.target ? e.target : e.srcElement;
-			if( tg.id != 'DeepestCanvas' ) return;
-				
-			var cx = e.clientX;
-			var cy = e.clientY;
-			var found = false;
-			for( var a = 0; a < DeepestField.zones.length; a++ )
-			{
-				var p = DeepestField.zones[a];
-				if( cx >= p.x && cx < p.x + p.w && cy >= p.y && cy < p.y + p.h )
-				{
-					document.body.classList.add( 'MousePointer' );
-					found = true;
-					break;
-				}
-			}
-			if( !found )
-			{
-				document.body.classList.remove( 'MousePointer' );
-			}
-		} );
-		window.addEventListener( 'mouseup', function( e )
-		{
-			// Only allow on canvas
-			var tg = e.target ? e.target : e.srcElement;
-			if( tg.id != 'DeepestCanvas' ) return;
-			
-			var cx = e.clientX;
-			var cy = e.clientY;
-			for( var a = 0; a < DeepestField.zones.length; a++ )
-			{
-				var p = DeepestField.zones[a];
-				if( cx >= p.x && cx < p.x + p.w && cy >= p.y && cy < p.y + p.h )
-				{
-					KillApplication( p.ele );
-				}
-			}
-		} );
-		
 		
 		resizeField();
 	},
@@ -135,7 +92,6 @@ DeepestField = {
 		this.ctx.restore();
 		this.ctx.fillStyle = '#333333';
 		this.ctx.fillRect( 0, 0, this.w, this.h );
-		this.drawUserProfile();
 		this.updateTaskInformation();
 		// Don't do this on mobile
 		if( !window.isMobile )
@@ -150,14 +106,30 @@ DeepestField = {
 	updateNetConnections: function()
 	{
 		ge( 'NetconnectionsHeader' ).innerHTML = i18n( 'i18n_active_network_connections' ) + ':';
+		ge( 'FNetHeader' ).innerHTML = i18n( 'i18n_active_fnet_connections' ) + ':';
 	},
 	addConnection: function( ptr, url, object )
-	{	
+	{
 		for( var a in this.connections )
 			if( this.connections[a] == ptr ) return;
 		var d = document.createElement( 'div' );
 		d.className = 'Connection Ellipsis FullWidth PaddingSmall IconSmall fa-bullet';
 		d.innerHTML = '<span class="IconSmall fa-remove MousePointer">&nbsp;</span>' + url;
+		var str = 'Url: ' + object.url;
+		if( object.vars )
+		{
+			var varcount = 0; for( var a in object.vars ) varcount++;
+			if( varcount > 0 )
+			{
+				str += "\nVariables:";
+				for( var a in object.vars )
+				{
+					str += "\n" + a + ': ' + object.vars[ a ];
+				}
+			}
+		}
+		d.object = object;
+		d.setAttribute( 'title', str );
 		this.connections[ptr] = d;
 		ge( 'Netconnections' ).appendChild( d );
 		var s = d.getElementsByTagName( 'span' )[0];
@@ -204,25 +176,29 @@ DeepestField = {
 			return;
 		}
 		
-		function foundDevices( items ) {
+		function foundDevices( items )
+		{
 			self.checkedCamera = true;
 			var addedMic = false;
 			var addedCam = false;
 			items.forEach( addToCapa );
-			if ( !addedMic )
+			if( !addedMic )
 				addMicrophone({ disabled : true, });
 			
-			if ( !addedCam )
+			if( !addedCam )
 				addCamera({ disabled : true, });
 			
-			function addToCapa( item ) {
-				if ( 'audioinput' === item.kind ) {
+			function addToCapa( item )
+			{
+				if( 'audioinput' === item.kind )
+				{
 					addedMic = true;
 					addMicrophone( item );
 					return;
 				}
 				
-				if ( 'videoinput' === item.kind ) {
+				if( 'videoinput' === item.kind )
+				{
 					addedCam = true;
 					addCamera( item );
 					return;
@@ -231,11 +207,13 @@ DeepestField = {
 			}
 		}
 		
-		function enumError( err ) {
+		function enumError( err )
+		{
 			console.log( 'updateCapabilities - enumerate devices failed', err );
 		}
 		
-		function addCamera( conf ) {
+		function addCamera( conf )
+		{
 			conf.icon = 'fa-camera';
 			var label = checkLabel( conf.label );
 			if ( null == label )
@@ -245,7 +223,8 @@ DeepestField = {
 			addElement( conf );
 		}
 		
-		function addMicrophone( conf ) {
+		function addMicrophone( conf )
+		{
 			conf.icon = 'fa-microphone';
 			var label = checkLabel( conf.label );
 			if ( null == label )
@@ -255,13 +234,14 @@ DeepestField = {
 			addElement( conf );
 		}
 		
-		
-		function checkLabel( label ) {
+		function checkLabel( label )
+		{
 			if ( null == label )
 				return null;
 			
 			// if label is '', the device has been blocked in the browser
-			if ( 0 === label.length ) {
+			if ( 0 === label.length )
+			{
 				label = i18n( 'i18n_blocked_in_browser' ); 
 				return label;
 			}
@@ -269,7 +249,8 @@ DeepestField = {
 				return label;
 		}
 		
-		function addElement( conf ) {
+		function addElement( conf )
+		{
 			var d = document.createElement( 'div' );
 			d.className = 'Webcam ' + conf.icon;
 			var enableKlass = conf.disabled ? 'Disabled' : 'Enabled';
@@ -292,24 +273,13 @@ DeepestField = {
 	{
 		this.x = 0;
 		this.y = 0;
-		this.w = this.canvas.getAttribute( 'width' );
-		this.h = this.canvas.getAttribute( 'height' );
-		// Center of profile bubble
-		this.centerx = this.x + ( this.w * .5 );
-		this.centery = this.y + 100 + 10;
-	},
-	drawUserProfile: function()
-	{
-		if( !( ge( 'UserProfilePicture' ) ) && this.avatar )
+		if( this.canvas )
 		{
-			var d = document.createElement( 'div' );
-			d.id = 'UserProfilePicture';
-			d.innerHTML = '<img src="' + this.avatar.src + '"/><p class="Fullname">' + Workspace.fullName + '</p>';
-			ge( 'TasksHeader' ).parentNode.appendChild( d );
-			d.onclick = function()
-			{
-				ExecuteApplication( 'Account' );
-			}
+			this.w = this.canvas.getAttribute( 'width' );
+			this.h = this.canvas.getAttribute( 'height' );
+			// Center of profile bubble
+			this.centerx = this.x + ( this.w * .5 );
+			this.centery = this.y + 100 + 10;
 		}
 	},
 	// Draw the statistics onto the deepest field

@@ -1,19 +1,10 @@
 /*©agpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Affero General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Affero General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Affero   *
+* General Public License, found in the file license_agpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
 
@@ -24,12 +15,14 @@ friendUP.io = friendUP.io || {};
 File = function( filename )
 {
 	this.path = filename;
-	
+
+	this.useEncryption = false; // Default no encryption
+
 	this.data = false;
 	this.rawdata = false;
 	this.replacements = false;
 	this.vars = {};
-	
+
 	// Execute translations
 	this.i18n = function()
 	{
@@ -42,7 +35,19 @@ File = function( filename )
 			}
 		}
 	}
-	
+
+	// TODO: Complete this
+	this.encrypt = function( data )
+	{
+		return data;
+	}
+
+	// TODO: Complete this
+	this.decrypt = function( data )
+	{
+		return data;
+	}
+
 	// Execute replacements
 	this.doReplacements = function( data )
 	{
@@ -56,13 +61,13 @@ File = function( filename )
 			this.data = str;
 		return str;
 	}
-	
+
 	// Add a var
 	this.addVar = function( k, v )
 	{
 		this.vars[k] = v;
 	}
-	
+
 	this.resolvePath = function( filename )
 	{
 		if( filename.toLowerCase().substr( 0, 8 ) == 'progdir:' )
@@ -71,9 +76,9 @@ File = function( filename )
 			if( this.application && this.application.filePath )
 				filename = this.application.filePath + filename;
 		}
-		else if( 
+		else if(
 			filename.toLowerCase().substr( 0, 7 ) == 'system:' ||
-			filename.toLowerCase().substr( 0, 5 ) == 'libs:' 
+			filename.toLowerCase().substr( 0, 5 ) == 'libs:'
 		)
 		{
 			// not the prettiest solution... but works :)
@@ -83,29 +88,29 @@ File = function( filename )
 		// Fix broken paths
 		if( filename.substr( 0, 20 ) == 'resources/webclient/' )
 			filename = filename.substr( 20, filename.length - 20 );
-			
+
 		return filename;
 	}
-	
+
 	// Call functions
 	this.call = function( func, args )
 	{
 		if( !filename ) return;
-		
+
 		if( !args ) args = {};
-		
+
 		var t = this;
 		var jax = new cAjax ();
-		
+
 		for( var a in this.vars )
 			jax.addVar( a, this.vars[a] );
-		
+
 		// Check progdir on path
 		if( filename )
 		{
 			filename = this.resolvePath( filename );
 		}
-		
+
 		// Get the correct door and load data
 		var theDoor = Workspace.getDoorByPath( filename );
 		if( theDoor )
@@ -133,22 +138,27 @@ File = function( filename )
 			console.log( 'This should never happen.' );
 		}
 	}
-	
+
 	// Load data
-	this.load = function()
+	this.load = function( mode )
 	{
 		var t = this;
 		var jax = new cAjax ();
-		
+
+		var noRelocatePath = false;
 		for( var a in this.vars )
+		{
 			jax.addVar( a, this.vars[a] );
-		
+			if( !mode && a == 'mode' )
+				mode = this.vars[a];
+		}
+
 		// Check progdir on path
 		if( filename )
 		{
 			filename = this.resolvePath( filename );
 		}
-		
+
 		// Get the correct door and load data
 		var theDoor = Workspace.getDoorByPath( filename );
 		if( theDoor )
@@ -162,33 +172,50 @@ File = function( filename )
 			}
 			if( Workspace.conf && Workspace.conf.authId )
 				theDoor.addVar( 'authid', Workspace.conf.authId );
+			
 			theDoor.onRead = function( data )
 			{
-				if( data && data.length )
+				if( !( jax.mode == 'rb' || typeof( data ) == 'object' ) )
 				{
-					// TODO: Is this wise? We don't want to show the ok stuff..
-					if( data.substr( 0, 17 ) == 'ok<!--separate-->' )
-						data = "";
-				} else data = "";
+					if( data && data.length )
+					{
+						// TODO: Is this wise? We don't want to show the ok stuff..
+						if( data.substr( 0, 17 ) == 'ok<!--separate-->' )
+							data = "";
+					} else data = "";
 					
-				if( t.replacements )
-				{
-					for( var a in t.replacements )
-						data = data.split ( '{'+a+'}' ).join ( t.replacements[a] );
+					if( t.replacements )
+					{
+						for( var a in t.replacements )
+							data = data.split ( '{'+a+'}' ).join ( t.replacements[a] );
+					}
 				}
+
+				// Use encryption!
+				if( t.useEncryption )
+				{
+					data = t.decrypt( data );
+				}
+
 				if( typeof ( t.onLoad ) != 'undefined' )
 				{
 					t.onLoad( data );
 				}
 			}
-			theDoor.read( filename );
+			theDoor.read( filename, mode );
 			//console.log( 'Read filename: ' + filename );
 		}
-		// Old fallback (should never happen)
+		// Old fallback on static and standard unix paths (with domain name etc)
 		else
 		{
-			jax.open( 'post', filename, true, true );	
-		
+			jax.open( 'post', filename, true, true );
+
+			if( mode == 'rb' )
+			{
+				jax.addVar( 'mode', 'rb' );
+				jax.setResponseType( 'arraybuffer' );
+			}
+			
 			//console.log('PATH ' + filename );
 			// File description
 			if ( typeof( filename ) == 'string' )
@@ -200,21 +227,34 @@ File = function( filename )
 				jax.addVar( 'fileInfo', JSON.stringify ( jsonSafeObject ( filename ) ) );
 			}
 			jax.addVar( 'sessionid', Doors.sessionId );
-		
-			jax.onload = function()
+
+			jax.onload = function( r, d )
 			{
 				t.data = false;
 				t.rawdata = false;
 				if( this.returnCode == 'ok' )
 				{
-					try{ t.data = decodeURIComponent( this.returnData ); }
-					catch( e ){ t.data = this.returnData; }
-				
-					if( t.replacements )
+					// Binary mode
+					if( mode == 'rb' || jax.proxy.responseType == 'arraybuffer' )
 					{
-						for( var a in t.replacements )
-							t.data = t.data.split ( '{'+a+'}' ).join ( t.replacements[a] );
+						t.data = d;
 					}
+					else
+					{
+						try{ t.data = decodeURIComponent( this.returnData ); }
+						catch( e ){ t.data = this.returnData; }
+						if( t.replacements )
+						{
+							for( var a in t.replacements )
+								t.data = t.data.split ( '{'+a+'}' ).join ( t.replacements[a] );
+						}
+						// Use encryption!
+						if( t.useEncryption )
+						{
+							data = t.decrypt( data );
+						}
+					}
+
 					if( typeof ( t.onLoad ) != 'undefined' )
 					{
 						t.onLoad( t.data );
@@ -252,7 +292,7 @@ File = function( filename )
 			jax.send();
 		}
 	}
-	
+
 	// Posts a file of filename to a destination path (including content)
 	// filePath = the name of the file (full path)
 	// content = the data stream
@@ -260,30 +300,30 @@ File = function( filename )
 	this.post = function( content, filePath )
 	{
 		if( !filePath ) filePath = this.path;
-		
+
 		var t = this;
 		if( filePath && content )
 		{
 			var files = [ content ];
-			
+
 			var uworker = new Worker( 'js/io/filetransfer.js' );
-			
+
 			// Open window
-			var w = new View( { 
-				title:  i18n( 'i18n_copying_files' ), 
-				width:  320, 
+			var w = new View( {
+				title:  i18n( 'i18n_copying_files' ),
+				width:  320,
 				height: 100
 			} );
-			
+
 			var uprogress = new File( 'templates/file_operation.html' );
 
 			uprogress.connectedworker = uworker;
-			
+
 			uprogress.onLoad = function( data )
 			{
 				data = data.split( '{cancel}' ).join( i18n( 'i18n_cancel' ) );
 				w.setContent( data );
-			
+
 				w.connectedworker = this.connectedworker;
 				w.onClose = function()
 				{
@@ -293,9 +333,9 @@ File = function( filename )
 						this.connectedworker.postMessage( { 'terminate': 1 } );
 					}
 				}
-			
+
 				uprogress.myview = w;
-			
+
 				// Setup progress bar
 				var eled = w.getWindowElement().getElementsByTagName( 'div' );
 				var groove = false, bar = false, frame = false, progressbar = false;
@@ -321,17 +361,17 @@ File = function( filename )
 						}
 					}
 				}
-				
-				
+
+
 				//activate cancel button... we assume we only hav eone button in the template
 				var cb = w.getWindowElement().getElementsByTagName( 'button' )[0];
-				
+
 				cb.mywindow = w;
 				cb.onclick = function( e )
 				{
 					this.mywindow.close();
 				}
-				
+
 				// Only continue if we have everything
 				if( progressbar && groove && frame && bar )
 				{
@@ -348,7 +388,7 @@ File = function( filename )
 					bar.style.height = '30px';
 					bar.style.top = '0';
 					bar.style.left = '0';
-					
+
 					// Preliminary progress bar
 					bar.total = files.length;
 					bar.items = files.length;
@@ -357,7 +397,7 @@ File = function( filename )
 				uprogress.loaded = true;
 				uprogress.setProgress(0);
 			}
-			
+
 			uprogress.setProgress = function( percent )
 			{
 				// only update display if we are loaded...
@@ -369,27 +409,27 @@ File = function( filename )
 					Math.floor( percent ) + '%</div>';
 				}
 			};
-			
+
 			uprogress.setUnderTransport = function()
 			{
 				// show notice that we are transporting files to the server....
 				uprogress.info.innerHTML = '<div id="transfernotice" style="padding-top:10px;">Transferring files to target volume...</div>';
 				uprogress.myview.setFlag("height",125);
 			}
-			
+
 			uprogress.displayError = function( msg )
 			{
 				uprogress.info.innerHTML = '<div style="color:#F00; padding-top:10px; font-weight:700;">'+ msg +'</div>';
 				uprogress.myview.setFlag("height",140);
 			}
-			
+
 			uworker.onerror = function( err )
 			{
 				console.log('Upload worker error #######');
 				console.log( err );
-				console.log('###########################');	
+				console.log('###########################');
 			}
-			
+
 			uworker.onmessage = function( e )
 			{
 				//console.log('Worker sends us back ------------ -');
@@ -421,41 +461,46 @@ File = function( filename )
 					uprogress.displayError(e.data['errormessage']);
 				}
 			}
-			
+
 			uprogress.load();
-			
+
 			// Do the hustle!
 			var vol = filePath.split( ':' )[0];
 			var path = filePath;
 			uworker.postMessage( {
 				'session': Workspace.sessionId,
-				'targetPath': path, 
+				'targetPath': path,
 				'targetVolume': vol,
 				'objectdata': Base64.encode( content )
 			} );
-			console.log( 'Execute: ' );
-			console.log( path, vol );
-			
 		}
 	}
-	
+
 	// Save data to a file
-	this.save = function ( content, filename )
+	this.save = function( rawdata, filename, mode )
 	{
 		if( !filename ) filename = this.path;
-		
+
 		// Make sure this is correct
 		filename = this.resolvePath( filename );
-		
+
+		// Use encryption!
+		if( this.useEncryption )
+		{
+			content = this.encrypt( rawdata );
+		}
+		else content = rawdata;
+
 		t = this;
 		// Get the correct door and load data
 		var theDoor = Workspace.getDoorByPath( filename );
 		if( theDoor )
 		{
 			// Copy vars
-			for( var a in this.vars ) 
+			for( var a in this.vars )
 				theDoor.addVar( a, this.vars[a] );
-			
+			if( ( mode && mode == 'wb' ) || this.vars['mode'] == 'wb' )
+				theDoor.mode = 'wb';
 			theDoor.onWrite = function( data )
 			{
 				if( typeof ( t.onSave ) != 'undefined' )
@@ -467,35 +512,35 @@ File = function( filename )
 		else
 		{
 			var jax = new cAjax();
-			
+
 			jax.open( 'post', '/system.library', true, true );
-			
+
 			for( var a in this.vars )
 			{
 				//console.log( 'Adding extra var ' + a, this.vars[a] );
 				jax.addVar( a, this.vars[a] );
 			}
-			
+
 			jax.addVar( 'sessionId', Doors.sessionId );
 			jax.addVar( 'module', 'system' );
 			jax.addVar( 'command', 'filesave' );
 			jax.addVar( 'path', filename );
 			jax.addVar( 'mode', 'save' );
 			jax.addVar( 'content', content );
-			jax.t = this;
+			var t = this;
 			jax.onload = function ()
 			{
 				if ( this.returnCode == 'ok' )
 				{
-					this.t.written = parseInt ( this.returnData );
-					if ( typeof ( this.t.onSave ) != 'undefined' )
+					t.written = parseInt ( this.returnData );
+					if ( typeof ( t.onSave ) != 'undefined' )
 					{
-						this.t.onSave ();
+						t.onSave ();
 					}
 				}
-				else 
+				else
 				{
-					this.written = 0;
+					t.written = 0;
 				}
 			}
 			jax.send ();
@@ -511,14 +556,14 @@ File = function( filename )
 	ns.File = function( conf, callback ) {
 		if ( !( this instanceof ns.File ))
 			return new ns.File( conf, callback );
-		
+
 		var self = this;
 		self.filePath = conf.filePath;
 		self.callback = callback;
-		
+
 		self.init();
 	}
-	
+
 	ns.File.prototype.init = function()
 	{
 		var self = this;
@@ -530,41 +575,45 @@ File = function( filename )
 			success : success,
 			error : error
 		});
-		
+
 		function success( response ) { self.done( response.data ); }
 		function error( e ) { self.done( e ); }
 	}
-	
+
 	ns.File.prototype.done = function( data )
 	{
 		var self = this;
-		
-		if ( !data ) 
+
+		if ( !data )
 		{
 			data = null;
 		}
-		
+
 		self.callback( data );
 	}
-	
+
 })( friendUP.io );
 
 // Resolve an image on the global level
 // TODO: Use Door to resolve proper path
 function getImageUrl( path )
-{
+{		
 	if( path.toLowerCase().substr( 0, 7 ) == 'system:' )
 		return path.split( /system\:/i ).join( '/webclient/' );
 
 	if( path.toLowerCase().substr( 0, 5 ) == 'libs:' )
 		return path.split( /libs\:/i ).join( '/webclient/' );
+	
+	if( path.substr( 0, 11 ) == '/webclient/' )
+	{
+		return path;
+	}
 
 
 	var sid = Workspace.sessionId && Workspace.sessionId != 'undefined';
 	var type = sid ? 'sessionid' : 'authid';
 	var valu = sid ? Workspace.sessionId : ( Workspace.conf ? Workspace.conf.authid : '' );
 	var auth = type + '=' + valu;
-	var u = '/system.library/file/read?' + auth + '&path=' + path + '&mode=rs';
+	var u = '/system.library/file/read?' + auth + '&path=' + encodeURIComponent( path ) + '&mode=rs';
 	return u;
 }
-

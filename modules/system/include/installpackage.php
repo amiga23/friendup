@@ -1,23 +1,13 @@
 <?php
-/*©lpgl*************************************************************************
+/*©lgpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Lesser General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Lesser General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Lesser   *
+* General Public License, found in the file license_lgpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
-
 
 global $Config, $Logger, $User;
 
@@ -79,10 +69,7 @@ if( $fr->Load() )
 			$zip->close();
 			
 			$Logger->log( '[InstallPackage] Successfully unzipped.' );
-		
-			// Remove temporary zip file
-			unlink( '/tmp/' . $ff );
-		
+			
 			$Logger->log( '[InstallPackage] Remove temporary zip file.' );
 		
 			// Find jsx and conf!
@@ -99,7 +86,7 @@ if( $fr->Load() )
 				
 				$confo = json_decode( file_get_contents( $conf ) );
 				
-				$nconf = new Object();
+				$nconf = new stdClass();
 				$init = substr( $jsx, 0, strlen( $jsx ) - 4 ) . '.js';
 				rename( $jsx, $init ); // Give jsx a .js name
 				$nconf->Init = str_replace( '/tmp/' . $fld . '/', '', $init );
@@ -127,6 +114,8 @@ if( $fr->Load() )
 				$nconf->Verified = 'no';
 				$nconf->Trusted = 'no';
 			
+				$dest = str_replace( ' ', '_', $dest );
+			
 				if( $f = fopen( $conf, 'w+' ) )
 				{
 					fwrite( $f, json_encode( $nconf ) );
@@ -140,7 +129,11 @@ if( $fr->Load() )
 			}
 			else
 			{
-				$Logger->log( '[InstallPackage] Found no jsx or conf in path ' . '/tmp/' . $fld );
+				//$Logger->log( '[InstallPackage] Found no jsx or conf in path ' . '/tmp/' . $fld );
+				
+				// Remove temporary zip file
+				unlink( '/tmp/' . $ff );
+				
 				die( 'fail<!--separate-->{"response":"no jsx or conf found"}' );
 			}
 		
@@ -148,19 +141,23 @@ if( $fr->Load() )
 			if( !file_exists( getcwd() . '/repository' ) )
 			{
 				$Logger->log( '[InstallPackage] Found no repository (' . getcwd() . '/repository).' );
+				
+				// Remove temporary zip file
+				unlink( '/tmp/' . $ff );
+				
 				die( 'fail<!--separate-->{"response":"repository store does not exist on server"}' );
 			}
 			
 			// Now hash all files!
-			function hashEmRecursive( $p, &$hashes, $d = 0 )
+			function hashEmRecursive( $p, &$hashes, $d = 0, $rpath = '' )
 			{
+				global $Logger;
 				if( $hdir = opendir( $p ) )
 				{
 					while( $f = readdir( $hdir ) )
 					{
-						if( $d == 0 && $f == 'Signature.sig' )
+						if( $d == 0 && ( $f == 'Signature.sig' || $f == 'package.zip' ) )
 						{
-							unlink( $p . '/' . $f );
 							continue;
 						}
 						if( $f{0} == '.' )
@@ -172,12 +169,17 @@ if( $fr->Load() )
 							}
 							continue;
 						}
-						$hashes[] = hash( 'sha256', $f ); // Add dir names
+						$path = $rpath . ( $rpath ? '/' : '' ) . $f; // rel path
+						$hashes[] = hash( 'sha256', $rpath ); // Add dir names
 						if( is_dir( $p . '/' . $f ) )
 						{
-							hashEmRecursive( $p . '/' . $f, $hashes, $d + 1 );
+							hashEmRecursive( $p . '/' . $f, $hashes, $d + 1, $path );
 						}
-						$hashes[] = $hash = hash_file( 'sha256', $p . '/' . $f );
+						else
+						{
+							$hashes[] = $hash = hash_file( 'sha256', $f );
+							//$Logger->log( $path );
+						}
 					}
 					closedir( $hdir );
 				}
@@ -187,7 +189,7 @@ if( $fr->Load() )
 			// Write a signature
 			if( $f = fopen( '/tmp/' . $fld . '/Signature.sig', 'w+' ) )
 			{
-				fwrite( $f, '{"signature":"' . hash( 'sha256', implode( '', $hashes ) ) . '"}' );
+				fwrite( $f, '{"signature":"' . hash( 'sha256', implode( '', sort( $hashes ) ) ) . '"}' );
 				fclose( $f );
 			}
 			
@@ -209,6 +211,10 @@ if( $fr->Load() )
 				if( $success )
 				{
 					$Logger->log( '[InstallPackage] Success!' );
+					
+					// move package zip to archive
+					exec( 'mv /tmp/' . $ff . ' ' . getcwd() . '/repository/' . $dest . '/package.zip' );
+					
 					die( 'ok<!--separate-->{"response":"successfully installed friend package","package":"' . $dest . '"}' );
 				}
 			}
@@ -219,6 +225,10 @@ if( $fr->Load() )
 			}
 			
 			$Logger->log( '[InstallPackage] Permission error.' );
+			
+			// Remove temporary zip file
+			unlink( '/tmp/' . $ff );
+			
 			die( 'fail<!--separate-->{"response":"failed to install package due to server file permissions"}' );
 		}
 	}

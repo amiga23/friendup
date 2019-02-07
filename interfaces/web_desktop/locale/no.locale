@@ -19,12 +19,16 @@ i18n_printers                        : Printere
 i18n_network                         : Nettverk
 i18n_language                        : Språk
 i18n_bookmarks                       : Bokmerker
+i18n_upload_a_file                   : Last opp fil
+i18n_deleting_files                  : Sletter filer
 i18n_bookmarks_add                   : Legg til
 i18n_bookmarks_close                 : Lukk
 i18n_bookmarks_select                : Velg
 i18n_bookmarks_remove                : Fjern
 i18n_empty_view                      : Tom liste
 i18n_no_bookmarks                    : Du har ingen bokmerker.
+i18n_illegal_path                    : Feil sti
+i18n_illegal_fld_mountlist           : Du kan ikke lage kataloger i monteringslisten.
 i18n_desklets                        : Skrivebordselementer
 i18n_software                        : Programvare
 i18n_sound                           : Lyd
@@ -48,15 +52,25 @@ i18n_startup_sequence                : Oppstartsekvens
 i18n_cancel                          : Avbryt
 i18n_accept                          : Aksepter
 i18n_understood                      : Forstått
+i18n_your_devices                    : Dine enheter
 
+i18n_full                            : full.
 i18n_disk_icon                       : Diskikon
+i18n_sharing_options                 : Delingsalternativer for
+i18n_disk_sharing                    : Deling
+i18n_open_sharing_options            : Åpne delingsalternativer
 i18n_choose_disk                     : Velg disk
 i18n_run_application                 : Start app
+i18n_shared_with                     : Delt med
+i18n_find_workgroup_user             : Finn bruker...
+i18n_no_users_found                  : Ingen brukere funnet...
+i18n_error_in_userlist               : Feil i brukerlisten...
+i18n_apply_sharing_settings          : Sett endringene i kraft
 
 i18n_driver_handled                  : DOS driver håndtert
 
 i18n_system_version                  : System versjon
-i18n_system_version_num              : Release candidate 1
+i18n_system_version_num              : Version 1.0.0
 
 i18n_notification_archive               : Varselsarkiv
 i18n_sure_remove_notification           : Ønsker du virkelig å gjerne varsel?
@@ -76,7 +90,7 @@ i18n_new_container                   : Ny container
 i18n_create_container                : Lag container
 i18n_name                            : Navn
 i18n_make_a_new_container            : Lag en ny container
-i18n_error_could_not_list_directory  : Kunne ikke laste inn innholdet
+i18n_error_could_not_list_directory  : Tom mappe
 
 i18n_error                              : Feil
 i18n_could_not_run_jsx                  : Kunne ikke kjøre JSX.
@@ -120,6 +134,8 @@ clear_cache                             : Tøm mellomlager
 documentation_on                        : Dokumentasjon om
 i18n_sharewith                          : Del med
 i18n_sharename                          : Del navn
+i18n_share_with_workgroup               : Del i en arbeidsgruppe
+i18n_no_workgroup_sharing               : Ikke del med arbeidsgruppe
 my_account                              : Min konto
 i18n_account_setup                      : Min konto - oppsett
 
@@ -141,7 +157,7 @@ i18n_directory_Software                 : Programmer
 i18n_directory_Modules                  : Moduler
 i18n_directory_Plugins                  : Plugins
 i18n_directory_Prefs                    : Innstillinger
-i18n_directory_Tools                    : Verktøy
+i18n_directory_Repositories             : Programkilder
 i18n_directory_Devices                  : Enheter
 i18n_directory_Libraries                : Bibloteker
 
@@ -154,13 +170,18 @@ i18n_printers                           : Printere
 
 #Menu
 
+i18n_favorites                          : Favoritter
+i18n_menu                               : Meny
+
 i18n_close_menu                         : Lukk meny
 
 menu_workspace                          : Workspace
 menu_system                             : System
 menu_new_shell                          : Ny terminal
 menu_about_friendup                     : Om Friend UP
+menu_examine_system                     : Utførsk systemet
 menu_refresh_desktop                    : Frisk opp
+menu_add_storage                        : Tilføy disk
 menu_run_command                        : Kjør kommando
 menu_show_launcher                      : Vis Launcher
 menu_hide_launcher                      : Gjem Launcher
@@ -181,23 +202,37 @@ menu_zip                                : Komprimer fil(er)
 menu_unzip                              : Dekomprimer fil(er)
 menu_looknfeel                          : Utseende
 menu_backdrop                           : Vis oversikt
+menu_buildwebapp                        : Bygg webapplikasjon
+menu_share				: Del
+menu_download                           : Last ned
+menu_close_idle_connections             : Fjern nettverksprosesser
+menu_hide_hidden_files                  : Gjem skjulbare filer
+menu_show_hidden_files                  : Vis skjulte filer
+menu_new_window                         : Nytt vindu
 
 menu_edit_wallpaper                     : Endre skrivebordsbakgrunn
 i18n_edit_dock                          : Rediger docken
+i18n_remove_from_dock                   : Fjern fra docken
 
-i18n_choose_file_to_upload              : Velg fil for opplastning
+i18n_choose_file_to_upload              : Velg en fil for opplasting
 i18n_upload_target                      : Målsti
+i18n_upload_completed                   : Opplastning fullførte.
 i18n_browse                             : Utforsk
 i18n_upload_the_file                    : Start opplasting
 i18n_file_upload                        : Filopplasting
+i18n_upload_completed                   : Opplasting fullført.
+i18n_upload_failed                      : Opplastning feilet.
+i18n_upload_completed_description       : Din fil ble lastet opp til målmappen.
+i18n_upload_failed_description          : Din fil kunne ikke lastes opp.
+
 
 i18n_unzip_completed                    : Ferdig å pakke ut.
 i18n_unzip_comdesc                      : Systemet fullførte utpakkingen av filen(e)
 i18n_unzip_failed                       : Kunne ikke pakke ut.
 i18n_unzip_failed_desc                  : Systemet kunne ikke fullføre utpakking av filen(e)
+
 i18n_zip_not_completed                  : Pakking feilet.
 i18n_zip_not_comdesc                    : Systemet kunne ikke fullføre pakkingen av filen(e)
-
 i18n_zip_completed                      : Pakkingen fullført.
 i18n_zip_comdesc                        : Systemet fullførte pakkingen av filen(e).
 
@@ -215,6 +250,7 @@ menu_open_directory                     : Åpne mappe
 menu_open_parent_directory              : Åpne overliggende vindu
 menu_show_as                            : Vis som
 menu_show_as_icons                      : Ikoner
+menu_show_as_compact                    : Kompakt
 menu_show_as_list                       : Liste
 menu_show_as_columns                    : Kolonner
 menu_close_window                       : Lukk
@@ -228,7 +264,7 @@ i18n_follow_link                        : Åpne web lenke
 i18n_open_link                          : Gå til
 i18n_follow_link_desc                   : Klikk på lenken under for å gå til lenken
 
-menu_icons                              : Handlinger
+menu_icons                              : Fil
 menu_new_directory                      : Ny mappe
 menu_new_weblink                        : Ny web lenke
 menu_show_icon_information              : Vis informasjon
@@ -282,8 +318,9 @@ application_not_validated               : Programmet er ikke godkjent. Vennligst
 
 #Icon info ---------------------------------------------------------------------
 
-i18n_icon_information                   : Ikoninformasjon
+i18n_icon_information                   : Egenskaper
 i18n_volumeicon_information             : Enhetsinformasjon
+i18n_volume_sharing                     : Deling
 i18n_volume_name                        : Disknavn
 i18n_volume_size                        : Diskstørrelse
 i18n_protection                         : Rettigheter
@@ -291,10 +328,13 @@ i18n_used_space                         : brukt
 i18n_filename                           : Filnavn
 i18n_permissions                        : Rettigheter
 i18n_filesize                           : Filstørrelse
+i18n_filedate                           : Dato endret
+i18n_files                              : Filer
 i18n_public_file                        : Public file
 i18n_public_link                        : Public url
 i18n_close                              : Lukk
 i18n_file_information                   : Generelt
+i18n_link_information                   : Link informasjon
 i18n_file_permissions                   : Filrettigheter
 i18n_meta_information                   : Filinformasjon
 i18n_click_to_copy                      : Klikk for å kopiere til utklippstavle
@@ -306,6 +346,7 @@ i18n_edit_attribute                     : Rediger attributt
 i18n_icon_image                         : Ikonbilde
 i18n_no_field_information               : Ingen attributtdata tilgjengelig.
 i18n_non_compatible_field_information   : Kan ikke vise forhåndsvisning.
+i18n_open_with                          : Åpne med
 
 #File dialogs ------------------------------------------------------------------
 
@@ -337,6 +378,9 @@ i18n_read_only_fs_desc                  : Filsystemet du prøver å skrive til e
 i18n_cancel                             : Avbryt
 i18n_moving_files                       : Flytt filer
 i18n_copying_files                      : Kopier filer
+i18n_filecopy_error                     : Feil ved filkopiering
+i18n_do_you_want_copy                   : Vil du virkelig kopiere disse filene?
+i18n_do_you_want_move                   : Vil du virkelig flytte disse filene?
 
 i18n_delete_operation                   : Sletting av fil(er)
 i18n_could_not_delete_files             : Kunne ikke slette fil(er).
@@ -372,7 +416,28 @@ i18n_webcam_enabled                     : Tilkoblet
 i18n_testing_camera                     : Webkamera test
 i18n_testing_camera_desc                : Tester om kameraet er tilgjengelig og tilkoblet.
 
+i18n_active_fnet_connections            : Friend Nettverket
 i18n_active_network_connections         : Aktive tilkoblinger
+
+i18n_add_a_friend                       : Legg til en venn
+i18n_waiting_for_connection             : Venter på tilkobling
+i18n_remove_friend                      : Fjern venn
+i18n_shares_with_community              : deler med gruppe...
+i18n_open                               : Åpne
+i18n_application                        : Applikasjon
+i18n_remove                             : Fjern
+i18n_download_file                      : Last ned fil
+i18n_refuse_file                        : Avslå fil
+i18n_shares_with_you                    : deler med deg...
+i18n_refuse_message                     : Avslå melding
+i18n_messages                           : Meldinger
+i18n_delete                             : Slett
+i18n_stop_sharing                       : Slutt å dele
+i18n_folder                             : Mappe
+i18n_what_you_share_with                : Hva du deler med
+i18n_mark_as_read                       : Merk som lest
+i18n_messages_sent                      : Meldingene ble sendt...
+i18n_notifications_sent                 : Varslene ble sendt...
 
 #Locale ------------------------------------------------------------------------
 
@@ -406,6 +471,10 @@ i18n_dir_btn_search                     : Søk
 
 #Sessions ----------------------------------------------------------------------
 
+i18n_session_killed                     : Din økt ble fjernet
+i18n_session_killed_desc                : Du blir nå logget ut
+i18n_session_expired                    : Din økt er foreldet
+i18n_session_expired_desc               : Etablerer en ny økt med serveren
 i18n_no_other_sessions_available        : Ingen andre økter tilgjengelige
 i18n_no_sessions_available              : Ingen økter tilgjengelige
 i18n_active_session_list                : Andre aktive enheter
@@ -428,11 +497,17 @@ i18n_cal_btn_add                        : Lagre hendelse
 i18n_from                               : Fra
 i18n_to                                 : Til
 
+i18n_cal_evt_type                       : Velg kalender
+i18n_cal_private_calendar               : Din private kalender
+
 i18n_evt_added                          : Kalender oppdatert
 i18n_evt_addeddesc                      : Hendelsen ble lagt til din kalender.
 i18n_evt_delete_desc                    : Dette vil slette kalender hendelsen.
 i18n_evt_delete_failed                  : Kunne ikke slette
 i18n_evt_delete_failed_desc             : Kunne ikke slette din kalender hendelse.
+i18n_cannotRename						: Kunne ikke gi nytt navn
+i18n_cannotDelete						: Kunne ikke slette
+i18n_noWritePermission					: Du har ikke skrive tillatelse på denne platen.
 
 month_january                           : januar
 month_february                          : februar
@@ -456,6 +531,7 @@ i18n_day_sat                            : lør
 i18n_day_sun                            : søn
 
 i18n_server_disconnected                : Frakoblet
+i18n_ws_disconnected                    : Redusert nettverk
 i18n_copy_to_system_clipboard           : Vil du overføre din Friend utklippstavle til systemet ditt?
 i18n_copy_to_system_clipboard_headline  : Overfør utklippstavle til systemet
 
@@ -525,4 +601,16 @@ i18n_filetype_svg                       : Skalerbar vektor grafikk
 i18n_filetype_ogv                       : Ogg Vorbis video
 i18n_filetype_run                       : Friend script
 
+menu_move_view_to_workspace_1           : Flytt til arbeidsbord 1
+menu_move_view_to_workspace_2           : Flytt til arbeidsbord 2
+menu_move_view_to_workspace_3           : Flytt til arbeidsbord 3
+menu_move_view_to_workspace_4           : Flytt til arbeidsbord 4
+menu_move_view_to_workspace_5           : Flytt til arbeidsbord 5
+menu_move_view_to_workspace_6           : Flytt til arbeidsbord 6
+menu_move_view_to_workspace_7           : Flytt til arbeidsbord 7
+menu_move_view_to_workspace_8           : Flytt til arbeidsbord 8
+menu_move_view_to_workspace_9           : Flytt til arbeidsbord 9
+menu_move_view_to_workspace_10          : Flytt til arbeidsbord 10
 
+i18n_minimize_all_windows               : Gjem alle vinduer
+i18n_show_all_windows                   : Vis alle vinduer

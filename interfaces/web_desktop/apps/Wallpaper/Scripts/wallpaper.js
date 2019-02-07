@@ -1,19 +1,10 @@
 /*©agpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Affero General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Affero General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Affero   *
+* General Public License, found in the file license_agpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
 
@@ -21,8 +12,8 @@ Application.run = function( msg )
 {
 	var w = new View ( {
 		'title'      : i18n('Wallpaper'), 
-		'width'      : 640, 
-		'height'     : 380, 
+		'width'      : 960, 
+		'height'     : 600, 
 		'id'         : 'wallpaper'
 	} );
 	
@@ -43,9 +34,15 @@ Application.run = function( msg )
 		{
 			// Copy settings in
 			if( !Application.settings ) Application.settings = {};
-			var setar = JSON.parse( d );
-			for( var a in setar )
-				Application.settings[a] = setar[a];
+			try
+			{ 
+				var setar = JSON.parse( d );
+				for( var a in setar )
+					Application.settings[a] = setar[a];
+			}
+			catch( e )
+			{
+			}
 		}
 		
 		// Go on!
@@ -65,6 +62,7 @@ Application.run = function( msg )
 			'add_image'        : i18n('i18n_add_image')
 		};
 
+		f.i18n();
 		f.onLoad = function( data )
 		{ 
 			w.setContent( data );
@@ -72,6 +70,11 @@ Application.run = function( msg )
 		f.load ();
 	}
 	m.execute( 'getsetting', { settings: [ 'imagesdoors', 'imageswindows' ] } );
+
+
+	// Set app in single mode
+	this.setSingleInstance( true );
+
 }
 
 // Handle messages

@@ -2,32 +2,26 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
 
+if( !defined( 'DOOR_SLASH_REPLACEMENT' ) )
+{
+	// To fix names
+	//define( 'DOOR_SLASH_REPLACEMENT', '&#47;' );
+	define( 'DOOR_SLASH_REPLACEMENT', '&#124;' );
+}
 
 class Door extends dbIO
-{
+{	
 	// Construct a Door object
-	function Door( $path = false )
+	function __construct( $path = false )
 	{
-		global $SqlDatabase;
+		global $SqlDatabase, $Logger;
 		
 		$this->dbTable( 'Filesystem' );
 		
@@ -82,21 +76,25 @@ class Door extends dbIO
 			}
 			else if( isset( $args->path ) )
 			{
-				$identifier = 'LOWER(f.Name)=LOWER(\'' . mysqli_real_escape_string( $SqlDatabase->_link, reset( explode( ':', $args->path ) ) ) . '\')';
+				$ident = explode( ':', $args->path ); $res = reset( $ident );
+				$identifier = 'LOWER(f.Name)=LOWER(\'' . mysqli_real_escape_string( $SqlDatabase->_link, $res ) . '\')';
 			}
 			else if( isset( $args->args->path ) )
 			{
-				$identifier = 'LOWER(f.Name)=LOWER(\'' . mysqli_real_escape_string( $SqlDatabase->_link, reset( explode( ':', $args->args->path ) ) ) . '\')';
+				$ident = explode( ':', $args->args->path ); $res = reset( $ident );
+				$identifier = 'LOWER(f.Name)=LOWER(\'' . mysqli_real_escape_string( $SqlDatabase->_link, $res ) . '\')';
 			}
 			// This one should not be required!
 			else if( isset( $args->args->directory ) )
 			{
-				$identifier = 'LOWER(f.Name)=LOWER(\'' . mysqli_real_escape_string( $SqlDatabase->_link, reset( explode( ':', $args->args->directory ) ) ) . '\')';
+				$r = explode( ':', $args->args->directory );
+				$identifier = 'LOWER(f.Name)=LOWER(\'' . mysqli_real_escape_string( $SqlDatabase->_link, reset( $r ) ) . '\')';
 			}
 			// This one should not be required!
 			else if( isset( $args->args->args->path ) )
 			{
-				$identifier = 'LOWER(f.Name)=LOWER(\'' . mysqli_real_escape_string( $SqlDatabase->_link, reset( explode( ':', $args->args->args->path ) ) ) . '\')';
+				$r = explode( ':', $args->args->args->path );
+				$identifier = 'LOWER(f.Name)=LOWER(\'' . mysqli_real_escape_string( $SqlDatabase->_link, reset( $r ) ) . '\')';
 			}
 			// Try by filesystem database id (LAST RESORT!)
 			else if( isset( $args->fileInfo->ID ) )
@@ -123,7 +121,8 @@ class Door extends dbIO
 		// Get by path (string)
 		else
 		{
-			$name = mysqli_real_escape_string( $SqlDatabase->_link, reset( explode( ':', $path ) ) );
+			$op = explode( ':', $path );
+			$name = mysqli_real_escape_string( $SqlDatabase->_link, reset( $op ) );
 			return '
 				SELECT * FROM `Filesystem` f 
 				WHERE 
@@ -162,8 +161,6 @@ class Door extends dbIO
 		
 		$c = curl_init();
 		
-		//$Logger->log('curling in ' . $u . $query);
-		
 		curl_setopt( $c, CURLOPT_URL, $u . $query );
 		curl_setopt( $c, CURLOPT_RETURNTRANSFER, 1 );
 		if( $Config->SSLEnable )
@@ -199,24 +196,438 @@ class Door extends dbIO
 	{
 		return 0;
 	}
-
+	
+	// Sync directory and file structures
+	function syncFiles( $pathFrom, $pathTo, $log, $depth = 0 )
+	{
+		global $Logger;
+		
+		/*
+			TODO:
+			We now have to figure out how to register which products
+			are not to be deleted - there is a UniqueID problem which
+			needs to be debugged further..
+		*/
+		
+		// Dest is a cleaned up version of the file listing for the destination
+		
+		$dest = [];
+		
+		$debug = [];
+		
+		$Logger->log( 'Starting to sync here: ' . $pathFrom . ' to ' . $pathTo );
+		
+		//$Logger->log( 'From ' . $pathFrom );
+		//$Logger->log( 'To   ' . $pathTo );
+		
+		// Destination path ...
+		if( $dir = $this->dir( trim( $pathTo ) ) )
+		{
+			//$Logger->log( '[' . trim( $pathTo ) . '] ' . print_r( $dir, 1 ) );
+			
+			// Organize by info files first
+			$outFiles = [];
+			$outDirs = [];
+			$outInfos = [];
+			foreach( $dir as $entry )
+			{
+				if( substr( $entry->Filename, -8, 8 ) == '.dirinfo' )
+				{
+					$outInfos[] = $entry;
+				}
+				else if( substr( $entry->Filename, -1, 1 ) == '/' )
+				{
+					$outDirs[] = $entry;
+				}
+				else
+				{
+					$outFiles[] = $entry;
+				}
+			}
+			$dir = array_merge( $outInfos, $outDirs, $outFiles );
+			
+			// Organize in a dest array with keys on the filenames
+			foreach( $dir as $k=>$v )
+			{
+				// Keep on dest
+				if( $v->UniqueID )
+				{
+					$dest[ $v->UniqueID ] = $v;
+					$debug[ $v->UniqueID ] = false;
+				}
+				else
+				{
+					//$Logger->log( 'No UniqueID ??? ' . print_r( $v, 1 ) );
+				}
+				
+				$properFilename = str_replace( array( DOOR_SLASH_REPLACEMENT, '/' ), '', trim( $v->Filename ) );
+				$dest[ $properFilename ] = $v;
+				
+				$debug[ $properFilename ] = false;
+				
+				//$Logger->log( ' -> Map found file (destination): ' . $properFilename . ' and ' . $v->UniqueID . ' | ' . $v->Filename );
+				//$Logger->log( ' Whole object: ' . print_r( $v, 1 ) );
+			}
+			//$Logger->log( 'Done mapping.' );
+		}
+		unset( $dir ); // Done with mapping to destination
+		
+		// Source path ... get a directory listing
+		if( $dir = $this->dir( trim( $pathFrom ) ) )
+		{
+			// Organize by info files first
+			$outFiles = [];
+			$outDirs = [];
+			$outInfos = [];
+			foreach( $dir as $entry )
+			{
+				if( substr( $entry->Filename, -8, 8 ) == '.dirinfo' )
+				{
+					$outInfos[] = $entry;
+				}
+				else if( substr( $entry->Filename, -1, 1 ) == '/' )
+				{
+					$outDirs[] = $entry;
+				}
+				else
+				{
+					$outFiles[] = $entry;
+				}
+			}
+			$dir = array_merge( $outInfos, $outDirs, $outFiles );
+			
+			
+			$fmod = false; $dmod = false;
+			
+			// Process directories and files
+			
+			// Do the copy
+			foreach( $dir as $k=>$v )
+			{	
+				$doCopy = false;
+			
+				$v->Destination = ( trim( $pathTo ) . trim( $v->Filename ) . ( $v->Type == 'Directory' ? '/' : '' ) );
+				if( !trim( $v->Destination ) )
+				{
+					$Logger->log( 'No desination in object!' ); //, print_r( $v, 1 ) );
+					//die();
+				}
+			
+				$properFilename = str_replace( array( DOOR_SLASH_REPLACEMENT, '/' ), '', trim( $v->Filename ) );
+			
+				//$Logger->log( 'Checking if we have ' . $properFilename . ' in destination....' );
+				//$Logger->log( 'Dump element: ' . print_r( $v, 1 ) );
+			
+				// Check if the file has been modified (source vs dest)
+				
+				// Check if the file we are processing are keepers! ------------
+				// Check on uniqueid
+				if( $v->UniqueID && isset( $dest[ $v->UniqueID ] ) )
+				{
+					//if( isset( $dest[ $properFilename ]->ID ) )
+					//{
+					//	$dest[ $properFilename ]->Found = true;
+					//	$debug[ $properFilename ] = true;
+					//}
+					if( isset( $dest[ $v->UniqueID ]->ID ) )
+					{
+						$dest[ $v->UniqueID ]->Found = true;
+						$debug[ $v->UniqueID ] = true;
+					}
+					if( isset( $v->ID ) )
+					{
+						$v->Found = true;
+					}
+					if( isset( $dir[ $k ]->ID ) )
+					{
+						$dir[ $k ]->Found = true;
+					}
+					
+					$fmod = $v->DateModified; 
+					$dmod = $dest[ $v->UniqueID ]->DateModified;
+					
+					$doCopy = strtotime( $v->DateModified ) > strtotime( $dest[ $v->UniqueID ]->DateModified );
+					
+					//$Logger->log( 'DUMP:' );
+					//$Logger->log( print_r( $dest[ $v->UniqueID ], 1 ) );
+					
+					//$Logger->log( 'With UniqueID. ' . ( $doCopy ? 'Will copy' : 'Do not copy' ) . ' ' . ( $v->DateModified ? $v->DateModified : '0' ) . ' > ' . $dest[ $v->UniqueID ]->DateModified . ' ' . $v->Path );
+				}
+				// Check on filename
+				else if( isset( $dest[ $properFilename ] ) )
+				{
+					if( isset( $dest[ $properFilename ]->ID ) )
+					{
+						$dest[ $properFilename ]->Found = true;
+						$debug[ $properFilename ] = true;
+					}
+					if( isset( $dest[ $v->UniqueID ]->ID ) )
+					{
+						$dest[ $v->UniqueID ]->Found = true;
+						$debug[ $v->UniqueID ] = true;
+					}
+					if( isset( $v->ID ) )
+					{
+						$v->Found = true;
+					}
+					if( isset( $dir[ $k ]->ID ) )
+					{
+						$dir[ $k ]->Found = true;
+					}
+					
+					$fmod = $v->DateModified; 
+					$dmod = $dest[ $properFilename ]->DateModified;
+					
+					$doCopy = strtotime( $v->DateModified ) > strtotime( $dest[ $properFilename ]->DateModified );
+					
+					//$Logger->log( ( $doCopy ? 'Will copy' : 'Do not copy' ) . ' ' . ( $v->DateModified ? $v->DateModified : '0' ) . ' > ' . $dest[ $properFilename ]->DateModified . ' ' . $v->Path );
+				}
+				else
+				{
+					$doCopy = true;
+					//$Logger->log( 'Couldn\'t find proper unique id or filename (' . $properFilename . ') - Checking modified date: ' . $v->DateModified/* . ' ' . $v->Path . ' ' . json_encode( $debug )*/ );
+					//$Logger->log( 'Wordpress object: ' . print_r( $dest, 1 ) );
+					//die();
+					
+					$fmod = false; $dmod = false;
+				}
+				// Done checking for keepers -----------------------------------
+				
+				
+				// If the file was modified, then copy!
+				
+				
+				$isIcon = substr( trim( $v->Filename ), -5, 5 ) == '.info' || substr( trim( $v->Filename ), -8, 8 ) == '.dirinfo';
+				
+				// We are testing whether we need to skip.' );
+				if( $doCopy )
+				{
+					if( ( $v->Type == 'Directory' || ( $v->Type == 'File' && substr( $v->Filename, -8, 8 ) == '.dirinfo' ) ) && SKIP_CREATE_EXISTING_DIRECTORIES == true && $v->Found == true )
+					{
+						//$Logger->log( 'Skipping creation of directory that already exists.' );
+						continue;
+					}
+					else if( $v->Type == 'Directory' )
+					{
+						//$Logger->log( 'We have a directory to create.' );
+					}
+					else
+					{
+						//$Logger->log( 'This is a normal file to copy.' );
+					}
+					
+					//$Logger->log( 'From ' . $v->Path );
+					//$Logger->log( 'To   ' . $v->Destination );
+					
+					// Copy from source to destination (that we made proper path for above)
+					if( !$isIcon ) $slot = $Logger->addSlot( 'Copying ' . trim( $v->Filename ) . ' ' . ( $fmod && $dmod ? $fmod . ' > ' . $dmod : '' )/* . ' [] ' . print_r( $dest,1 )*/ );
+					
+					if( $this->copyFile( trim( $v->Path ), trim( $v->Destination ) ) )
+					{
+						//$dest[ $properFilename ]->Found = true;
+						if( isset( $dest[ $v->UniqueID ] ) )
+						{
+							$dest[ $v->UniqueID ]->Found = true;
+						}
+						$debug[ $properFilename ] = true;
+						
+						if( !$isIcon ) $slot->resolve( true, 'Copied' );
+					}
+					else
+					{
+						if( !$isIcon ) $slot->resolve( false );
+					}
+				}
+				else
+				{
+					if( !$isIcon ) $Logger->log( 'Skipping ' . trim( $v->Filename ) );
+					//$slot->resolve( true, 'skipped' );
+				}
+			}
+			
+			// See if we have destination files / directories that
+			// should be deleted because they do not exist in source
+			//$Logger->log( 'Checking if we need to delete.' );
+			if( count( $dest ) > 0 )
+			{
+				foreach( $dest as $k=>$des )
+				{
+					
+					$skipDelete = false;
+					
+					if( $des->Found )
+					{
+						continue;
+					}
+					else if( !trim( $des->Path ) )
+					{
+						$Logger->log( $des->Filename . ' has no path. Skipping... ' . json_encode( $des ) );
+						continue;
+					}
+					
+					$properFilename = str_replace( array( DOOR_SLASH_REPLACEMENT, '/' ), '', trim( $des->Filename ) );
+					
+					// If this file is not a keeper
+					if( /*( !isset( $dest[$properFilename]->Found ) && !( $des->UniqueID && isset( $dest[ $des->UniqueID ] ) ) ) && */$des->Path )
+					{
+						$isIcon = substr( $des->Filename, -5, 5 ) == '.info' || substr( $des->Filename, -8, 8 ) == '.dirinfo';
+						
+						if( !$isIcon )
+						{
+							$slot = $Logger->addSlot( 'Shall we delete ' . trim( $des->Filename ) . '?' );
+							
+							if( $this->deleteFile( $des->Path ) )
+							{
+								$slot->resolve( true, 'Delete done [' . ( $des->UniqueID ? 1 : 0 ) . '] ' . ( isset( $dest[ $des->UniqueID ] ) ? 'UniqueID Found' : 'UniqueID Not Found' ) /*print_r( $debug,1 )*/ );
+							}
+							else
+							{
+								$slot->resolve( 'skipped' );
+							}
+						}
+						else
+						{
+							//$slot->resolve( 'skipped' );
+						}
+					}
+				}
+			}
+			
+			// Go through directories and sync files
+			//$Logger->log( 'Traversing into subdirectories..........' );
+			foreach( $dir as $k=>$v )
+			{	
+				// Only go into directories that has been marked as "exists"
+				if( $v->Type == 'Directory' )
+				{
+					//$Logger->log( ' -> Entering ' . $v->Destination );
+					// We have sub directories
+					$this->syncFiles( trim( $v->Path ), trim( $v->Destination ), $log, $depth + 1 );
+				}
+			}
+			
+			//$Logger->log( 'Mapping: ' . print_r( $debug,1 ) );
+			
+			return true;
+		}
+		
+		return false;
+	}
+	
+	function deleteFile( $delpath )
+	{
+		global $User, $Logger;
+		
+		// 1. Get the filesystem objects
+		$ph = explode( ':', $delpath );
+		$ph = $ph[0];
+		
+		if( !trim( $ph ) )
+		{
+			$Logger->log( 'Tried to load inexistent disk.' );
+			return;
+		}
+		
+		$fs = new dbIO( 'Filesystem' );
+		$fs->UserID = $User->ID;
+		$fs->Name   = $ph;
+		$fs->Load();
+		
+		// We got two filesystems, good!
+		if( $fs->ID > 0 )
+		{
+			// New version:
+			if( !isset( $test ) )
+			{
+				$test = 'devices/DOSDrivers/' . $fs->Type . '/door.php';
+			}
+			
+			// Final test
+			if( !file_exists( $test ) )
+			{
+				// Use built-in, will work on local.handler
+				$deldoor = new Door( $delpath );
+			}
+			else
+			{
+				$path = $delpath;
+				include( $test );
+				$deldoor = $door;
+			}
+			
+			unset( $door, $path );
+			
+			// It's a folder!
+			if( substr( $delpath, -1, 1 ) == '/' )
+			{
+				if( $deldoor->_deleteFolder( $delpath ) )
+				{
+					return true;
+				}
+				
+				$Logger->log( 'couldn\'t deleteFolder... ' . $delpath );
+				
+				return false;
+			}
+			// It's a file
+			else
+			{
+				if( $deldoor->_deleteFile( $delpath ) )
+				{
+					return true;
+				}
+				
+				//$Logger->log( 'couldn\'t deleteFile... ' . $delpath );
+				
+				return false;
+			}
+			
+			$Logger->log( 'how did we even get here... ' . $delpath );
+			
+			return false;
+		}
+	}
+	
 	function copyFile( $pathFrom, $pathTo )
 	{
 		global $User, $Logger;
 		
 		// 1. Get the filesystem objects
-		$from = reset( explode( ':', $pathFrom ) );
-		$to   = reset( explode( ':', $pathTo   ) );
+		$from = explode( ':', $pathFrom ); $from = $from[0];
+		$to   = explode( ':', $pathTo   ); $to = $to[0];
 		
-		$fsFrom = new dbIO( 'Filesystem' );
-		$fsFrom->UserID = $User->ID;
-		$fsFrom->Name   = $from;
-		$fsFrom->Load();
+		//$Logger->log( 'Copying from ' . $pathFrom . ' to ' . $pathTo );
+		if( !trim( $pathTo ) )
+		{
+			$Logger->log( 'Error with path to!' );
+			return false;
+		}
 		
-		$fsTo = new dbIO( 'Filesystem' ); 
-		$fsTo->UserID = $User->ID;
-		$fsTo->Name   = $to;
-		$fsTo->Load();
+		// Support caching
+		if( $this->cacheFrom && $this->cacheFrom->Name == $from )
+		{
+			$fsFrom = $this->cacheFrom;
+		}
+		else
+		{
+			$fsFrom = new dbIO( 'Filesystem' );
+			$fsFrom->UserID = $User->ID;
+			$fsFrom->Name   = $from;
+			$fsFrom->Load();
+			$this->cacheFrom = $fsFrom;
+		}
+		if( $this->cacheTo && $this->cacheTo->Name == $to )
+		{
+			$fsTo = $this->cacheTo;
+		}
+		else
+		{
+			$fsTo = new dbIO( 'Filesystem' ); 
+			$fsTo->UserID = $User->ID;
+			$fsTo->Name   = $to;
+			$fsTo->Load();
+			$this->cacheTo = $fsTo;
+		}
 		
 		// We got two filesystems, good!
 		if( $fsTo->ID > 0 && $fsFrom->ID > 0 )
@@ -241,7 +652,7 @@ class Door extends dbIO
 				include( $testFrom );
 				$doorFrom = $door;
 			}
-			if( !file_exists( $testTo   ) )
+			if( !file_exists( $testTo ) )
 			{
 				// Use built-in, will work on local.handler
 				$doorTo = new Door( $pathTo );
@@ -270,24 +681,28 @@ class Door extends dbIO
 						$tpath .= '/';
 					
 					// Create the path
+					//$Logger->log( 'Creating folder ' . $folderName . ' in ' . $tpath . '..' );
 					if( $doorTo->createFolder( $folderName, $tpath ) )
 					{
 						return true;
 					}
-					$Logger->log('couldn\'t createFolder... ' . $folderName . ' :: ' . $tpath);
+					$Logger->log('Couldn\'t create folder (createFolder)... ' . $folderName . ' :: ' . $tpath);
 					return false;
 				}
 			}
 			// It's a file
 			else
 			{
+				//$Logger->log( 'Getting file ' . $pathFrom . '..' );
 				if( $file = $doorFrom->getFile( $pathFrom ) )
 				{
+					//$Logger->log( 'Result: ' . print_r( $file, 1 ) );
+					//$Logger->log( 'Putting file into ' . $pathTo . '..' );
 					if( $doorTo->putFile( $pathTo, $file ) )
 					{
 						return true;
 					}
-					$Logger->log('couldn\'t putFile... ' . $pathTo . ' :: ');
+					//$Logger->log('couldn\'t putFile... ' . $pathTo . ' :: ');
 				}
 			}
 			$Logger->log('how did we even get here... ' . $pathFrom . ' :: ' . $pathTo);
@@ -366,7 +781,6 @@ class Door extends dbIO
 	{
 		global $Logger;
 		include_once( 'php/classes/file.php' );
-		//$Logger->log( 'Trying to get file: ' . $path );
 		$f = new File( $path );
 		if( $f->Load() )
 		{

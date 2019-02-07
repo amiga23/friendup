@@ -1,33 +1,33 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
-
+/** @file
+ *
+ *  User Application body
+ *
+ * file contain all functitons related to user applications
+ *
+ *  @author PS (Pawel Stefanski)
+ *  @date created 11/2016
+ */
 
 #include "user_application.h"
 
-//
-// create new instance of UserApplication
-//
-
+/**
+ * Create new instance of UserApplication
+ *
+ * @param id User ID
+ * @param appid unique application ID
+ * @param perm permissions
+ * @param authid authentication ID
+ * @return new UserApplication structure when success, otherwise NULL
+ */
 UserApplication *UserAppNew( FULONG id, FULONG appid, char *perm, char *authid )
 {
 	UserApplication *ua = NULL;
@@ -57,20 +57,20 @@ UserApplication *UserAppNew( FULONG id, FULONG appid, char *perm, char *authid )
 			}
 		}
 		
-		DEBUG("Added user application perm: %s authid %s\n", ua->ua_Permissions, ua->ua_AuthID );
+		DEBUG("[UserAppNew] Added user application perm: %s authid %s\n", ua->ua_Permissions, ua->ua_AuthID );
 	}
 	else
 	{
 		FERROR("Cannot allocate memory for UserApplication\n");
 	}
-	
 	return ua;
 }
 
-//
-// Delete instance of application
-//
-
+/**
+ * Delete UserApplication
+ *
+ * @param app pointer to UserApplication which will be deleted
+ */
 void UserAppDelete( UserApplication *app )
 {
 	if( app->ua_Permissions != NULL )
@@ -88,11 +88,12 @@ void UserAppDelete( UserApplication *app )
 	FFree( app );
 }
 
-//
-//
-//
-
-UserApplication *UserAppDeleteAll( UserApplication *ua )
+/**
+ * Delete UserApplication linked list
+ *
+ * @param ua pointer to UserApplication first element in list
+ */
+void UserAppDeleteAll( UserApplication *ua )
 {
 	UserApplication *rem = ua;
 	UserApplication *next = ua;
@@ -104,5 +105,4 @@ UserApplication *UserAppDeleteAll( UserApplication *ua )
 		
 		UserAppDelete( rem );
 	}
-	return NULL;
 }

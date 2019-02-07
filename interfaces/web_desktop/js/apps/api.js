@@ -1,40 +1,32 @@
 /*©agpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Affero General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Affero General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Affero   *
+* General Public License, found in the file license_agpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
 
-
 // We need our namespace..
-friend = window.friend || {};
-friend.iconsSelectedCount = 0;
-friend.currentMenuItems = 0;
+Friend = window.Friend || {};
+Friend.iconsSelectedCount = 0;
+Friend.currentMenuItems = 0;
+Friend.scope = 'API';
 
-friend.lib = friend.lib || {};
+Friend.lib = Friend.lib || {};
+Friend.GUI = Friend.GUI || {};
 
 // Get some quick args from url
-friend.fastUrlArgs = document.location.href.split( '?' );
-if( friend.fastUrlArgs.length > 1 )
+Friend.fastUrlArgs = document.location.href.split( '?' );
+if( Friend.fastUrlArgs.length > 1 )
 {
-	friend.fastUrlArgs = friend.fastUrlArgs[1].split( '&' );
-	for( var a = 0; a < friend.fastUrlArgs.length; a++ )
+	Friend.fastUrlArgs = Friend.fastUrlArgs[1].split( '&' );
+	for( var a = 0; a < Friend.fastUrlArgs.length; a++ )
 	{
-		var pair = friend.fastUrlArgs[a].split( '=' );
+		var pair = Friend.fastUrlArgs[a].split( '=' );
 		if( pair[0] == 'noevents' )
-			friend.noevents = true;
+			Friend.noevents = true;
 	}
 }
 
@@ -52,18 +44,23 @@ this.apijsHasExecuted = true;
 // Some global variables
 var globalConfig = {};
 globalConfig.language = 'en-US'; // Defaults to US english
-friend.globalConfig = globalConfig;
+Friend.globalConfig = globalConfig;
 
 // Create application object with standard functions ---------------------------
 
-friend.application = {
+Friend.application = {
 	doneLoading: function()
 	{
-		document.body.className = '';
+		document.body.classList.remove( 'Loading' );
+		document.body.classList.add( 'activated' );
 		setTimeout( function()
 		{
 			document.body.style.opacity = '';
 		}, 100 );
+		Application.sendMessage( {
+			type: 'view',
+			method: 'doneloadingbody'
+		} );
 	}
 };
 
@@ -73,14 +70,130 @@ var Application =
 	sessionObject: {},
 	callbacks: [],
 	permanentCallbacks: [],
-	windows: [],
+	windows: {},
 	widgets: [],
 	language: false,
 	messageQueue: [],
+	keyData:
+	{
+		get: function( callback, systemWide )
+		{
+			Application.sendMessage( {
+				type: 'system', 
+				command: 'getapplicationkey', 
+				callback: addCallback( callback ), 
+				userId: Application.userId, 
+				appPath: Application.appPath, 
+				applicationId: Application.applicationId, 
+				authId: Application.authId, 
+				systemWide: ( systemWide ? '*' : false ) 
+			} );
+		},
+		save: function( name, data, encrypt, callback, systemWide )
+		{
+			Application.sendMessage( {
+				type: 'system', 
+				command: 'setapplicationkey', 
+				callback: ( callback ? addCallback( callback ) : false ), 
+				userId: Application.userId, 
+				appPath: Application.appPath, 
+				applicationId: Application.applicationId, 
+				authId: Application.authId, 
+				systemWide: ( systemWide ? '*' : false ), 
+				args: {
+					name: name,
+					data: data,
+					encrypt: encrypt
+				}
+			} );
+		}
+	},
+	// Initialize Friend VR
+	initFriendVR: function( callback )
+	{
+		if( this.friendVR ) return false;
+		var js = document.createElement( 'script' );
+		js.src = '/webclient/js/apps/friendvr.js';
+		js.onload = function()
+		{
+			if( callback ) callback( new Friend.VR() );
+		}
+		document.body.appendChild( js );
+		return true;
+	},
+	// Get an element retrieved by View.getWindowElement()
+	getWindowElementById: function( id )
+	{
+		if( !this.windowElements ) return false;
+		return this.windowElements[ id ];
+	},
+	encryption:
+	{
+		generateKeys: function( args, algo, callback )
+		{
+			if( !algo ) algo = 'rsa1024';
+			
+			var msg = {
+				type: 'encryption', 
+				algo: algo, 
+				command: 'generatekeys', 
+				callback: addCallback( callback ), 
+				args: args
+			};
+			
+			switch( algo )
+			{
+				case 'md5':
+					Application.sendMessage( msg );
+					break;
+				
+				case 'sha256':
+					Application.sendMessage( msg );
+					break;
+				
+				case 'rsa1024':
+					Application.sendMessage( msg );
+					break;
+					
+				default:
+					return false;
+					break;
+			}
+		},
+		encrypt: function( args, callback )
+		{
+			Application.sendMessage( { 
+				type: 'encryption', 
+				command: 'encrypt', 
+				callback: addCallback( callback ), 
+				args: args
+			} );
+		},
+		decrypt: function( args, callback )
+		{
+			Application.sendMessage( { 
+				type: 'encryption', 
+				command: 'decrypt', 
+				callback: addCallback( callback ), 
+				args: args
+			} );
+		},
+		publickey: function( callback, args )
+		{
+			Application.sendMessage( { 
+				type: 'encryption', 
+				command: 'publickey', 
+				callback: addCallback( callback ), 
+				args: ( args ? args : { 
+					encoded: false 
+				} ) 
+			} );
+		}
+	},
 	// Load locale translations
 	loadTranslations: function( path, callback )
 	{
-		if( this.language == false ) this.language = friend.globalConfig.language.split( '-' )[0];
+		if( this.language == false ) this.language = Friend.globalConfig.language.split( '-' )[0];
 		var f = new File( path + this.language + '.lang' );
 		f.onLoad = function( data )
 		{
@@ -91,7 +204,7 @@ var Application =
 				this.loadTranslations( path, callback );
 				return;
 			}
-			
+
 			if( !window.translations ) window.translations = [];
 			var expl = data.split( "\n" );
 			for( var a = 0; a < expl.length; a++ )
@@ -129,6 +242,9 @@ var Application =
 	receiveMessage: function( packet )
 	{
 		if( packet.checkDefaultMethod ) return 'yes';
+		
+		//console.log( 'receiveMessage: function( packet ): ', packet );
+		
 		if( !packet.type ) return;
 		switch( packet.type )
 		{
@@ -285,7 +401,7 @@ var Application =
 				Application.widgets[a].close();
 			}
 		}
-		
+
 		if( Application.screens )
 		{
 			for( var a in Application.screens )
@@ -325,11 +441,11 @@ var Application =
 }
 
 /* Magic clipboard code ----------------------------------------------------- */
-if( !friend.clipboard )
+if( !Friend.clipboard )
 {
-	friend.clipboard = '';
-	friend.prevClipboard = '';
-	friend.macCommand = false;	
+	Friend.clipboard = '';
+	Friend.prevClipboard = '';
+	Friend.macCommand = false;
 }
 
 
@@ -340,27 +456,28 @@ document.addEventListener( 'keydown', function( e )
 
 	if( wh == 91 )
 	{
-		friend.macCommand = true;
+		Friend.macCommand = true;
 	}
 
-	if( e.ctrlKey || friend.macCommand )
+	if( e.ctrlKey || Friend.macCommand )
 	{
 		// CTRL V
-		if( wh == 86 )
+		/*if( wh == 86 )
 		{
 			//fire paste event instead pf doing stuff herre...
-			friend.lastKeydownTarget = t;
+			Friend.lastKeydownTarget = t;
 			return true;
 		}
 		// CTRL C or X
 		else if( wh == 67 || wh == 88 )
 		{
-			friend.sysClipBoardUpdate = Date.now();
-			friend.clipboard = ( friend.ClipboardGetSelectedIn( t ) != '' ? friend.ClipboardGetSelectedIn( t ) : friend.clipboard );
-			Application.sendMessage( { type: 'system', command: 'setclipboard', value: friend.clipboard } );
+			Friend.sysClipBoardUpdate = Date.now();
+			Friend.clipboard = ( Friend.ClipboardGetSelectedIn( t ) != '' ? Friend.ClipboardGetSelectedIn( t ) : Friend.clipboard );
+			Application.sendMessage( { type: 'system', command: 'setclipboard', value: Friend.clipboard } );
 		}
 		// Screen swap!
-		else if( wh == 77 )
+		else */
+		if( wh == 77 )
 		{
 			Application.sendMessage( { type: 'system', command: 'switchscreens' } );
 			return cancelBubble( e );
@@ -372,38 +489,13 @@ document.addEventListener( 'keydown', function( e )
 document.addEventListener( 'keyup', function( e )
 {
 	var wh = e.which ? e.which : e.keyCode;
-	if( wh == 91 ) friend.macCommand = false;
+	Friend.macCommand = false;
 } );
-
-
-
-document.addEventListener('paste', function(evt)
-{
-	if(friend && typeof friend.pasteClipboard == 'function' ) friend.pasteClipboard( evt );
-});
-
-document.addEventListener('copy', function(evt)
-{
-	friend.sysClipBoardUpdate = Date.now();
-
-	var mimetype = 'text/plain';
-
-	cpd = evt.clipboardData.getData( mimetype );
-
-	if( cpd + '' != '' && friend.clipboard != cpd )
-	{
-		friend.prevClipboard = friend.clipboard;
-		friend.clipboard = cpd;
-		if( Application) Application.sendMessage( { type: 'system', command: 'setclipboard', value: friend.clipboard } );
-	}
-	//console.log('copy event fired',friend,evt);
-});
-
 
 /**
 	paste handler. check Friend CB vs System CB.
 */
-friend.pasteClipboard = function( evt )
+Friend.pasteClipboard = function( evt )
 {
 	var mimetype = '';
 	var cpd = '';
@@ -417,23 +509,23 @@ friend.pasteClipboard = function( evt )
 	if( mimetype != '' )
 	{
 		cpd = evt.clipboardData.getData( mimetype );
-		//console.log('compare... new ',cpd,' :: prev clippy',friend.prevClipboard,':: now clippy',friend.clipboard);
-		if( friend.prevClipboard != cpd )
+		//console.log('compare... new ',cpd,' :: prev clippy',Friend.prevClipboard,':: now clippy',Friend.clipboard);
+		if( Friend.prevClipboard != cpd )
 		{
-			friend.prevClipboard = friend.clipboard;
-			friend.clipboard = cpd;
+			Friend.prevClipboard = Friend.clipboard;
+			Friend.clipboard = cpd;
 		}
 	}
 
 	if( typeof Application != 'undefined' && typeof Application.handlePaste == 'function' )
 	{
 		//wait a bit for the clipboard to be updated...
-		setTimeout( 'Application.handlePaste( friend.clipboard );',250);
-	}	
-	if( Application) Application.sendMessage( { type: 'system', command: 'setclipboard', value: friend.clipboard } );
-	if( friend.lastKeydownTarget )
+		setTimeout( 'Application.handlePaste( Friend.clipboard );',250);
+	}
+	if( Application) Application.sendMessage( { type: 'system', command: 'setclipboard', value: Friend.clipboard } );
+	if( Friend.lastKeydownTarget )
 	{
-		if( friend.ClipboardPasteIn( friend.lastKeydownTarget, friend.clipboard ) )
+		if( Friend.ClipboardPasteIn( Friend.lastKeydownTarget, Friend.clipboard ) )
 		{
 			return cancelBubble( evt );
 		}
@@ -442,7 +534,7 @@ friend.pasteClipboard = function( evt )
 }
 
 // Copy from select area to clipboard
-friend.ClipboardGetSelectedIn = function( ele )
+Friend.ClipboardGetSelectedIn = function( ele )
 {
     var text = '';
     if( window.getSelection )
@@ -457,7 +549,7 @@ friend.ClipboardGetSelectedIn = function( ele )
 }
 
 // Paste to target from clipboard
-friend.ClipboardPasteIn = function( ele, text )
+Friend.ClipboardPasteIn = function( ele, text )
 {
 	if( typeof ele.value != 'undefined' )
 	{
@@ -498,35 +590,35 @@ friend.ClipboardPasteIn = function( ele, text )
 // Callbacks -------------------------------------------------------------------
 
 // Generate a unique id in a select array buffer
-friend.generateUniqueId = function( arrayBuffer, postfix )
+Friend.generateUniqueId = function( arrayBuffer, postfix )
 {
 	if( !postfix ) postfix = '';
 	var uid = false;
 	do
 	{
-		uid = friend.uniqueIdString();
+		uid = Friend.uniqueIdString();
 	}
 	while( typeof( arrayBuffer[uid + postfix ] ) != 'undefined' );
 	return uid + postfix;
-}
+};
 
-generateUniqueId = friend.generateUniqueId;
+generateUniqueId = Friend.generateUniqueId;
 
-friend.uniqueIdString = function()
+Friend.uniqueIdString = function()
 {
 	return ( Math.random() * 9999 ) + '' +
 		( ( Math.random() * 9999 ) + ( Math.random() * 9999 ) ) +
 		'' + ( new Date() ).getTime();
-}
-uniqueIdString = friend.uniqueIdString;
+};
+uniqueIdString = Friend.uniqueIdString;
 
 // Extract a callback element and return it
 function extractCallback( id, keep )
 {
 	var f = false;
-	
+
 	var out = []; // Only use this if we're not keeping callback
-	
+
 	for( var a in Application.callbacks )
 	{
 		if( a == id )
@@ -536,11 +628,11 @@ function extractCallback( id, keep )
 		// unless we keep, add callback
 		else if( keep != true ) out[a] = Application.callbacks[a];
 	}
-	
+
 	// Remove the callback we asked for
 	if( keep != true )
 		Application.callbacks = out;
-	
+
 	for( var a in Application.permanentCallbacks )
 	{
 		if( a == id )
@@ -645,13 +737,28 @@ function receiveEvent( event, queued )
 {
 	// TODO: Do security stuff...
 	//
+	
 	if( !window.eventQueue )
 		window.eventQueue = [];
 
-	if ( 'string' === typeof( event.data ))
-		var dataPacket = JSON.parse( event.data );
+	var dataPacket;
+	
+	if( 'string' === typeof( event.data ) )
+	{
+		try
+		{
+			dataPacket = JSON.parse( event.data );
+		}
+		catch( e )
+		{
+			// No data packet
+			return;
+		}
+	}
 	else
-		var dataPacket = event.data;
+	{
+		dataPacket = event.data;
+	}
 
 	if( !dataPacket.command )
 	{
@@ -686,30 +793,40 @@ function receiveEvent( event, queued )
 			__queuedEventInterval = setInterval( queuedEventTimer, __timeout );
 		return;
 	}
-
+	
 	switch( dataPacket.command )
-	{
+	{	
 		// Update clipboard
 		case 'updateclipboard':
-			friend.clipboard = dataPacket.value;
+			Friend.clipboard = dataPacket.value;
 			break;
+
+		case 'dos':
+			return Dos.receiveMessage( dataPacket );
+
+		case 'friendnetwork':
+			return FriendNetwork.receiveMessage( dataPacket );
 
 		// Update theme
 		case 'refreshtheme':
 			var themeName = dataPacket.theme;
-			
+
 			var h = document.getElementsByTagName( 'head' );
 			if( h )
 			{
 				h = h[0];
-				document.body.className = 'Loading';
-
+				document.body.classList.add( 'Loading' );
+				
 				// New css!
 				var styles = document.createElement( 'link' );
 				styles.rel = 'stylesheet';
 				styles.type = 'text/css';
-				styles.onload = function(){ document.body.className = 'Loaded'; }
-
+				styles.onload = function()
+				{
+					document.body.classList.remove( 'Loading' );
+					document.body.classList.add( 'Loaded' );
+				}
+				
 				if( themeName && themeName != 'default' )
 				{
 					AddCSSByUrl( '/themes/' + themeName + '/scrollbars.css' );
@@ -718,11 +835,11 @@ function receiveEvent( event, queued )
 				}
 				else
 				{
-					AddCSSByUrl( '/themes/friendup/scrollbars.css' );
+					AddCSSByUrl( '/themes/friendup12/scrollbars.css' );
 					styles.href = '/system.library/module/?module=system&command=theme&args=' +
-						encodeURIComponent( '{"theme":"friendup"}' ) + '&authid=' + Application.authId;
+						encodeURIComponent( '{"theme":"friendup12"}' ) + '&authid=' + Application.authId;
 				}
-
+				
 				// Remove old one
 				var l = h.getElementsByTagName( 'link' );
 				for( var b = 0; b < l.length; b++ )
@@ -745,6 +862,13 @@ function receiveEvent( event, queued )
 				// Add new one
 				h.appendChild( styles );
 			}
+			
+			// Apply theme config if possible
+			if( dataPacket.themeData )
+			{
+				Application.applyThemeConfig( dataPacket.themeData );
+			}
+
 			// Refresh subviews
 			if( Application.windows )
 			{
@@ -757,9 +881,23 @@ function receiveEvent( event, queued )
 						viewId: a,
 						applicationId: Application.applicationId
 					};
+					if( dataPacket.themeData )
+						msg.themeData = dataPacket.themeData;
 					Application.windows[a].sendMessage( msg );
 				}
 			}
+			
+			// Trigger a resize event to clean up the tabs
+			setTimeout( function()
+			{
+				if( Friend.resizeTabs )
+				{
+					for( var i = 0; i < Friend.resizeTabs.length; i++ )
+					{
+						Friend.resizeTabs[ i ].resize();
+					}
+				}
+			}, 250 );
 			break;
 		// Blur all elements!
 		case 'blur':
@@ -774,16 +912,9 @@ function receiveEvent( event, queued )
 			//console.log( 'api.js - dispatchevent', dataPacket );
 			var eles = [ window, document.body ];
 			var ev = typeof( dataPacket.eventData ) == 'string' ? JSON.parse( dataPacket.eventData ) : dataPacket.eventData;
-
-			//console.log( 'We are here: ' + document.title );
-
+			
 			for( var a = 0; a < eles.length; a++ )
 			{
-				/*console.log( 'eles[a].trappedEvents', {
-					trapped : eles[a].trappedEvents,
-					event : dataPacket,
-				});*/
-
 				if( eles[a].trappedEvents && eles[a].trappedEvents[ dataPacket.eventType ] )
 				{
 					// Execute found events!
@@ -799,11 +930,11 @@ function receiveEvent( event, queued )
 		// Aha, we received an event from a sub view! Handle it
 		case 'captureevent':
 			// If we're the host, we need to execute the event on all app views
-			for( var a in friend.sasidRequests )
+			for( var a in Friend.sasidRequests )
 			{
-				if( friend.sasidRequests[a].applicationId == dataPacket.sasid )
+				if( Friend.sasidRequests[a].applicationId == dataPacket.sasid )
 				{
-					var arq = friend.sasidRequests[a];
+					var arq = Friend.sasidRequests[a];
 
 					// If we don't use eventOwner flag or we're an invitee, execute input events!
 					if( !arq.flags.eventOwner || ( arq.flags.eventOwner == 'owner' && arq.isHost ) )
@@ -822,7 +953,7 @@ function receiveEvent( event, queued )
 								msg: dataPacket.eventData
 							}
 						};
-						friend.conn.send( msg );
+						Friend.conn.send( msg );
 						//console.log( 'Sent to ' + ( owner ? owner : 'user' ) );
 					}
 				}
@@ -831,7 +962,7 @@ function receiveEvent( event, queued )
 
 		// Make sure all events gets handled by root Application object
 		case 'rerouteeventstoroot':
-			friend.rerouteAssidEventsToRoot( dataPacket.sasid );
+			Friend.rerouteAssidEventsToRoot( dataPacket.sasid );
 			break;
 
 		// Handle incoming key events
@@ -842,7 +973,19 @@ function receiveEvent( event, queued )
 				Application.handleKeys( dataPacket.key, ev );
 			}
 			break;
-
+		case 'parseviewflag':
+			if( dataPacket.flag == 'scrollable' )
+			{
+				if( dataPacket.value === true )
+				{
+					document.body.classList.add( 'Scrolling' );
+				}
+				else
+				{
+					document.body.classList.remove( 'Scrolling' );
+				}
+			}
+			break;
 		// On opening window
 		case 'viewresponse':
 			// Can't create window? Quit
@@ -850,6 +993,62 @@ function receiveEvent( event, queued )
 			if( dataPacket.data == 'fail' )
 			{
 				Application.quit();
+			}
+			
+			// Get flags
+			var view = Application.windows[ dataPacket.viewId ];
+			if( view && view._flags )
+			{
+				var flags = view._flags;
+			
+				// We have frameworks
+				if( flags.frameworks )
+				{
+					for( var a in flags.frameworks )
+					{
+						switch( a )
+						{
+							case 'tree':
+								if( flags.frameworks.tree.javascript && flags.frameworks.tree.data )
+								{
+									var f = new File( 'System:sandboxed.html' );
+									f.onLoad = function( data )
+									{
+										var javascript = flags.frameworks.tree.javascript;
+										var treeProperties = flags.frameworks.tree.treeInitialisation;
+										view.setContent( 
+`<script src="/webclient/js/tree/tree.js"></script>
+<script src="${javascript}"></script>
+<div id="Application"></div>
+<script type="text/javascript">
+	Friend.Tree.loadJSON( "${flags.frameworks.tree.data}", '${treeProperties}' );
+</script>` 
+										);
+									}
+									f.load();
+								}
+								break;
+							case 'fui':
+								if( flags.frameworks.fui.javascript && flags.frameworks.fui.data )
+								{
+									var f = new File( 'System:sandboxed.html' );
+									f.onLoad = function( data )
+									{
+										var javascript = flags.frameworks.fui.javascript;
+										view.setContent( 
+`<script src="/webclient/js/fui/fui.js"></script>
+<script src="${javascript}"></script>
+<script type="text/javascript">
+	fui.loadJSON( "${flags.frameworks.fui.data}" );
+</script>` 
+										);
+									}
+									f.load();
+								}
+								break;
+						}
+					}
+				}
 			}
 			break;
 		case 'screenresponse':
@@ -870,6 +1069,26 @@ function receiveEvent( event, queued )
 						{
 							var w = Application.windows[dataPacket.viewId];
 							w._flags[dataPacket.flag] = dataPacket.value;
+							if( dataPacket.flag == 'scrollable' )
+							{
+								if( dataPacket.value == true )
+								{
+									document.body.classList.add( 'Scrolling' );
+								}
+								else
+								{
+									document.body.classList.remove( 'Scrolling' );
+								}
+							}
+						}
+						break;
+					case 'servermessage':
+						if( Application.receiveMessage )
+						{
+							Application.receiveMessage( {
+								command: 'servermessage',
+								data: dataPacket.message
+							} );
 						}
 						break;
 					case 'closewindow':
@@ -877,7 +1096,6 @@ function receiveEvent( event, queued )
 						// Close an exact window
 						if( dataPacket.viewId && Application.windows && Application.windows[dataPacket.viewId] )
 						{
-
 							var w = Application.windows[dataPacket.viewId];
 							w.close();
 						}
@@ -904,7 +1122,6 @@ function receiveEvent( event, queued )
 							for( var a in Application.windows )
 							{
 								var w = Application.windows[a];
-								if( w.onClose ) w.onClose();
 								w.close();
 							}
 						}
@@ -920,13 +1137,13 @@ function receiveEvent( event, queued )
 					// Activate it
 					case 'activateview':
 						Application.activated = true;
-						document.body.className = document.body.className.split( ' activated' ).join ( '' ) + ' activated';
+						document.body.classList.add( 'activated' );
 						Application.receiveMessage( { type: 'system', command: 'focusview' } );
 						break;
 					// Deactivate it
 					case 'deactivateview':
 						Application.activated = false;
-						document.body.className = document.body.className.split( ' activated' ).join ( '' );
+						document.body.classList.remove( 'activated' );
 						Application.receiveMessage( { type: 'system', command: 'blurview' } );
 						break;
 					default:
@@ -941,9 +1158,8 @@ function receiveEvent( event, queued )
 			break;
 		// Is often called on an already opened image
 		case 'setbodycontent':
-
 			window.loaded = false;
-			document.body.className = 'Loading';
+			document.body.classList.add( 'Loading' );
 
 			// We need to set these if possible
 			Application.authId        = dataPacket.authId;
@@ -951,21 +1167,24 @@ function receiveEvent( event, queued )
 			Application.applicationId = dataPacket.applicationId;
 			Application.userId        = dataPacket.userId;
 			Application.username      = dataPacket.username;
-			
+
 			// Register screen
 			if( dataPacket.screenId ) Application.screenId = dataPacket.screenId;
 
 			// Make sure the base href is correct.
 			if( typeof( data ) != 'string' )
 				data = '';
-			var data = friend.convertFriendPaths( dataPacket.data );
+			var data = Friend.convertFriendPaths( dataPacket.data );
 
 			// For jquery etc
 			var m = '';
 			while( m = data.match( /\$\(document[^{]*?\{([^}]*?)\}\)/i ) )
 				data = data.split( m[0] ).join( '(' + m[1] + ')' );
 
+
+			// Set content
 			document.body.innerHTML = data;
+			
 			if( dataPacket.parentSandboxId )
 			{
 				try
@@ -991,6 +1210,7 @@ function receiveEvent( event, queued )
 						callback:      dataPacket.callback,
 						applicationId: dataPacket.applicationId,
 						theme:         dataPacket.theme,
+						themeData:     dataPacket.themeData,
 						locale:        dataPacket.locale,
 						authId:        dataPacket.authId,
 						sessionId:     dataPacket.sessionId,
@@ -1064,7 +1284,9 @@ function receiveEvent( event, queued )
 			Application.applicationId = dataPacket.applicationId;
 			Application.userId        = dataPacket.userId;
 			Application.username      = dataPacket.username;
+			Application.applicationName = dataPacket.applicationName;
 			Application.sendMessage   = setupMessageFunction( dataPacket, window.origin );
+			
 			// Initialize app frame
 			initApplicationFrame( dataPacket, event.origin );
 			break;
@@ -1079,7 +1301,7 @@ function receiveEvent( event, queued )
 				// Shall we keep the callback so we can continue to pass info on it?
 				var kcb = dataPacket.returnMessage;
 				var keep = kcb ? ( kcb.keepCallback ? true : false ) : false;
-			
+
 				// Shell object
 				if( dataPacket.shellId )
 				{
@@ -1090,7 +1312,6 @@ function receiveEvent( event, queued )
 				// Normal callback by callback id
 				else if( dataPacket.callbackId )
 				{
-					console.log( 'Normal callback:', dataPacket );
 					var f = extractCallback( dataPacket.callbackId, keep );
 					if( f )
 					{
@@ -1121,8 +1342,15 @@ function receiveEvent( event, queued )
 			}
 			else
 			{
+				// Convert from string
+				if( dataPacket.dataFormat == 'string' )
+				{
+					dataPacket.dataFormat = '';
+					//dataPacket.data = dataPacket.data.split( ',' );
+					//dataPacket.data = ( new Uint8Array( dataPacket.data ) ).buffer;
+					dataPacket.data = ConvertStringToArrayBuffer( dataPacket.data, 'base64' );
+				}
 				var out = [];
-				var f = false;
 				var f = extractCallback( dataPacket.fileId );
 				if( f )
 				{
@@ -1140,14 +1368,14 @@ function receiveEvent( event, queued )
 							}
 						}
 						// For jsx files and others
-						if( Application.appPath )
+						if( Application.appPath && !Application.noFilePathConversion )
 						{
 							if( !Application.authId && getUrlVar( 'authid' ) )
 								Application.authId = getUrlVar( 'authid' );
 							else if( dataPacket.authId ) Application.authId = dataPacket.authId;
 
 							// Convert paths
-							f.data = friend.convertFriendPaths( f.data );
+							f.data = Friend.convertFriendPaths( f.data );
 						}
 						f.onLoad( f.data );
 					}
@@ -1253,13 +1481,115 @@ function receiveEvent( event, queued )
 					// Execute and give callback
 					if( DormantMaster.doors[ dataPacket.doorId ] )
 					{
-						var items = DormantMaster.doors[ dataPacket.doorId ].getDirectory( dataPacket.path );
-						Application.sendMessage( {
-							type: 'dormantmaster',
-							method: 'callback',
-							doorId: dataPacket.doorId,
-							callbackId: dataPacket.callbackId,
-							data: items
+						var items = DormantMaster.doors[ dataPacket.doorId ].getDirectory( dataPacket.path, function( items )
+						{
+							Application.sendMessage( {
+								type: 'dormantmaster',
+								method: 'callback',
+								doorId: dataPacket.doorId,
+								callbackId: dataPacket.callbackId,
+								data: items
+							} );
+						} );
+						if ( items )
+						{
+							Application.sendMessage( {
+								type: 'dormantmaster',
+								method: 'callback',
+								doorId: dataPacket.doorId,
+								callbackId: dataPacket.callbackId,
+								data: items
+							} );
+						}
+					}
+				}
+				// Get File Information
+				else if( dataPacket.method == 'getFileInformation' )
+				{
+					// Execute and give callback
+					if( DormantMaster.doors[ dataPacket.doorId ] )
+					{
+						var items = DormantMaster.doors[ dataPacket.doorId ].getFileInformation( dataPacket.path, function( data )
+						{
+							Application.sendMessage( {
+								type: 'dormantmaster',
+								method: 'callback',
+								doorId: dataPacket.doorId,
+								callbackId: dataPacket.callbackId,
+								data: data
+							} );
+						} );
+					}
+				}
+				// Set File Information
+				else if( dataPacket.method == 'setFileInformation' )
+				{
+					// Execute and give callback
+					if( DormantMaster.doors[ dataPacket.doorId ] )
+					{
+						var items = DormantMaster.doors[ dataPacket.doorId ].setFileInformation( dataPacket.perm, function( data )
+						{
+							Application.sendMessage( {
+								type: 'dormantmaster',
+								method: 'callback',
+								doorId: dataPacket.doorId,
+								callbackId: dataPacket.callbackId,
+								data: data
+							} );
+						} );
+					}
+				}
+				// Read
+				else if( dataPacket.method == 'read' )
+				{
+					// Execute and give callback
+					if( DormantMaster.doors[ dataPacket.doorId ] )
+					{
+						var items = DormantMaster.doors[ dataPacket.doorId ].read( dataPacket.path, dataPacket.mode, function( data )
+						{
+							Application.sendMessage( {
+								type: 'dormantmaster',
+								method: 'callback',
+								doorId: dataPacket.doorId,
+								callbackId: dataPacket.callbackId,
+								data: data
+							} );
+						} );
+					}
+				}
+				// Write
+				else if( dataPacket.method == 'write' )
+				{
+					// Execute and give callback
+					if( DormantMaster.doors[ dataPacket.doorId ] )
+					{
+						var items = DormantMaster.doors[ dataPacket.doorId ].write( dataPacket.path, dataPacket.data, function( data )
+						{
+							Application.sendMessage( {
+								type: 'dormantmaster',
+								method: 'callback',
+								doorId: dataPacket.doorId,
+								callbackId: dataPacket.callbackId,
+								data: data
+							} );
+						} );
+					}
+				}
+				// DosActions
+				else if( dataPacket.method == 'dosAction' )
+				{
+					// Execute and give callback
+					if( DormantMaster.doors[ dataPacket.doorId ] )
+					{
+						var items = DormantMaster.doors[ dataPacket.doorId ].dosAction( dataPacket.func, dataPacket.args, function( data )
+						{
+							Application.sendMessage( {
+								type: 'dormantmaster',
+								method: 'callback',
+								doorId: dataPacket.doorId,
+								callbackId: dataPacket.callbackId,
+								data: data
+							} );
 						} );
 					}
 				}
@@ -1310,7 +1640,6 @@ function receiveEvent( event, queued )
 			break;
 		// Messages for doors
 		case 'door':
-			console.log( 'api.js - we got a door message:' );
 			console.log( dataPacket );
 			break;
 		case 'applicationstorage':
@@ -1327,9 +1656,21 @@ function receiveEvent( event, queued )
 				callback( dataPacket.data );
 			}
 			break;
+		case 'generatekeys':
+		case 'encrypt':
+		case 'decrypt':
+		case 'publickey':
+		case 'setapplicationkey':
+		case 'getapplicationkey':
+			if ( dataPacket && typeof dataPacket.callbackId !== "undefined" )
+			{
+				var callback = extractCallback( dataPacket.callbackId );
+				callback( dataPacket.data );
+			}
+			break;
 		case 'fconn':
-			if ( friend.conn )
-				friend.conn.receiveMessage( dataPacket );
+			if ( Friend.conn )
+				Friend.conn.receiveMessage( dataPacket );
 			else
 				Application.receiveMessage( dataPacket );
 			break;
@@ -1423,18 +1764,37 @@ function receiveEvent( event, queued )
 	{
 		// Run callbacks and clean up
 		if( dataPacket.callback )
-		{
+		{	
 			// Ok, we will try to execute the callback we found here!
-			if( typeof(Application.callbacks) != 'undefined' && typeof(Application.callbacks[dataPacket.callback]) != 'undefined' )
+			var f;
+			if( dataPacket.resp && ( f = extractCallback( dataPacket.callback ) ) )
 			{
-				Application.callbacks[dataPacket.callback]( dataPacket );
-
-				// Remove callback function from callback buffer
-				var out = [];
-				for( var a in Application.callbacks )
-					if( a != dataPacket.callback )
-						out[a] = Application.callbacks[a];
-				Application.callbacks = out;
+				if( dataPacket.data )
+				{
+					f( dataPacket.resp, dataPacket.data );
+					return true;
+				}
+				else
+				{
+					f( dataPacket.resp, false );
+					return true;
+				}
+			}
+			else if( ( f = extractCallback( dataPacket.callback ) ) )
+			{	
+				try
+				{
+					if ( dataPacket.isFriendAPI )
+					{
+						f( dataPacket.response, dataPacket.data, dataPacket.extra );
+					}
+					else
+						f( dataPacket );
+				}
+				catch( e )
+				{
+					console.log( e, f );
+				}
 				return true;
 			}
 			// Aha, we have a window to send to (see if it's at this level)
@@ -1518,8 +1878,49 @@ function FriendWebSocket( config )
 	}
 }
 
-// Open a new widget -----------------------------------------------------------
+// Filesystem related
+function AddFilesystemEvent( path, event, callback )
+{
+	if( path && event && callback )
+	{
+		var msg = {
+			type: 'system',
+			command: 'addfilesystemevent',
+			path: path,
+			event: event
+		};
+		if( callback )
+		{
+			var cid = addPermanentCallback( callback );
+			msg.callback = cid;
+		}
+		Application.sendMessage( msg );
+		return true;
+	}
+	return false;
+}
 
+function RemoveFilesystemEvent( path, event, callback )
+{
+	if( path && event )
+	{
+		var msg = {
+			type: 'system',
+			command: 'removefilesystemevent',
+			path: path,
+			event: event
+		};
+		if( callback )
+		{
+			var cid = addCallback( callback );
+			msg.callback = cid;
+		}
+		Application.sendMessage( msg );
+	}
+	return false;
+}
+
+// Open a new widget -----------------------------------------------------------
 function Widget( flags )
 {
 	var widgetId = 'widget_' + ( new Date() ).getTime() + '.' + Math.random();
@@ -1636,14 +2037,13 @@ function Widget( flags )
 				w.push(Application.widgets[a]);
 		Application.widgets = w;
 	}
-	
+
 	// Setup view object with master
 	Application.sendMessage( msg );
 	if( !Application.widgets )
 		Application.widgets = {};
 	Application.widgets[ widgetId ] = this;
 }
-
 
 // Open a new view -------------------------------------------------------------
 
@@ -1663,8 +2063,22 @@ function View( flags )
 		type:    'view',
 		data:    flags,
 		viewId: viewId
+	};
+	
+	if( Application.viewId )
+	{
+		msg.parentViewId = Application.viewId;
 	}
 
+	// Bring a window to front
+	this.toFront = function()
+	{
+		Application.sendMessage( {
+			type:    'view',
+			method:  'toFront',
+			viewId: viewId
+		} );
+	}
 	this.getViewId = function()
 	{
 		return viewId;
@@ -1693,6 +2107,19 @@ function View( flags )
 			viewId: viewId,
 			data:    { flag: flag, value: value }
 		} );
+	}
+	this.getWindowElement = function( callback )
+	{
+		if( callback )
+			cid = addCallback( callback );
+		var o = {
+			type:     'view',
+			method:   'getWindowElement',
+			viewId:   viewId,
+			destination: Application.viewId ? Application.viewId : false,
+			callback: cid
+		};
+		Application.sendMessage( o );
 	}
 	// Set window content
 	this.setContent = function( data, callback )
@@ -1888,7 +2315,7 @@ function View( flags )
 		Application.sendMessage( {
 			type:    'view',
 			method:  'sendmessage',
-			viewId: viewId,
+			viewId:   viewId,
 			data:     dataObject
 		} );
 	}
@@ -1931,22 +2358,23 @@ function View( flags )
 	{
 		// Don't double close!
 		if( this.closed ) return;
+		if( this.onClose )
+		{
+			this.onClose();
+		}
 
-		if ( this.onClose ) this.onClose();
-		
 		if( this.preventClosing ) return;
+		
 		this.closed = true;
 
 		// Kill slot
 		var w = [];
-		var count = 0;
 		for( var a in Application.windows )
 		{
 			if( a == viewId ) continue;
 			else
 			{
 				w[a] = Application.windows[a];
-				count++;
 			}
 		}
 		Application.windows = w;
@@ -1971,12 +2399,45 @@ function View( flags )
 
 	// Setup view object with master
 	Application.sendMessage( msg );
-	if( !Application.windows )
-		Application.windows = {};
 	Application.windows[ viewId ] = this;
 
 	// Just activate this window
 	this.activate();
+}
+
+// To close a view
+function CloseView( id )
+{
+	// No id? Get the actual view we're in
+	if( !id && Application.viewId )
+		id = Application.viewId;
+
+	// It's an object
+	if( typeof( id ) == 'object' )
+	{
+		if( id.close )
+		{
+			console.log( ' -> Closing object.' );
+			return id.close();
+		}
+		return false;
+	}
+	// It's an id here in this scope?
+	else if( Application.windows[ id ] )
+	{
+		// Closing object by id.
+		Application.windows[ id ].close();
+	}
+	else if( Application.viewId )
+	{
+		// Asking a specific view to close this one by id.
+		Application.sendMessage( { command: 'notify', method: 'closeview', targetViewId: Application.viewId, viewId: id } );
+	}
+	else
+	{
+		// Asking app to close this view.
+		Application.sendMessage( { command: 'notify', method: 'closeview', viewId: id } );
+	}
 }
 
 // Make a new popupview --------------------------------------------------------
@@ -2145,9 +2606,9 @@ function Screen( flags )
 Shell = function()
 {
 	var cid = addCallback( this );
-	
+
 	var shellObject = this;
-	
+
 	this.output = false;
 
 	var appObject = {
@@ -2162,7 +2623,7 @@ Shell = function()
 		if( shellObject.onPipe )
 			shellObject.onPipe( dmsg );
 	} );
-	
+
 	Application.sendMessage( {
 		type:    'shell',
 		args:    appObject,
@@ -2176,6 +2637,7 @@ Shell = function()
 		if( msg.shellSession )
 		{
 			this.shellSession = msg.shellSession;
+			this.shellSession.clientId = this.clientId;
 			this.number = msg.shellNumber;
 			this.pipeOutgoing = msg.pipeCallback;
 		}
@@ -2219,7 +2681,7 @@ Shell = function()
 		if( this.output == 'console' ) console.log( 'Shell instance executing command line:', commandLine );
 		var cb = false;
 		var t = this;
-		
+
 		// Special extra callbacks in addition to pipe activity
 		if( callback )
 		{
@@ -2252,13 +2714,13 @@ Shell = function()
 		} );
 	}
 
-	this.evaluate = function( input, callback )
+	this.evaluate = function( input, callback, clientKey, restrictedPath )
 	{
 		if( !this.shellSession ) return;
 		if( this.output == 'console' ) console.log( 'Shell instance executing evaluate');
 		var cb = false;
 		var t = this;
-		
+
 		// Special extra callbacks in addition to pipe activity
 		if( callback )
 		{
@@ -2268,17 +2730,19 @@ Shell = function()
 			}
 			cb = addCallback( wcallback );
 		}
-		
+
 		Application.sendMessage( {
 			type: 'shell',
 			command: 'evaluate',
 			input: input,
 			shellSession: this.shellSession,
+			clientKey: clientKey,
+			restrictedPath: restrictedPath,
 			callbackId: cb
 		} );
 	}
 
-	
+
 	// Clear events (by name optionally)
 	this.clearEvents = function( eventName )
 	{
@@ -2306,11 +2770,19 @@ var __audioContext = false;
 WebAudioLoader = function( filePath, callback )
 {
 	if( !__audioContext )
-		__audioContext = new AudioContext();
+	{
+		var au = window.AudioContext || window.webkitAudioContext;
+		__audioContext = new au();
+	}           
 
 	this.audioGraph =
 	{
+		volume: 0.5,
 		context: __audioContext,                                                //this is the container for your entire audio graph
+		bufferArray: [],
+		bufferArrayIndex: 0,
+		bufferArrayTimeOffset: 0,
+		useArray: false,
 		bufferCache: null,                                                      //buffer needs to be re-initialized before every play, so we'll cache what we've loaded here
 		playTime: 0,
 		paused: false,
@@ -2336,25 +2808,73 @@ WebAudioLoader = function( filePath, callback )
 		{
 			this.rate = rate;
 		},
-		//play it
-		playSound: function()
+		// Schedule (for streaming)
+		schedulePlaying: function( buf )
 		{
-			if( this.started )
+			this.useArray = true;
+			this.bufferArray.push( buf );
+			if( this.playTime > 0 )
 			{
-				this.source.stop();                                             //call noteOff to stop any instance already playing before we play ours
+				if( this.bufferArrayTimeOffset < this.playTime )
+					this.bufferArrayTimeOffset += this.playTime;
+				
+				while( this.bufferArrayIndex < this.bufferArray.length )
+				{
+					var schBuf = this.context.createBufferSource();
+					schBuf.buffer = this.bufferArray[ this.bufferArrayIndex++ ];
+					
+					// Add onended to the last piece
+					if( this.bufferArrayIndex >= this.bufferArray.length )
+					{
+						if( this.onEnded ) schBuf.addEventListener( 'ended', this.onEnded );
+					}
+					
+					schBuf.playbackRate.value = this.pitch;
+					schBuf.connect( this.context.destination );
+					schBuf.connect( this.gainNode );
+					schBuf.start( this.bufferArrayTimeOffset );
+					console.log( 'Starting next at ' + ( this.bufferArrayTimeOffset ) );
+					this.bufferArrayTimeOffset += schBuf.buffer.duration;
+				}
+			}
+		},
+		//play it
+		playSound: function( info ) // cont is only for useArray
+		{
+			if( this.started && !info )
+			{
+				this.source.stop();                                             // call noteOff to stop any instance already playing before we play ours
 				this.started = false;
 			}
-			this.gainNode.gain.value = 1.0;
-			this.source = this.context.createBufferSource();                    //init the source
-			this.setBuffer( this.bufferCache );                                 //re-set the buffer
-			this.source.playbackRate.value = this.pitch;                        //here's your playBackRate check
-			this.source.connect( this.context.destination );                    //connect to the speakers
+			this.source = this.context.createBufferSource();
+			
+			// Normal stuff
+			if( !this.useArray )
+			{
+				if( info && info.onEnded ) this.source.addEventListener( 'ended', info.onEnded );
+			}
+			// For streaming - buffer the onEnded callback
+			else if( info && info.onEnded )
+			{
+				this.onEnded = info.onEnded;
+			}
+			
+			this.setBuffer( this.bufferCache );                                 // re-set the buffer
+			
+			this.source.playbackRate.value = this.pitch;                        // here's your playBackRate check
+			this.source.connect( this.context.destination );                    // connect to the speakers
 			this.source.connect( this.gainNode );
+			this.setVolume( this.volume );
 			this.gainNode.connect( this.context.destination );
-			this.source.start();                                                //pass in 0 to play immediately
+			this.source.start();                                                // pass in 0 to play immediately
 			this.started = Date.now();
 			this.pausedPos = 0;
 			this.playTime = this.context.currentTime;                           // offset
+		},
+		setVolume: function( volume )
+		{
+			this.volume = volume;
+			this.gainNode.gain.setValueAtTime( this.volume, this.context.currentTime );
 		},
 		pause: function()
 		{
@@ -2367,11 +2887,19 @@ WebAudioLoader = function( filePath, callback )
 				this.source = this.context.createBufferSource();                //init the source
 				this.source.connect( this.gainNode );
 				this.gainNode.connect( this.context.destination );
-				this.setBuffer( this.bufferCache );                             //re-set the buffer
+				this.gainNode.gain.setValueAtTime( this.volume, this.context.currentTime - ( this.pausedPos / 1000 ) );
+				if( this.useArray )
+				{
+					this.setBuffer( this.bufferArray[ this.bufferArrayIndex ] );
+				}
+				else
+				{
+					this.setBuffer( this.bufferCache );                             //re-set the buffer
+				}
 				this.source.playbackRate.value = this.pitch;                    //here's your playBackRate check
 				this.source.connect( this.context.destination );                //connect to the speakers
 				this.source.start( 0, this.pausedPos / 1000 );
-				this.gainNode.gain.value = 1.0;
+				this.gainNode.gain.value = this.volume;
 				this.playTime = this.context.currentTime - ( this.pausedPos / 1000 );
 			}
 			else
@@ -2392,6 +2920,7 @@ WebAudioLoader = function( filePath, callback )
 			this.started = false;
 			this.paused = false;
 			this.source.stop();
+			this.bufferArrayIndex = 0;
 		}
 	}
 
@@ -2406,63 +2935,133 @@ WebAudioLoader = function( filePath, callback )
 	// Do the loading
 	(function()
 	{
-		var _request = new XMLHttpRequest(),
-		_handleRequest = function( url )
+		if( "streaming" == "implemented" )
 		{
-			var useDumbAudio = false;
-			if( ( url.substr( 0, 5 ) == 'http:' || url.substr( 0, 6 ) == 'https:' )
-				&& url.substr( 0, document.location.protocol.length ) != document.location.protocol )
+			try
 			{
-				useDumbAudio = true;
-			}
-
-			if( !useDumbAudio )
-			{
-				_request.open( 'GET', url, true );
-				_request.responseType = 'arraybuffer';
-				_request.onload = function()
+				var url = filePath;
+				if( !( filePath.substr( 0, 5 ) == 'http:' || filePath.substr( 0, 6 ) == 'https:' ) && filePath.indexOf( '/system.library' ) != 0 )
+					url = getWebUrl( filePath );
+			
+				var bytes = 0;
+				var minBuffer = 262144;
+			
+				fetch( url ).then( function( response )
 				{
-					// Decode
+					var reader = response.body.getReader();
+				
+					function read()
+					{
+						return reader.read().then( ( { value, done } ) => 
+						{
+							if( done )
+							{
+								console.log('done');
+								return;
+							}
+							else
+							{
+							
+								try
+								{
+									t.audioGraph.context.decodeAudioData( value.buffer, function( buffer )
+									{
+										if( buffer.length )
+										{
+											scheduleBuffers( buffer );
+										}
+										else
+										{
+											console.log( 'Got a null buffer!' );
+										}
+									}, 
+									function(err) 
+									{
+										console.log("err(decodeAudioData): "+err);
+									} );
+								}
+								catch( e ){};
+							}
+							read();
+						} );
+					}
+					read();
+				} );
+				// Extend the buffer asyncronously
+				function scheduleBuffers( buffer )
+				{
+					var ctx = t.audioGraph.context;
+					var grp = t.audioGraph;
+				
+					bytes += buffer.length;
+				
+					console.log( 'Have loaded ' + bytes + ' bytes' );
+				
+					// Schedule the playing on time
+					grp.schedulePlaying( buffer );
+				
+					if( bytes >= minBuffer && callback )
+					{
+						callback( true );
+						callback = false;
+						console.log( 'Got enough! Playing' );
+					}
+				}
+				return;
+			}
+			catch( e )
+			{
+			}
+		}
+		// Non streaming
+		else
+		{
+			var request = new XMLHttpRequest();
+			request.responseType = 'arraybuffer';
+			request.onload = function( evt )
+			{
+				var theData = request.response;
+			
+				// Decode
+				try
+				{
 					t.audioGraph.context.decodeAudioData(
-						_request.response,
+						theData,
 						function( buf )
 						{
-							t._loadedBuffer = buf;
-							t.audioGraph.setBuffer( buf );
-							t.audioGraph.setBufferCache( buf );
-							if( callback ) callback();
+							try
+							{
+								t._loadedBuffer = buf;
+								t.audioGraph.setBuffer( buf );
+								t.audioGraph.setBufferCache( buf );
+								if( callback ) callback( true );
+							}
+							catch( e )
+							{
+								console.log( 'No buffer yet.', request.response );
+								if( callback ) callback( true, { response: 0, message: 'Could not set buffer yet.' } );
+							}
 						},
 						function()
 						{
+							console.log( 'Totally failed to decode..' );
 							// error;
+							if( callback )
+								callback( false );
 						}
 					);
 				}
-				_request.send();
-			}
-			// Try audio object instead..
-			// TODO: Make this work!
-			else
-			{
-				var o = document.createElement( 'audio' );
-				o.style.position = 'absolute';
-				//o.style.top = '-100000px';
-				o.style.zIndex = 100;
-				o.setAttribute( 'crossorigin', 'anonymous' );
-				o.setAttribute( 'controls', '' );
-				o.setAttribute( 'autoplay', 'autoplay' );
-				o.src = url;
-				document.body.appendChild( o );
-				t.audioObject = o;
-				/*var src = t.audioGraph.context.createMediaElementSource( o );
-				src.connect( t.audioGraph*/
-				o.play();
-			}
+				catch( e )
+				{
+					if( callback )
+						callback( false );
+				}
+			};
+			if( !( filePath.substr( 0, 5 ) == 'http:' || filePath.substr( 0, 6 ) == 'https:' ) && filePath.indexOf( '/system.library' ) != 0 )
+				filePath = getWebUrl( filePath );
+			request.open( 'POST', filePath, true );
+			request.send();
 		}
-
-		if( !( filePath.substr( 0, 5 ) == 'http:' || filePath.substr( 0, 6 ) == 'https:' ) )
-			filePath = getImageUrl( filePath );
-		_handleRequest( filePath );
 	}());//loader
 };
 
@@ -2470,7 +3069,7 @@ var __audioLoaders = [];
 var __maxAudioLoaders = 1;
 var __currentAudioLoader = 0;
 
-function AudioObject( sample )
+function AudioObject( sample, callback )
 {
 	this.loaded = false;
 	this.loadSample = function( path )
@@ -2478,14 +3077,23 @@ function AudioObject( sample )
 		var t = this;
 		if( !( path.substr( 0, 5 ) == 'http:' || path.substr( 0, 6 ) == 'https:' ) )
 			path = getImageUrl( path );
-		this.loader = new WebAudioLoader( path, function(){
-			t.loaded = true;
-			if( t.loader )
+		this.loader = new WebAudioLoader( path, function( result ){
+			if( result )
 			{
-				t.loader.audioGraph.setRate( 1 );
-				t.loader.audioGraph.setPlaybackRate( 1 );
+				t.loaded = true;
+				if( t.loader )
+				{
+					t.loader.audioGraph.setRate( 1 );
+					t.loader.audioGraph.setPlaybackRate( 1 );
+				}
+				if( t.onload ) t.onload();
+				if( callback ) callback( true );
 			}
-			if( t.onload ) t.onload();
+			else
+			{
+				if( callback )
+					callback( result );
+			}
 		} );
 		this.path = path;
 	}
@@ -2540,27 +3148,63 @@ function AudioObject( sample )
 		this.loader.audioGraph.playSound();
 	}
 
+	// Uses -2 to 2
+	this.setVolume = function( vol )
+	{
+		if( this.loader && this.loader.audioGraph )
+			this.loader.audioGraph.setVolume( ( vol * 4 ) - 2 );
+	}
+
 	// Plays notes!
 	this.play = function()
 	{
-		this.loader.audioGraph.playSound();
-
-		if( this.interval ) clearInterval( this.interval );
 		var t = this;
+		if( this.interval ) clearInterval( this.interval );
 		this.interval = setInterval( function()
 		{
-			if( !t.loader.audioGraph.paused && t.getContext().currentTime - t.loader.audioGraph.playTime >= t.loader.audioGraph.source.buffer.duration )
-			{
-				if( t.onfinished )
-				{
-					t.onfinished();
-				}
-			}
 			if( t.loader.audioGraph.started && t.onplaying && !t.loader.audioGraph.paused )
 			{
-				t.onplaying( ( t.getContext().currentTime - t.loader.audioGraph.playTime ) / t.loader.audioGraph.source.buffer.duration );
+				var ct = t.getContext().currentTime;
+				var pt = t.loader.audioGraph.playTime;
+				try
+				{
+					var dr = t.loader.audioGraph.source.buffer.duration;
+					t.onplaying( ( ct - pt ) / dr, ct, pt, dr );
+				}
+				catch( e )
+				{
+					console.log( 'Playing streaming segment. Fixme!' );
+				}
 			}
 		}, 100 );
+		
+		// Handle ending
+		var ag = t.loader.audioGraph;
+	
+		function ended()
+		{
+			// Using streaming
+			if( ag.useArray )
+			{
+				if( ag.bufferArrayIndex >= ag.bufferArray.length )
+				{
+					clearTimeout( t.interval );
+					t.interval = false;
+					if( t.onfinished )
+					{
+						t.onfinished();
+					}
+				}
+				return;
+			}
+			clearTimeout( t.interval );
+			t.interval = false;
+			if( t.onfinished )
+				t.onfinished();
+		}
+		
+		console.log( 'Playing now!' );
+		this.loader.audioGraph.playSound( { onEnded: ended } );
 	}
 
 	if( sample )
@@ -2572,14 +3216,16 @@ function AudioObject( sample )
 
 // File object abstraction -----------------------------------------------------
 
-function getImageUrl( path )
+function getImageUrl( path, mode )
 {
+	if( !mode ) mode = 'rs';
+	
 	// TODO: Determine from Doors!
 	var apath = Application.appPath ? Application.appPath : Application.filePath;
 
 	if( path.toLowerCase().substr( 0, 8 ) == 'progdir:' )
 	{
-		return path.split( /progdir\:/i ).join( apath );
+		path = apath + path.substr( 8, path.length - 8 );
 	}
 	else if( path.toLowerCase().substr( 0, 7 ) == 'system:' )
 	{
@@ -2589,6 +3235,15 @@ function getImageUrl( path )
 	{
 		return path.split( /libs\:/i ).join( '/webclient/' );
 	}
+	if( path.indexOf( 'http:' ) == 0 || path.indexOf( 'https:' ) == 0 )
+	{
+		return path;
+	}
+
+	if( path.indexOf( ':' ) > 0 )
+	{
+		path = encodeURIComponent( path );
+	}
 
 	var prt = 'authid=' + ( Application.authId ? Application.authId : '' );
 	if( Application.sessionId ) prt = 'sessionid=' + Application.sessionId;
@@ -2596,9 +3251,9 @@ function getImageUrl( path )
 	return u;
 }
 // Alias
-function getWebUrl( path )
+function getWebUrl( path, mode )
 {
-	return getImageUrl( path );
+	return getImageUrl( path, mode );
 }
 
 function File( path )
@@ -2656,9 +3311,12 @@ function File( path )
 	}
 
 	// Load the file
-	this.load = function()
+	this.load = function( mode )
 	{
 		var fid = addCallback( this );
+		if( !mode ) mode = 'r'; else mode = mode.toLowerCase();
+		if( mode=='r' || mode=='rb' ) this.vars.mode = mode;
+		
 		Application.sendMessage( {
 			type:    'file',
 			data:    { path: this.path },
@@ -2673,7 +3331,7 @@ function File( path )
 	this.post = function( content, filename )
 	{
 		if( !filename ) filename = this.path;
-		
+
 		var fid = addCallback( this );
 		Application.sendMessage( {
 			type:    'file',
@@ -2683,14 +3341,23 @@ function File( path )
 		} );
 	}
 
-	this.save = function( data, filename )
+	this.save = function( data, filename, mode )
 	{
 		if( !filename ) filename = this.path;
-		
+
 		var fid = addCallback( this );
+
+		var dataMode = 'raw';
+		if( ( mode && mode == 'wb' ) || ( this.vars && this.vars.mode == 'wb' ) )
+		{
+			dataMode = 'string';
+			data = ConvertArrayBufferToString( data, 'base64' );
+		}
+
 		Application.sendMessage( {
 			type:    'file',
 			data:    { path: filename, data: data },
+			dataFormat: dataMode,
 			method:  'save',
 			filePath: apath,
 			vars:    this.vars,
@@ -2727,120 +3394,733 @@ function Module( module )
 	}
 }
 
+GetClass = function( source )
+{
+	// Assign the functions of the class
+	var start = 0;
+	var end = source.indexOf( '.' );
+	if ( end < 0 )
+		end = 10000;
+	var klass = window[ source.substring( start, end ) ];
+	if ( typeof klass == 'undefined' )
+		return null;
+	while( end < source.length )
+	{
+		start = end + 1;
+		end = source.indexOf( '.', start );
+		if ( end < 0 )
+			end = 10000;
+		klass = klass[ source.substring( start, end ) ];
+		if ( typeof klass == 'undefined' )
+			return null;
+	};
+	return klass;
+};
+
+
 // Abstract FriendNetwork
 // TODO: Remove keys / sessions on quit!
-FriendNetwork = {
-	init: function( cb )
+FriendNetwork =
+{
+	isReady: function( callback, extra )
 	{
-		var self = this;
-		Application.sendMessage( {
-			type: 'friendnet',
-			method: 'addsession',
-			mode: this.type,
-			name: this.name,
-			callback: addCallback( function( msg )
-			{
-				self.key = msg.key;
-				cb();
-			} )
-		} );
+    	var message =
+		{
+			type:   'friendnet',
+			method: 'isReady',
+			extra: extra ? extra : false
+		};
+		if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
 	},
-	list: function()
+	list: function( callback, extra )
     {
-		Application.sendMessage( {
-			type: 'friendnet',
+    	var message =
+		{
+			type:   'friendnet',
 			method: 'list',
-			callback: addCallback( function( msg )
-			{
-				console.log( 'Listing connexions to Friend Network:', msg );
-			} )
-		} );
+			extra: extra ? extra : false
+		};
+		if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
 	},
-	connect: function( name, callback )
+	subscribeToHostListUpdates: function( callback, extra )
     {
-		Application.sendMessage( {
+    	var message =
+		{
+			type:   'friendnet',
+			method: 'subscribeToHostListUpdates',
+			extra: extra ? extra : false
+		};
+		if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	},
+	unsubscribeFromHostListUpdates: function( identifier, callback, extra )
+    {
+    	var message =
+		{
+			type:   'friendnet',
+			method: 'unsubscribeFromHostListUpdates',
+			identifier: identifier,
+			extra: extra ? extra : false
+		};
+		if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	},
+	subscribeToHostUpdates: function( callback, extra )
+    {
+    	var message =
+		{
+			type:   'friendnet',
+			method: 'subscribeToHostUpdates',
+			extra: extra ? extra : false
+		};
+		if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	},
+	unsubscribeFromHostListUpdates: function( key, callback, extra )
+    {
+    	var message =
+		{
+			type:   'friendnet',
+			method: 'unsubscribeFromHostUpdates',
+			key: key,
+			extra: extra ? extra : false
+		};
+		if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	},
+	connect: function( url, hostType, flags, callback, extra )
+    {
+		var message =
+		{
 			type: 'friendnet',
 			method: 'connect',
-			name: name,
-			callback: addCallback( callback )
-		} );
+			url: url,
+			hostType: hostType,
+			flags: flags,
+			extra: extra ? extra : false
+		};
+		if ( callback )
+			message.callback = addPermanentCallback( callback );
+		Application.sendMessage( message );
 	},
-	host: function( name, serverListener )
+	sendFile: function( key, file, infos, callback, extra )
     {
-		Application.sendMessage( {
+		var message =
+		{
+			type: 'friendnet',
+			method: 'sendFile',
+			key: key,
+			file: file,
+			infos: infos,
+			extra: extra ? extra : false
+		};
+		if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	},
+	disconnect: function ( key, callback, extra )
+	{
+		var message =
+		{
+			type: 'friendnet',
+			method: 'disconnect',
+			key: key,
+			extra: extra ? extra : false
+		};
+		if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	},
+	disconnectByName: function ( hostName, callback, extra )
+	{
+		var message =
+		{
+			type: 'friendnet',
+			method: 'disconnectByName',
+			hostName: hostName,
+			extra: extra ? extra : false
+		};
+		if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	},
+	host: function( name, type, applicationName, password, description, data, callback, extra )
+    {
+    	var message =
+		{
 			type: 'friendnet',
 			method: 'host',
 			name: name,
-			callback: addCallback( function( msg )
-			{
-				console.log( 'Friend Network hosting:', name );
-			} ),
-			listener: addPermanentCallback( serverListener )
-		} );
+			connectionType: type, 
+			applicationName: applicationName,
+			description: description,
+			password: password,
+			data: data,
+			extra: extra ? extra : false
+		};
+    	if ( callback )
+			message.callback = addPermanentCallback( callback );
+		Application.sendMessage( message );
 	},
-	dispose: function( name )
+	dispose: function( key, callback, extra )
     {
-		Application.sendMessage( {
+		var message =
+		{
 			type: 'friendnet',
 			method: 'dispose',
-			name: name,
-			callback: addCallback( function( msg )
-			{
-				console.log( 'Friend Network dispose from:', key );
-			} )
-		} );
+			key: key,
+			extra: extra ? extra : false
+		};
+	 	if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
 	},
-	send: function( host, event, callback )
+	sendCredentials: function( key, password, encrypted, callback, extra )
+	{
+		var message =
+		{
+			type: 'friendnet',
+			method: 'sendCredentials',
+			key: key,
+			password: password,
+			encrypted: encrypted,
+			extra: extra ? extra : false
+		};
+	 	if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	},
+	setHostPassword: function( key, password, callback, extra )
+	{
+		var message =
+		{
+			type: 'friendnet',
+			method: 'setHostPassword',
+			key: key,
+			password: password,
+			extra: extra ? extra : false
+		};
+	 	if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	},
+	send: function( key, data, callback, extra )
     {
-    	var self = this;
-    	if( !this.key )
-    	{
-    		this.type = 'client';
-    		this.name = Sha256.hash( ( Math.random() + ( Math.random() * Math.random() ) + ( new Date() ).getTime() ) + "" );
-    		this.init( function()
-    		{
-    			if( self.key ) return self.send( host, event, callback );
-    		} );
-    	}
-		Application.sendMessage( {
+		var message =
+		{
 			type: 'friendnet',
 			method: 'send',
-			host: host,
-			event: event,
-			key: this.key,
-			callback: addCallback( callback )
+			key: key,
+			data: data,
+			extra: extra ? extra : false
+		};
+	 	if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
+    },
+	updateHostPassword: function( key, password, callback, extra )
+    {
+		var message =
+		{
+			type: 'friendnet',
+			method: 'updateHostPassword',
+			key: key,
+			password: password,
+			extra: extra ? extra : false
+		};
+	 	if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
+    },
+	closeSession: function( key, callback, extra )
+    {
+		var message =
+		{
+			type: 'friendnet',
+			method: 'closeSession',
+			key: key,
+			extra: extra ? extra : false
+		};
+	 	if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
+    },
+	closeApplication: function()
+  	{
+		Application.sendMessage( {
+			type: 'friendnet',
+			method: 'closeApplication'
 		} );
-    }
+  	},
+	status: function( callback, extra )
+	{
+		var message =
+		{
+			type: 'friendnet',
+			method: 'status',
+			extra: extra ? extra : false
+		};
+	 	if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	},
+	getUserInformation: function( callback, extra )
+	{
+		var message =
+		{
+			type: 'friendnet',
+			method: 'getUserInformation',
+			extra: extra ? extra : false
+		};
+	 	if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	},
+	receiveMessage: function( dataPacket )
+	{
+        if( dataPacket.viewId && Application.windows && Application.windows[ dataPacket.viewId ] )
+            Application.windows[ dataPacket.viewId ].sendMessage( dataPacket );
+        else
+            Application.receiveMessage( dataPacket );
+		if( dataPacket.callback )
+		{
+			console.log( 'FriendNetwork callback execute: ' + dataPacket.callback );
+			var f = extractCallback( dataPacket.callback );
+			if ( f )
+				f( dataPacket );
+		}
+	},
+	listToConsole: function( callback, extra )
+	{
+		var message =
+		{
+			type: 'friendnet',
+			method: 'listToConsole',
+			extra: extra ? extra : false
+		};
+	 	if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	}
+};
+FriendNetworkDrive =
+{
+	activate: function( activate, callback, extra )
+	{
+    	var message =
+		{
+			type:   'friendNetworkShare',
+			method: 'activate',
+			activate: activate,
+			extra: extra ? extra : false
+		};
+		Application.sendMessage( message );
+	},
+	changeFriendNetworkSettings: function( settings, callback, extra )
+	{
+    	var message =
+		{
+			type:   'friendNetworkDrive',
+			method: 'changeFriendNetworkSettings',
+			settings: settings,
+			extra: extra ? extra : false
+		};
+		if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	}
+};
+
+FriendNetworkShare =
+{
+	activate: function( activate, callback, extra )
+	{
+    	var message =
+		{
+			type:   'friendNetworkShare',
+			method: 'activate',
+			activate: activate,
+			extra: extra ? extra : false
+		};
+		Application.sendMessage( message );
+	},
+	changeWorkgroupPassword: function( password, callback, extra )
+	{
+    	var message =
+		{
+			type:   'friendNetworkShare',
+			method: 'changeWorkgroupPassword',
+			password: password,
+			extra: extra ? extra : false
+		};
+		if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	},
+	changeFriendNetworkSettings: function( settings, callback, extra )
+	{
+    	var message =
+		{
+			type:   'friendNetworkShare',
+			method: 'changeFriendNetworkSettings',
+			settings: settings,
+			extra: extra ? extra : false
+		};
+		if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	},
+	relocateHTML: function( html, sourceDrive, linkReplacement, linkFunction, callback, extra )
+	{
+    	var message =
+		{
+			type:   'friendNetworkShare',
+			method: 'relocateHTML',
+			html: html,
+			sourceDrive: sourceDrive,
+			linkReplacement: linkReplacement,
+			linkFunction: linkFunction,
+			callback: addCallback( callback ),
+			extra: extra ? extra : false
+		};
+		Application.sendMessage( message );
+	},
+};
+FriendNetworkFriends =
+{
+	listCommunities: function( url, callback, extra )
+	{
+    	var message =
+		{
+			type:   'friendNetworkFriends',
+			method: 'listCommunities',
+			url: url,
+			extra: extra ? extra : false
+		};
+		if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	},
+	changeFriendNetworkSettings: function( settings, callback, extra )
+	{
+    	var message =
+		{
+			type:   'friendNetworkFriends',
+			method: 'changeFriendNetworkSettings',
+			settings: settings,
+			extra: extra ? extra : false
+		};
+		if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	},
+	getUniqueDeviceIdentifier: function( callback, extra )
+	{
+    	var message =
+		{
+			type:   'friendNetworkFriends',
+			method: 'getUniqueDeviceIdentifier',
+			extra: extra ? extra : false
+		};
+		if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	},
+	getDeviceInformation: function( flags, callback, extra )
+	{
+    	var message =
+		{
+			type:   'friendNetworkFriends',
+			method: 'getDeviceInformation',
+			flags: flags,
+			extra: extra ? extra : false
+		};
+		if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	}
+};
+FriendNetworkDoor =
+{
+	activate: function( activate, callback, extra )
+	{
+    	var message =
+		{
+			type:   'friendNetworkDoor',
+			method: 'activate',
+			activate: activate,
+			extra: extra ? extra : false
+		};
+		Application.sendMessage( message );
+	},
+	relocateHTML: function( html, sourceDrive, linkReplacement, linkFunction, callback, extra )
+	{
+    	var message =
+		{
+			type:   'friendNetworkDoor',
+			method: 'relocateHTML',
+			html: html,
+			sourceDrive: sourceDrive,
+			linkReplacement: linkReplacement,
+			linkFunction: linkFunction,
+			callback: addCallback( callback ),
+			extra: extra ? extra : false
+		};
+		Application.sendMessage( message );
+	},
+	shareDoor: function( door, parameters, callback, extra )
+	{
+    	var message =
+		{
+			type:   'friendNetworkDoor',
+			method: 'shareDoor',
+			door: door,
+			parameters: parameters,
+			extra: extra ? extra : false
+		};
+		if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	},
+	closeSharedDoor: function( hostName, shareName, callback, extra )
+	{
+    	var message =
+		{
+			type:   'friendNetworkDoor',
+			method: 'shareDoor',
+			hostName: hostName,
+			shareName: shareName,
+			extra: extra ? extra : false
+		};
+		if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	},
+	connectToDoor: function( hostName, appName, callback, extra )
+	{
+    	var message =
+		{
+			type:   'friendNetworkDoor',
+			method: 'connectToDoor',
+			hostName: hostName,
+			appName: appName,
+			extra: extra ? extra : false
+		};
+		if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	},
+	disconnectFromDoor: function( hostName, appName, callback, extra )
+	{
+    	var message =
+		{
+			type:   'friendNetworkDoor',
+			method: 'disconnectFromDoor',
+			hostName: hostName,
+			appName: appName,
+			extra: extra ? extra : false
+		};
+		if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	},
+	changeFriendNetworkSettings: function( settings, callback, extra )
+	{
+    	var message =
+		{
+			type:   'friendNetworkDoor',
+			method: 'changeFriendNetworkSettings',
+			settings: settings,
+			extra: extra ? extra : false
+		};
+		if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	}
+};
+FriendNetworkApps =
+{
+	registerApplication: function( appInformation, userInformation, password, callback, extra )
+	{
+    	var message =
+		{
+			type:   'friendNetworkApps',
+			method: 'registerApplication',
+			appInformation: appInformation,
+			userInformation: userInformation,
+			password: password,
+			extra: extra
+		};
+		if ( callback )
+			message.callback = addPermanentCallback( callback );
+		Application.sendMessage( message );
+	},
+	closeApplication: function( appIdentifier, callback, extra )
+	{
+    	var message =
+		{
+			type:   'friendNetworkApps',
+			method: 'closeApplication',
+			appIdentifier: appIdentifier,
+			extra: extra
+		};
+		if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	},
+	closeConnections: function( appIdentifier, callback, extra )
+	{
+    	var message =
+		{
+			type:   'friendNetworkApps',
+			method: 'closeConnections',
+			appIdentifier: appIdentifier,
+			extra: extra
+		};
+		if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	},
+	closeRunningConnections: function( appIdentifier, callback, extra )
+	{
+    	var message =
+		{
+			type:   'friendNetworkApps',
+			method: 'closeRunningConnections',
+			appIdentifier: appIdentifier,
+			extra: extra
+		};
+		if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	},
+	openHost: function( appIdentifier, callback, extra )
+	{
+    	var message =
+		{
+			type:   'friendNetworkApps',
+			method: 'openHost',
+			appIdentifier: appIdentifier
+		};
+		if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	},
+	closeHost: function( appIdentifier, callback, extra )
+	{
+    	var message =
+		{
+			type:   'friendNetworkApps',
+			method: 'closeHost',
+			appIdentifier: appIdentifier
+		};
+		if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	},
+	connectToUser: function( appIdentifier, nameHost, callback, extra )
+	{
+    	var message =
+		{
+			type:   'friendNetworkApps',
+			method: 'connectToUser',
+			appIdentifier: appIdentifier,
+			nameHost: nameHost,
+			extra: extra
+		};
+		if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	},
+	getHosts: function( appIdentifier, filters, registerToUpdates, callback, extra )
+	{
+    	var message =
+		{
+			type:   'friendNetworkApps',
+			method: 'getHosts',
+			appIdentifier: appIdentifier,
+			filters: filters,
+			registerToUpdates: registerToUpdates,
+			extra: extra
+		};
+		if ( callback )
+		{
+			if ( registerToUpdates )
+				message.callback = addPermanentCallback( callback );
+			else
+				message.callback = addCallback( callback );
+		}
+		Application.sendMessage( message );
+	},
+	closeUser: function( appIdentifier, playerIdentifier, callback, extra )
+	{
+    	var message =
+		{
+			type:   'friendNetworkApps',
+			method: 'closeUser',
+			appIdentifier: appIdentifier,
+			playerIdentifier: playerIdentifier,
+			extra: extra
+		};
+		if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	},
+	establishConnections: function( appIdentifier, callback, extra )
+	{
+    	var message =
+		{
+			type:   'friendNetworkApps',
+			method: 'establishConnections',
+			appIdentifier: appIdentifier,
+			extra: extra
+		};
+		if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	},
+	sendMessageToAll: function( appIdentifier, userIdentifier, message, callback, extra )
+	{
+    	var message =
+		{
+			type:   'friendNetworkApps',
+			method: 'sendMessageToAll',
+			appIdentifier: appIdentifier,
+			userIdentifier: userIdentifier,
+			message: message,
+			extra: extra
+		};
+		if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	},
+	startApplication: function( appIdentifier, callback, extra )
+	{
+    	var message =
+		{
+			type:   'friendNetworkApps',
+			method: 'startApplication',
+			appIdentifier: appIdentifier,
+			extra: extra
+		};
+		if ( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	}
 };
 
 // Abstract dormant ------------------------------------------------------------
 // TODO: All these methods should trigger callbacks
 DormantMaster = {
 	doors: [],
-	// Connect application to Friend Network
-	connectToFriendNetwork: function( msg )
-	{
-		Application.sendMessage( {
-			type: 'dormantmaster',
-			method: 'connectfriendnetwork',
-			callback: addCallback( function( msg )
-			{
-				console.log( 'Connected to Friend Network:', msg );
-			} )
-		} );
-	},
-	// Disconnect application from Friend Network
-	disconnectFromFriendNetwork: function( msg )
-	{
-		Application.sendMessage( {
-			type: 'dormantmaster',
-			method: 'disconnectfriendnetwork',
-			callback: addCallback( function( msg )
-			{
-				console.log( 'Disconnected from Friend Network:', msg );
-			} )
-		} );
-	},
 	// Adds a doormant appdoor
 	addAppDoor: function( dormantDoorObject )
 	{
@@ -2922,15 +4202,42 @@ DormantMaster = {
 		mesg.type = 'dormantmaster';
 		mesg.method = 'delappevents';
 		Application.sendMessage( mesg );
+	},
+	createDrive: function( options, callback, extra )
+	{
+    	var message =
+		{
+			type:   'dormantmaster',
+			method: 'createDrive',
+			options: options,
+			extra: typeof extra != 'undefined' ? extra : false
+		};
+		if ( callback )
+			message.callbackId = addCallback( callback );
+		Application.sendMessage( message );
+	},
+	destroyDrive: function( driveId, options, callback, extra )
+	{
+    	var message =
+		{
+			type:   'dormantmaster',
+			method: 'destroyDrive',
+			driveId: driveId,
+			options: options,
+			extra: typeof extra != 'undefined' ? extra : false
+		};
+		if ( callback )
+			message.callbackId = addCallback( callback );
+		Application.sendMessage( message );
 	}
 };
 
 // ApplicationStorage ----------------------------------------------------------
 
 ApplicationStorage = {
-	
+
 	//public
-	
+
 	set : function( id, data, callback )
 	{
 		var bundle = {
@@ -2943,7 +4250,7 @@ ApplicationStorage = {
 		};
 		ApplicationStorage.send( msg, callback );
 	},
-	
+
 	get : function( id, callback )
 	{
 		var msg = {
@@ -2954,7 +4261,7 @@ ApplicationStorage = {
 		};
 		ApplicationStorage.send( msg, callback );
 	},
-	
+
 	remove : function( id, callback )
 	{
 		var msg = {
@@ -2965,9 +4272,9 @@ ApplicationStorage = {
 		};
 		ApplicationStorage.send( msg, callback );
 	},
-	
+
 	// private
-	
+
 	send : function( msg, callback )
 	{
 		console.log( 'api.ApplicationStorage.send', msg );
@@ -2975,7 +4282,7 @@ ApplicationStorage = {
 			var callbackId = addCallback( callback );
 			msg.callbackId = callbackId;
 		}
-		
+
 		msg.type = 'applicationstorage';
 		Application.sendMessage( msg );
 	},
@@ -2997,68 +4304,68 @@ Authenticate = {
 		};
 		Authenticate.send( msg, callback );
 	},
-	
+
 	uniqueId : function( item, callback )
 	{
 		var msg = {
 			method : 'uniqueid',
 			data : {
-				destinationViewId : item.destinationViewId, 
+				destinationViewId : item.destinationViewId,
 				path : item.path,
-				username : item.username 
+				username : item.username
 			}
 		};
 		Authenticate.send( msg, callback );
 	},
-	
+
 	encryptKey : function( item, callback )
 	{
 		var msg = {
 			method : 'encryptkey',
 			data : {
-				destinationViewId : item.destinationViewId, 
-				str : item.data 
+				destinationViewId : item.destinationViewId,
+				str : item.data
 			}
 		};
 		Authenticate.send( msg, callback );
 	},
-	
+
 	decryptKey : function( item, callback )
 	{
 		var msg = {
 			method : 'decryptkey',
 			data : {
-				destinationViewId : item.destinationViewId, 
-				key : item.data 
+				destinationViewId : item.destinationViewId,
+				key : item.data
 			}
 		};
 		Authenticate.send( msg, callback );
 	},
-	
+
 	encrypt : function( item, callback )
 	{
 		var msg = {
 			method : 'encrypt',
 			data : {
-				destinationViewId : item.destinationViewId, 
-				str : item.data 
+				destinationViewId : item.destinationViewId,
+				str : item.data
 			}
 		};
 		Authenticate.send( msg, callback );
 	},
-	
+
 	decrypt : function( item, callback )
 	{
 		var msg = {
 			method : 'decrypt',
 			data : {
-				destinationViewId : item.destinationViewId, 
-				str : item.data 
+				destinationViewId : item.destinationViewId,
+				str : item.data
 			}
 		};
 		Authenticate.send( msg, callback );
 	},
-	
+
 	// private
 
 	send : function( msg, callback )
@@ -3067,11 +4374,11 @@ Authenticate = {
 			var callbackId = addCallback( callback );
 			msg.callbackId = callbackId;
 		}
-		
+
 		msg.type = 'authenticate';
-		
+
 		console.log( 'api.Authenticate.send', msg );
-		
+
 		Application.sendMessage( msg );
 	}
 };
@@ -3217,13 +4524,13 @@ Authenticate = {
 			return new window.FConn();
 
 		var self = this;
-		if ( friend.conn  ) {
-			if (friend.conn instanceof ns.FConn) {
-				return friend.conn;
+		if ( Friend.conn  ) {
+			if (Friend.conn instanceof ns.FConn) {
+				return Friend.conn;
 			}
 		}
 
-		friend.conn = self;
+		Friend.conn = self;
 		self.ready = false;
 		self.listeners = {};
 		self.sendQueue = [];
@@ -3293,7 +4600,7 @@ Authenticate = {
 		}
 		self.s( msg );
 		self.listeners = {};
-		delete friend.conn;
+		delete Friend.conn;
 	}
 
 	// Private
@@ -3318,8 +4625,8 @@ Authenticate = {
 
 	ns.FConn.prototype.receiveMessage = function( msg )
 	{
-		
-		
+
+
 		var self = this;
 		var event = msg.data;
 		var handler = self.listeners[ event.type ];
@@ -3366,7 +4673,7 @@ Authenticate = {
 		var self = this;
 		self.init();
 	}
-	
+
 	ns.Calendar.prototype.addEvent = function( data, messageToUser, callback )
 	{
 		var self = this;
@@ -3377,11 +4684,11 @@ Authenticate = {
 			TimeFrom    : data.TimeFrom,
 			TimeTo      : data.TimeTo,
 		};
-		
+
 		var cid = undefined;
 		if ( callback )
 			cid = addCallback( callback );
-		
+
 		var wrap = {
 			type : 'add',
 			data : {
@@ -3392,14 +4699,14 @@ Authenticate = {
 		};
 		self.send( wrap );
 	}
-	
+
 	// priv
-	
+
 	ns.Calendar.prototype.init = function()
 	{
 		var self = this;
 	}
-	
+
 	ns.Calendar.prototype.send = function( msg )
 	{
 		var self = this;
@@ -3409,7 +4716,7 @@ Authenticate = {
 		}
 		Application.sendMessage( wrap );
 	}
-})( friend );
+})( Friend );
 
 // Locale object ---------------------------------------------------------------
 
@@ -3475,6 +4782,129 @@ Doors = {
 		} );
 	}
 }
+
+// DOS abstraction : easy commands to manage files -----------------------------
+DOS =
+{
+	getDirectory: function( path, flags, callback, extra )
+	{
+		var message =
+		{
+			type: 'dos',
+			method: 'getDirectory',
+			path: path,
+			flags: flags,
+			extra: extra ? extra : false				// protection
+		};
+		if( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	},
+	getDisks: function( flags, callback, extra )
+	{
+		var message = 
+		{
+			type: 'dos',
+			method: 'getDisks',
+			flags: flags,
+			extra: extra ? extra : false
+		};
+		if( callback )
+			message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	},
+	executeJSX: function( path, args, callback, extra )
+	{
+		var message =
+		{
+			type: 'dos',
+			method: 'executeJSX',
+			path: path,
+			args: args,
+			extra: extra ? extra : false				// protection
+		};
+		message.callback = addCallback( callback );
+
+		// If we are injecting in an iframe - use app.html to load up an empty workspace instance
+		if( extra && extra.iframe )
+		{
+			extra.iframe.src = '/webclient/app.html?authid=' + Application.authId;
+			extra.iframe.onload = function()
+			{
+				var i = extra.iframe;
+				delete message.extra.iframe;
+				message.viewId = null;
+				message.applicationId = null;
+				i.contentWindow.postMessage( JSON.stringify( message ), '*' );
+			}
+			return;
+		}
+		Application.sendMessage( message );
+	},
+	loadHTML: function( path, callback, extra )
+	{
+		var message =
+		{
+			type: 'dos',
+			method: 'loadHTML',
+			path: path,
+			extra: extra ? extra : false				// protection
+		};
+		message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	},
+	fileExist: function( path, callback, extra )
+	{
+		var message =
+		{
+			type: 'dos',
+			method: 'fileAccess',
+			path: path,
+			extra: extra ? extra : false				// protection
+		};
+		message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	},
+	getAccess: function( path, callback, extra )
+	{
+		fileExist( path, callback, extra );
+	},
+	getDriveInfo: function( path, callback, extra )
+	{
+		var message =
+		{
+			type: 'dos',
+			method: 'getDriveInfo',
+			path: path,
+			extra: extra ? extra : false
+		};
+		message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	},
+	getFileInfo: function( path, callback, extra )
+	{
+		var message =
+		{
+			type: 'dos',
+			method: 'getFileInfo',
+			path: path,
+			extra: extra ? extra : false
+		};
+		message.callback = addCallback( callback );
+		Application.sendMessage( message );
+	},
+	openWindowByFilename: function( fileInfo, ext )
+	{
+		var message =
+		{
+			type: 'dos', 
+			method: 'openWindowByFilename', 
+			args: { fileInfo: fileInfo, ext: ext } 
+		};
+		Application.sendMessage( message );
+	}
+};
+Friend.DOS = DOS;
 
 // Door abstraction ------------------------------------------------------------
 
@@ -3547,6 +4977,8 @@ function Filedialog( object, triggerFunction, path, type, filename, title )
 {
 	var mainview = false;
 	var targetview = false;
+	var multiSelect = true; // Select multiple files
+	
 	// We have a view
 	if( object && object.getViewId )
 	{
@@ -3561,6 +4993,9 @@ function Filedialog( object, triggerFunction, path, type, filename, title )
 			{
 				case 'triggerFunction':
 					triggerFunction = object[a];
+					break;
+				case 'multiSelect':
+					multiSelect = object[a];
 					break;
 				case 'path':
 					path = object[a];
@@ -3603,16 +5038,16 @@ function Filedialog( object, triggerFunction, path, type, filename, title )
 	Application.sendMessage( {
 		type:        'system',
 		command:     'filedialog',
-		method:      'open',
+		method:       type,
 		callbackId:   cid,
 		dialogType:   type,
 		path:         path,
 		filename:     filename,
+		multiSelect:  multiSelect,
 		title:        title,
-		viewId:     mainview,
+		viewId:       mainview,
 		targetViewId: targetview
 	} );
-
 }
 
 // Get a path from fileinfo and return it
@@ -3640,7 +5075,7 @@ function Library( libraryName )
 	this.execute = function( func, args )
 	{
 		var cid = addCallback( this );
-		
+
 		// Execute a library with full path
 		if( libraryName.indexOf( ':' ) >= 0 )
 		{
@@ -3720,6 +5155,19 @@ function setupMessageFunction( dataPacket, origin )
 
 	function _sendMessage( msg, callback )
 	{
+		// Convert some data formats in a JSON complient structure
+		for( var a in msg )
+		{
+			if( msg[ a ] instanceof ArrayBuffer || toString.call( msg[ a ] ) === '[object ArrayBuffer]' )
+			{
+				//var v = new Uint8Array( msg[ a ] );
+				//msg[ a ] = Array.prototype.join.call( v, ',' );
+				//msg[ a + '_format' ] = 'binaryString';
+				msg[ a ] = ConvertArrayBufferToString( msg[ a ], 'base64' );
+				msg[ a + '_format' ] = 'base64';
+			}
+		}
+
 		// Set info that determines where the message belongs unless already set
 		if( !msg.applicationId )
 		{
@@ -3764,7 +5212,7 @@ function setupMessageFunction( dataPacket, origin )
 			Application.callbacks[uid] = callback;
 			msg.callback = uid;
 		}
-		
+
 		// Post the message
 		parent.postMessage( JSON.stringify( msg ), origin ? origin : dataPacket.origin );
 	}
@@ -3832,6 +5280,11 @@ function initApplicationFrame( packet, eventOrigin, initcallback )
 		return;
 	}
 
+	// Disable debugging now
+	if( packet.workspaceMode == 'normal' || packet.workspaceMode == 'gamified' )
+		console.log = function(){};
+	Application.workspaceMode = packet.workspaceMode ? packet.workspaceMode : 'developer';
+
 	// Don't do this twice
 	document.body.style.opacity = '0';
 	window.frameInitialized = true;
@@ -3849,11 +5302,11 @@ function initApplicationFrame( packet, eventOrigin, initcallback )
 		document.getElementsByTagName( 'head' )[0].appendChild( b );
 		Application.baseDir = b.href;
 	}
-	
+
 	if( !packet.filePath ) packet.filePath = '';
 
 	// Clippy
-	if( packet.clipboard ) friend.clipboard = packet.clipboard;
+	if( packet.clipboard ) Friend.clipboard = packet.clipboard;
 
 	// Just so we know which window we belong to
 	if( packet.viewId )
@@ -3877,9 +5330,9 @@ function initApplicationFrame( packet, eventOrigin, initcallback )
 			language = packet.locale;
 		else
 			packet.loadedLocaleFallback = true;
-			
+
 		Application.language = language;
-		
+
 		packet.localeLoaded = true;
 
 		var url = path + 'Locale/' + language + '.lang';
@@ -3892,7 +5345,7 @@ function initApplicationFrame( packet, eventOrigin, initcallback )
 				loadLocale(path, callback);
 				return;
 			}
-	
+
 			var ar = this.responseText().split( "\n" );
 			var out = [];
 			for( var a = 0; a < ar.length; a++ )
@@ -3920,25 +5373,160 @@ function initApplicationFrame( packet, eventOrigin, initcallback )
 		}
 		j.send();
 	}
+	
+	// If we have stored a theme config for the current theme, use its setup
+	// TODO: Move to a proper theme parser
+	function ApplyThemeConfig( themeData )
+	{
+		if( !themeData ) return;
+		
+		if( themeData && typeof( themeData ) == 'string' )
+		{
+			try
+			{
+				themeData = JSON.parse( themeData );
+			}
+			catch( e )
+			{
+				console.log( 'Bad theme data: ', themeData );
+				return;
+			}
+		}
+		
+		if( Friend.themeStyleElement )
+			Friend.themeStyleElement.innerHTML = '';
+		else
+		{
+			Friend.themeStyleElement = document.createElement( 'style' );
+			document.getElementsByTagName( 'head' )[0].appendChild( Friend.themeStyleElement );
+		}
+		
+		var shades = [ 'dark', 'charcoal' ];
+		for( var c in shades )
+		{
+			var uf = shades[c].charAt( 0 ).toUpperCase() + shades[c].substr( 1, shades[c].length - 1 );
+			if( themeData[ 'colorSchemeText' ] == shades[c] )
+				document.body.classList.add( uf );
+			else document.body.classList.remove( uf );
+		}
+		
+		if( themeData[ 'buttonSchemeText' ] == 'windows' )
+			document.body.classList.add( 'MSW' );
+		else document.body.classList.remove( 'MSW' );
+		
+		var str = '';
+		for( var a in themeData )
+		{
+			if( !themeData[a] ) continue;
+			var v = themeData[a];
+			switch( a )
+			{
+				case 'colorWindowActive':
+					str += `
+html > body .View.Active > .Title,
+html > body .View.Active > .LeftBar,
+html > body .View.Active > .RightBar,
+html > body .View.Active > .BottomBar
+{
+	background-color: ${v};
+}
+`;
+					break;
+				case 'colorButtonBackground':
+					str += `
+html > body .Button, html > body button
+{
+	background-color: ${v};
+}
+`;
+					break;
+				case 'colorWindowBackground':
+					str += `
+html > body, html body .View > .Content
+{
+	background-color: ${v};
+}
+`;
+					break;
+				case 'colorWindowText':
+					str += `
+html > body, html body .View > .Content, html > body .Tab
+{
+	color: ${v};
+}
+`;
+					break;
+				case 'colorFileToolbarBackground':
+					str += `
+html > body .View > .DirectoryToolbar
+{
+	background-color: ${v};
+}
+`;
+					break;
+				case 'colorFileToolbarText':
+					str += `
+html > body .View > .DirectoryToolbar button:before, 
+html > body .View > .DirectoryToolbar button:after
+{
+	color: ${v};
+}
+`;
+					break;
+				case 'colorFileIconText':
+					str += `
+html > body .File a
+{
+	color: ${v};
+}
+`;
+					break;
+				case 'colorScrollBackground':
+					str += `
+body .View.Active ::-webkit-scrollbar,
+body .View.Active.IconWindow ::-webkit-scrollbar-track
+{
+	background-color: ${v};
+}
+`;
+					break;
+				case 'colorScrollButton':
+					str += `
+html body .View.Active.Scrolling > .Resize,
+body .View.Active ::-webkit-scrollbar-thumb,
+body .View.Active.IconWindow ::-webkit-scrollbar-thumb
+{
+	background-color: ${v} !important;
+}
+`;
+					break;
+			}
+		}
+		Friend.themeStyleElement.innerHTML = str;
+	};
+	Application.applyThemeConfig = ApplyThemeConfig;
+	
 
 	// On page load
 	function onLoaded()
 	{
+		checkMobileBrowser();
+		
 		// We need to wait for all functions to be available
 		if( typeof( ge ) == 'undefined' || typeof( Trim ) == 'undefined' || typeof( cAjax ) == 'undefined' )
 		{
 			return setTimeout( onLoaded, 50 );
 		}
-		
-		var tpath = '/webclient/theme/theme.css';
+
+		var tpath = '/themes/friendup12/theme.css';
 		if( packet && packet.theme )
 		{
 			tpath = '/themes/' + packet.theme + '/theme.css';
 		}
-		
+
 		var loadingResources = 0;
 		var totalLoadingResources = 0;
-		
+
 		// Let's save some time
 		if( !document.themeCss )
 		{
@@ -3954,13 +5542,19 @@ function initApplicationFrame( packet, eventOrigin, initcallback )
 			totalLoadingResources++;
 		}
 		
+		// Load advanced theme config
+		if( packet.themeData )
+		{
+			Application.applyThemeConfig( packet.themeData );
+		}
+
 		var activat = [];
-		
+
 		// What to do when we are done loading..
 		function doneLoading( e )
 		{
 			loadingResources++;
-			
+
 			// Async is a bitch!
 			function waitToStart()
 			{
@@ -3973,20 +5567,23 @@ function initApplicationFrame( packet, eventOrigin, initcallback )
 						Application.run( packet );
 						if( packet.state ) Application.sessionStateSet( packet.state );
 						window.loaded = true;
-						friend.application.doneLoading();
+						Friend.application.doneLoading();
 					}
 					for( var a = 0; a < activat.length; a++ )
 						ExecuteScript( activat[a] );
 					activat = [];
+					
 					// Delayed in case we didn't succeed!
-					setTimeout( function()
+					if( window.applicationLoadingTimeout )
+						clearTimeout( window.applicationLoadingTimeout );
+					window.applicationLoadingTimeout = setTimeout( function()
 					{
 						if( Application.run && !window.applicationStarted )
 						{
 							window.applicationStarted = true;
 							Application.run( packet );
 							if( packet.state ) Application.sessionStateSet( packet.state );
-							friend.application.doneLoading();
+							Friend.application.doneLoading();
 						}
 						// Could be wr don't have any application, run scripts
 						for( var a = 0; a < activat.length; a++ )
@@ -4003,26 +5600,26 @@ function initApplicationFrame( packet, eventOrigin, initcallback )
 						else
 						{
 							if( !window.applicationStarted )
-								friend.application.doneLoading();
+								Friend.application.doneLoading();
 							// Callback to parent and say we're done!
 							if( initcallback )
 								initcallback();
 						}
-
+						window.applicationLoadingTimeout = null;
 					}, 50 );
 				}
 			}
-			
+
 			// Loading complete
 			if( loadingResources == totalLoadingResources )
 			{
 				waitToStart();
 			}
 		}
-		
+
 		// For templates
 		if( packet.appPath ) Application.appPath = packet.appPath;
-		
+
 		// TODO: Take language var from config
 		if( packet && packet.filePath )
 		{
@@ -4043,7 +5640,7 @@ function initApplicationFrame( packet, eventOrigin, initcallback )
 			totalLoadingResources++;
 			doneLoading();
 		}
-		
+
 		// Delayed loading of scripts
 		window.delayedScriptLoading = function()
 		{
@@ -4068,7 +5665,7 @@ function initApplicationFrame( packet, eventOrigin, initcallback )
 				}
 				removes.push( scripts[a] );
 			}
-			
+
 			// Clear friendscripts
 			for( var a = 0; a < removes.length; a++ )
 			{
@@ -4076,7 +5673,7 @@ function initApplicationFrame( packet, eventOrigin, initcallback )
 			}
 			doneLoading();
 		}
-		
+
 		// Tell we're registered
 		Application.sendMessage( {
 			type:            'notify',
@@ -4084,32 +5681,40 @@ function initApplicationFrame( packet, eventOrigin, initcallback )
 			registerCallback: packet.registerCallback,
 			viewId:         packet.viewId
 		} );
-		
+
+		// TODO: Figure out what this is..
 		window.sendEventToParent = function( e )
 		{
-			if(window.parent && window.parent.window )
+			if( window.parent && window.parent.window )
 			{
-				ne = new e.constructor(e.type, e);
-				window.parent.window.dispatchEvent(ne);
+				ne = new e.constructor( e.type, e);
+				try
+				{
+					window.parent.window.dispatchEvent( ne );
+				}
+				catch( e )
+				{
+					console.log( 'Could not dispatch event.' );
+				}
 			}
 		}
-		
+
 		window.addEventListener( 'touchstart', sendEventToParent);
 		window.addEventListener( 'touchmove', sendEventToParent );
 		window.addEventListener( 'touchend', sendEventToParent );
-		
+
 		window.loaded = true;
 	}
-	
+
 	// Make sure we don't show gui until the scrollbars have changed
 	// The scrollbars takes some milliseconds to load and init..
 	// TODO: Figure out why we can't load scrollbars immediately
 	var head = document.getElementsByTagName( 'head' )[0];
-	
+
 	if( packet && packet.theme )
 		AddCSSByUrl( '/themes/' + packet.theme + '/scrollbars.css' );
-	else AddCSSByUrl( '/webclient/theme/scrollbars.css' );
-	
+	else AddCSSByUrl( '/themes/friendup12/scrollbars.css' );
+
 	var js = [
 		[
 			'js/utils/engine.js',
@@ -4119,9 +5724,11 @@ function initApplicationFrame( packet, eventOrigin, initcallback )
 			'js/gui/treeview.js',
 			'js/io/appConnection.js',
 			'js/io/coreSocket.js',
-		],
+			'js/oo.js',
+			'js/api/friendappapi.js'
+		]
 	];
-	
+
 	var elez = [];
 	for ( var a = 0; a < js.length; a++ )
 	{
@@ -4169,7 +5776,7 @@ function initApplicationFrame( packet, eventOrigin, initcallback )
 		}
 		head.appendChild( s );
 	}
-	
+
 	// Setup application id from message
 	Application.applicationId = packet.applicationId;
 	Application.userId        = packet.userId;
@@ -4177,7 +5784,7 @@ function initApplicationFrame( packet, eventOrigin, initcallback )
 	Application.authId        = packet.authId;
 	Application.sessionId     = packet.sessionId != undefined ? packet.sessionId : false;
 	Application.theme         = packet.theme;
-	
+
 	// Autogenerate this
 	Application.sendMessage   = setupMessageFunction( packet, eventOrigin ? eventOrigin : packet.origin );
 }
@@ -4197,9 +5804,152 @@ function clickToActivate()
 			method:   'activate'
 		} );
 		// Add class
-		document.body.className = document.body.className.split( ' activated' ).join ( '' ) + ' activated';
+		document.body.classList.add( 'activated' );
 	}
 }
+
+// Just add a slider for an input field
+Friend.currentSliderElement = false;
+function CreateSlider( inputField, flags )
+{
+	var self = this;
+	
+	if( typeof( inputField ) == 'string' )
+		inputField = ge( inputField );
+	if( !inputField ) return;
+	
+	var d = document.createElement( 'div' );
+	d.className = 'SliderElement';
+	if( flags && flags.vertical )
+		d.className += ' SliderVertical';
+	var g = document.createElement( 'div' );
+	g.className = 'SliderGroove';
+	var b = document.createElement( 'div' );
+	b.className = 'SliderButton';
+	g.appendChild( b );
+	d.appendChild( g );
+	
+	if( !flags ) flags = {};
+	if( !flags.min ) flags.min = 0;
+	if( !flags.max ) flags.max = 100;
+	
+	if( inputField.getAttribute( 'min' ) )
+		flags.min = parseInt( inputField.getAttribute( 'min' ) );
+	
+	if( inputField.getAttribute( 'max' ) )
+		flags.max = parseInt( inputField.getAttribute( 'max' ) );
+	
+	// Add the slider
+	inputField.parentNode.appendChild( d );
+	
+	var def = inputField.value ? parseInt( inputField.value ) : 0;
+	
+	if( def > flags.max ) def = flags.max;
+	if( def < flags.min ) def = flags.min;
+	
+	// To set value
+	function setSliderValue( val )
+	{
+		if( val < flags.min ) val = flags.min;
+		if( val > flags.max ) val = flags.max;
+		
+		inputField.value = val;
+		 
+		if( !flags || !flags.vertical )
+		{
+			b.style.left = Math.floor( ( ( val - flags.min ) / flags.max ) * ( GetElementWidth( g ) - b.offsetWidth ) ) + 'px';
+		}
+		else
+		{
+			b.style.top = Math.floor( ( ( val - flags.min ) / flags.max ) * ( GetElementHeight( g ) - b.offsetHeight ) ) + 'px';
+		}
+		if( inputField.getAttribute( 'onchange' ) )
+		{
+			var str = inputField.getAttribute( 'onchange' );
+			inputField.eval = function( s )
+			{
+				eval( s );
+			}
+			inputField.eval( str );
+		}
+		return val;
+	}
+	setSliderValue( def );
+	
+	// Set the slider position!
+	function setSliderPosition( val )
+	{
+		if( !flags || !flags.vertical )
+		{
+			var x = val;
+			if( x < 0 ) x = 0;
+			else if( x + b.offsetWidth >= GetElementWidth( g ) )
+				x = GetElementWidth( g ) - b.offsetWidth;
+			b.style.left = x + 'px';
+			inputField.value = Math.floor( ( x / ( GetElementWidth( g ) - b.offsetWidth ) * ( flags.max - flags.min ) ) - flags.min ) + flags.min;
+		}
+		else
+		{
+			var y = val;
+			if( y < 0 ) y = 0;
+			if( y + b.offsetHeight > GetElementHeight( g ) )
+				y = GetElementHeight( g ) - b.offsetHeight;
+			b.style.top = y + 'px';
+			inputField.value = Math.floor( ( y / ( GetElementHeight( g ) - b.offsetHeight ) * ( flags.max - flags.min ) ) - flags.min ) + flags.min;
+		}
+		if( inputField.getAttribute( 'onchange' ) )
+		{
+			var str = inputField.getAttribute( 'onchange' );
+			inputField.eval = function( s )
+			{
+				eval( s );
+			}
+			inputField.eval( str );
+		}
+		// Update display object
+		if( flags.displayElementId )
+		{
+			if( ge( flags.displayElementId ) )
+			{
+				ge( flags.displayElementId ).value = inputField.value;
+			}
+		}
+	}
+	
+	// Start setting slider position
+	b.onmousedown = function( e )
+	{
+		this.offsetX = e.clientX - b.offsetLeft;
+		this.offsetY = e.clientY - b.offsetTop;
+		Friend.mouseMoveFunc = function( f )
+		{
+			if( !flags || !flags.vertical )
+			{
+				setSliderPosition( f.clientX - b.offsetX );
+			}
+			else
+			{
+				setSliderPosition( f.clientY - b.offsetY );
+			}
+		}
+	}
+	if( flags.displayElementId )
+	{
+		if( ge( flags.displayElementId ) )
+		{
+			ge( flags.displayElementId ).value = def;
+			ge( flags.displayElementId ).onchange = function( e )
+			{
+				var val = setSliderValue( this.value );
+			}
+			ge( flags.displayElementId ).onkeyup = function( e )
+			{
+				var val = setSliderValue( this.value );
+			}
+		}
+	}
+}
+// End slider
 
 // Initializes tab system on the subsequent divs one level under parent div
 function InitTabs ( pdiv )
@@ -4282,7 +6032,6 @@ function InitTabs ( pdiv )
 }
 
 // Speech synthesis ------------------------------------------------------------
-
 // Say command
 if( typeof( Say ) == 'undefined' )
 {
@@ -4291,31 +6040,64 @@ if( typeof( Say ) == 'undefined' )
 		var v = speechSynthesis.getVoices();
 		var u = new SpeechSynthesisUtterance( string );
 		u.lang = language ? language : globalConfig.language;
-		for( var a = 0; a < v.length; a++ )
+		try
 		{
-			if( v[a].name == 'Google US English' && u.lang == 'en-US' )
+			for( var a = 0; a < v.length; a++ )
 			{
-				u.lang = v[a].lang;
-				u.voice = v[a].voiceURI;
-				break;
-			}
-			else if( v[a].name == u.lang )
-			{
-				u.lang = v[a].lang;
-				u.voice = v[a].voiceURI;
-				break;
+				if( v[a].name == 'Google US English' && u.lang == 'en-US' )
+				{
+					u.lang = v[a].lang;
+					u.voice = v[a].voiceURI;
+					break;
+				}
+				else if( v[a].name == u.lang )
+				{
+					u.lang = v[a].lang;
+					u.voice = v[a].voiceURI;
+					break;
+				}
 			}
 		}
+		catch(e) { console.log( 'Could not set voice' ); }
+
 		speechSynthesis.speak( u );
 	}
 }
 
 // Handle keys in iframes too!
-if( !friend.noevents && ( typeof( _kresponse ) == 'undefined' || !window._keysAdded ) )
+if( !Friend.noevents && ( typeof( _kresponse ) == 'undefined' || !window._keysAdded ) )
 {
+	function _kmousedown( e )
+	{
+		Application.sendMessage( { type: 'system', command: 'registermousedown', x: e.clientX, y: e.clientY } );
+	}
+	function _kmouseup( e )
+	{
+		if( Friend.mouseMoveFunc )
+			Friend.mouseMoveFunc = null;
+		Application.sendMessage( { type: 'system', command: 'registermouseup', x: e.clientX, y: e.clientY } );
+		
+		// Check if an input element has focus
+		Friend.GUI.checkInputFocus();
+	}
+	
 	// Handle keys
 	function _kresponse( e )
-	{
+	{	
+		// Check if an input element has focus
+		Friend.GUI.checkInputFocus();
+		
+		// Let's report to Workspace what we're doing - to catch global keyboard shortcuts
+		var params = [ 'shiftKey', 'ctrlKey', 'metaKey', 'altKey', 'which', 'keyCode' ];
+		if( e.shiftKey || e.ctrlKey || e.metaKey || e.altKey )
+		{
+			var clone = {}; for( var a in params )
+			{
+				if( e[params[a]] ) clone[params[a]] = e[params[a]];
+			}
+			Application.sendMessage( { type: 'system', command: 'keydown', data: clone } );
+		}
+		
 		var win = false;
 		for( var a in Application.windows )
 		{
@@ -4348,11 +6130,18 @@ if( !friend.noevents && ( typeof( _kresponse ) == 'undefined' || !window._keysAd
 				}
 			}
 			if( win.handleKeys( k, e ) )
-				return cancelBubble ( e );
+			{
+				return cancelBubble( e );
+			}
 		}
 		// Some fallbacks
 		else
 		{
+			if( Application.handleKeys )
+			{
+				if( Application.handleKeys( k, e ) )
+					return cancelBubble( e );
+			}
 			if( e.ctrlKey )
 			{
 				switch ( k )
@@ -4362,25 +6151,14 @@ if( !friend.noevents && ( typeof( _kresponse ) == 'undefined' || !window._keysAd
 						abort = true;
 						Application.quit();
 						break;
-					case 77:
-						Application.sendMessage( {
-							type: 'system',
-							command: 'switchscreens'
-						} );
-						break;
 				}
 			}
 		}
 
-		// Application wide
-		if( Application.handleKeys && Application.activated )
-		{
-			if( Application.handleKeys( k, e ) )
-				return cancelBubble( e );
-		}
-
 		if( abort )
+		{
 			return cancelBubble( e );
+		}
 	}
 	function _kresponseup( e )
 	{
@@ -4396,6 +6174,8 @@ if( !friend.noevents && ( typeof( _kresponse ) == 'undefined' || !window._keysAd
 
 		if ( win && ( e.ctrlKey || e.shiftKey ) && typeof ( win.handkeKeys ) )
 		{
+			if( e.ctrlKey ) win.ctrlKey = false;
+			if( e.shiftKey ) win.shiftKey = false;
 			if ( e.preventDefault ) e.preventDefault ();
 			return cancelBubble ( e );
 		}
@@ -4404,11 +6184,15 @@ if( !friend.noevents && ( typeof( _kresponse ) == 'undefined' || !window._keysAd
 	{
 		window.addEventListener( 'keydown', _kresponse,   false );
 		window.addEventListener( 'keyup',   _kresponseup, false );
+		window.addEventListener( 'mousedown', _kmousedown, false );
+		window.addEventListener( 'mouseup', _kmouseup, false );
 	}
 	else
 	{
 		window.attachEvent( 'onkeydown', _kresponse,   false );
 		window.attachEvent( 'onkeyup',  _kresponseup, false );
+		window.attachEvent( 'onmousedown', _kmousedown, false );
+		window.attachEvent( 'onmouseup', _kmouseup, false );
 	}
 
 	window._keysAdded = true;
@@ -4434,7 +6218,7 @@ if( typeof( windowMouseX ) == 'undefined' )
 	windowMouseX = -1;
 	windowMouseY = -1;
 
-	if( !friend.noevents )
+	if( !Friend.noevents )
 	{
 		// The actual mouse event
 		function mouseEvt( e )
@@ -4448,6 +6232,9 @@ if( typeof( windowMouseX ) == 'undefined' )
 
 			windowMouseX = mx;
 			windowMouseY = my;
+			
+			if( Friend.mouseMoveFunc )
+				Friend.mouseMoveFunc( e );
 		}
 		if( window.addEventListener )
 			window.addEventListener( 'mousemove', mouseEvt, false );
@@ -4457,16 +6244,20 @@ if( typeof( windowMouseX ) == 'undefined' )
 
 // Confirm view ----------------------------------------------------------------
 
-function Confirm( title, string, callb )
+function Confirm( title, string, callb, confirmOKText, confirmCancelText )
 {
 	var cb = addCallback( callb );
-	Application.sendMessage( {
+	var msg = {
 		type: 'system',
 		command: 'confirm',
 		callback: cb,
 		title: title,
 		string: string
-	} );
+	};
+	if( confirmOKText ) msg.confirmok = confirmOKText;
+	if( confirmCancelText ) msg.confirmcancel = confirmCancelText;
+	
+	Application.sendMessage( msg  );
 }
 
 // Alert view ------------------------------------------------------------------
@@ -4482,6 +6273,19 @@ function Alert( title, string, callback )
 		string: string
 	} );
 }
+
+// Contextmenu -----------------------------------------------------------------
+
+function ShowContextMenu( header, menu )
+{
+	Application.sendMessage( {
+		type: 'system',
+		header: header,
+		command: 'showcontextmenu',
+		menu: menu
+	} );
+}
+
 
 // Share element events --------------------------------------------------------
 
@@ -4591,8 +6395,12 @@ function ShareElementEvents( ele, recursive )
 }
 
 /* Replace Progdir: etc with real paths ------------------------------------- */
-friend.convertFriendPaths = function( string )
+Friend.convertFriendPaths = function( string )
 {
+	if( typeof( string ) != 'string' )
+	{
+		return string;
+	}
 	var apath = Application.appPath ? Application.appPath : Application.filePath;
 	if( !apath )
 	{
@@ -5255,7 +7063,7 @@ if (typeof define == 'function' && define.amd) define([], function() { return Sh
 
 AssidRequest = function( flags )
 {
-	if( !friend.sasidRequests ) friend.sasidRequests = [];
+	if( !Friend.sasidRequests ) Friend.sasidRequests = [];
 	if( !flags ) flags = {};
 	this.flags = flags;
 
@@ -5263,14 +7071,14 @@ AssidRequest = function( flags )
 	this.applicationId = null;
 	this.isHost = false;
 
-	friend.sasidRequests.push( this );
+	Friend.sasidRequests.push( this );
 }
 // Share the application
 AssidRequest.prototype.share = function( handler, callback )
 {
 	var sas = this; // !
-	//if ( !friend.conn ) friend.conn = new FAPConn();
-	if ( !friend.conn ) friend.conn = new FConn();
+	//if ( !Friend.conn ) Friend.conn = new FAPConn();
+	if ( !Friend.conn ) Friend.conn = new FConn();
 
 	//console.log( 'doShare' );
 	if( sas.applicationState == null )
@@ -5282,7 +7090,7 @@ AssidRequest.prototype.share = function( handler, callback )
 				authid : Application.authId,
 			},
 		};
-		friend.conn.request( reg, onRegistered );
+		Friend.conn.request( reg, onRegistered );
 		function onRegistered( res )
 		{
 			//console.log( 'AssidRequest.share - onRegistered', res );
@@ -5296,7 +7104,7 @@ AssidRequest.prototype.share = function( handler, callback )
 			{
 				// Setup the handler
 				if( handler )
-					friend.conn.on( res.SASID, handler );
+					Friend.conn.on( res.SASID, handler );
 				sas.applicationId = res.SASID;
 				sas.applicationState = 'active';
 				sas.shareEvents( { sasid: res.SASID } );
@@ -5330,7 +7138,7 @@ AssidRequest.prototype.shareEvents = function( args, handler, callback )
 
 	// Add other events
 	var c = document.createElement( 'div' );
-	friend.cover = c;
+	Friend.cover = c;
 	c.style.zIndex = 999999999;
 	c.style.position = 'absolute';
 	c.style.width = '100%';
@@ -5365,10 +7173,10 @@ AssidRequest.prototype.shareEvents = function( args, handler, callback )
 	if( !this.isHost )
 	{
 		// Setup a communication port
-		//if ( !friend.conn ) friend.conn = new FAPConn(); // direct connection, not through postmessage
-		if ( !friend.conn ) friend.conn = new FConn();
+		//if ( !Friend.conn ) Friend.conn = new FAPConn(); // direct connection, not through postmessage
+		if ( !Friend.conn ) Friend.conn = new FConn();
 
-		friend.conn.on( args.sasid, handler );
+		Friend.conn.on( args.sasid, handler );
 		var accept = {
 			path : 'system.library/app/accept/',
 			data : {
@@ -5376,7 +7184,7 @@ AssidRequest.prototype.shareEvents = function( args, handler, callback )
 				sasid : args.sasid
 			},
 		};
-		friend.conn.request( accept, ack );
+		Friend.conn.request( accept, ack );
 		function ack( e )
 		{
 			Application.receiveMessage( { command: 'sasidaccept', data: e } );
@@ -5398,22 +7206,22 @@ AssidRequest.prototype.unshare = function( callback )
 	}
 	else
 	{
-		friend.conn.off( this.applicationId );
+		Friend.conn.off( this.applicationId );
 		var unReg = {
 			path : 'system.library/app/unregister',
 			data : {
 				sasid: this.applicationId
 			},
 		};
-		friend.conn.request( unReg, unregDone );
+		Friend.conn.request( unReg, unregDone );
 		function unregDone( res )
 		{
 			//console.log( 'unshare - result', res );
 			sas.applicationState = null;
 			sas.applicationId = null;
-			sas.input.parentNode.removeChild( friend.input );
-			sas.cover.parentNode.removeChild( friend.cover );
-			friend.conn.close();
+			sas.input.parentNode.removeChild( Friend.input );
+			sas.cover.parentNode.removeChild( Friend.cover );
+			Friend.conn.close();
 			if( callback ) callback( true );
 		}
 	}
@@ -5446,7 +7254,7 @@ AssidRequest.prototype.sendInvite = function( userlist, inviteMessage, callback 
 			users : userlist,
 		},
 	};
-	friend.conn.request( inv, invBack );
+	Friend.conn.request( inv, invBack );
 	function invBack( res )
 	{
 		//console.log( 'sendInvite - result', res );
@@ -5478,7 +7286,7 @@ AssidRequest.prototype.eventDispatcher = function( e )
 			msg: e
 		},
 	};
-	friend.conn.send( msg );
+	Friend.conn.send( msg );
 
 	return cancelBubble( e );
 }
@@ -5502,7 +7310,7 @@ AssidRequest.prototype.sendEvent = function( e )
 			msg: e
 		},
 	};
-	friend.conn.send( msg );
+	Friend.conn.send( msg );
 
 	//console.log( 'Sent this weird message: ', msg );
 
@@ -5510,10 +7318,10 @@ AssidRequest.prototype.sendEvent = function( e )
 }
 
 // Reroute events to root Application object!
-friend.orphanElementSeed = 1;
-friend.rerouteAssidEventsToRoot = function( sasid )
+Friend.orphanElementSeed = 1;
+Friend.rerouteAssidEventsToRoot = function( sasid )
 {
-	console.log( 'rerouteAssidEventsToRoot', sasid );
+	//console.log( 'rerouteAssidEventsToRoot', sasid );
 	// Filter out some event data
 	var illegalKeys = [
 		'location', 'repeat', 'keyIdentifier', 'code',
@@ -5586,9 +7394,9 @@ friend.rerouteAssidEventsToRoot = function( sasid )
 		o.oldListener = o.addEventListener;
 		o.addEventListener = function( type, listener )
 		{
-			this.oldListener( type, function( e )
+			function ev( e )
 			{
-				if( !this.id ) this.id = this.nodeName + friend.orphanElementSeed++;
+				if( !this.id ) this.id = this.nodeName + Friend.orphanElementSeed++;
 				// Generate a limited set of event data to send further
 				var o = {};
 
@@ -5620,7 +7428,7 @@ friend.rerouteAssidEventsToRoot = function( sasid )
 					o[a] = e[a];
 				}
 
-				console.log( 'captureevent', event );
+				//console.log( 'captureevent', event );
 				Application.sendMessage( {
 					command: 'captureevent',
 					elementType: event,
@@ -5628,10 +7436,11 @@ friend.rerouteAssidEventsToRoot = function( sasid )
 					sasid: sasid,
 					elementData: JSON.stringify( o )
 				} );
-			} );
+			};
+			this.oldListener( type, ev );
 			if( !this.trappedEvents ) this.trappedEvents = { 'ontest': 'testing' };
-			if( !this.trappedEvents[ t ] ) this.trappedEvents[ t ] = [];
-			this.trappedEvents[t].push( c );
+			if( !this.trappedEvents[ type ] ) this.trappedEvents[ type ] = [];
+			this.trappedEvents[ type ].push( ev );
 		}
 		return o;
 	}
@@ -5653,7 +7462,8 @@ AssidRequest.prototype.distributeSharedEvent = function( type, edata )
 {
 	// TODO: Support screens
 	// Send it to all windows (we don't know what is what.. :( ..)
-	console.log( 'distributeSharedEvent', type );
+	if( typeof( type ) == 'undefined' ) return;
+	//console.log( 'distributeSharedEvent', type );
 	for( var a in Application.windows )
 	{
 		Application.windows[a].sendMessage( {
@@ -5691,22 +7501,22 @@ GuiDesklet = function()
 	{
 		if ( !( this instanceof ns.SAS ))
 			return new ns.SAS( conf );
-		
+
 		var self = this;
 		self.id = conf.sasid || null;
 		self.onevent = conf.onevent;
 		self.callback = callback;
-		
+
 		self.isHost = false;
 		self.users = {};
 		self.invited = {};
 		self.subs = {};
-		
+
 		self.init();
 	}
-	
+
 	// Public
-	
+
 	/**
 	 * invite
 	 *
@@ -5726,7 +7536,7 @@ GuiDesklet = function()
 				callback( false );
 			return;
 		}
-		
+
 		var inv = {
 			path : self.invitePath,
 			data : {
@@ -5742,7 +7552,7 @@ GuiDesklet = function()
 				callback( res );
 		}
 	}
-	
+
 	/**
 	 * remove
 	 *
@@ -5751,7 +7561,7 @@ GuiDesklet = function()
 	 * @param users array of users to be removed
 	 * @param removeMessage sent to the removed party as part of the event
 	 * @param callback fn, called with the result, an array of usernames that were removed - optional
-	
+
 	 * @return void return value
 	 */
 	ns.SAS.prototype.remove = function( users, removeMessage, callback )
@@ -5762,12 +7572,12 @@ GuiDesklet = function()
 				callback( false );
 			return;
 		}
-		
+
 		if ( 'string' === typeof users ) {
 			var parts = users.split( ',' );
 			users = parts.map( trimp );
 		}
-		
+
 		var rem = {
 			path : self.removePath,
 			data : {
@@ -5782,10 +7592,10 @@ GuiDesklet = function()
 			if ( callback )
 				callback( res );
 		}
-		
+
 		function trimp( name ) { return name.trim(); }
 	}
-	
+
 	/**
 	 * getUsers
 	 *
@@ -5805,7 +7615,7 @@ GuiDesklet = function()
 		};
 		self.conn.request( req, callback );
 	}
-	
+
 	/**
 	 * send
 	 *
@@ -5819,31 +7629,45 @@ GuiDesklet = function()
 	 * Unhandled events will be passed to .onevent handler, if defined.
 	 *
 	 * @param event object
-	 * @param username host only, send event to specific username
-	 
+	 * @param usernames host only, send event to a list of specific usernames
+
 	 * @return void return value
 	 */
-	ns.SAS.prototype.send = function( event, username )
+	ns.SAS.prototype.send = function( event, usernames )
 	{
 		var self = this;
 		if ( !self.isHost )
 			username = undefined;
-		
-		var path = self.isHost ?
-			self.toClientsPath :
-			self.toHostPath;
-		
+
+		usernames = usernames || undefined;
+		if ( 'string' === typeof( usernames ))
+			usernames = [ usernames ];
+
+		if ( usernames && !usernames.forEach ) {
+			console.log( 'invalid usernames - must be array', usernames );
+			usernames = undefined;
+		}
+
+		var path = null;
+		if ( self.isHost )
+			path = self.toClientsPath;
+		else
+			path = self.toHostPath;
+
 		var msg = {
 			path : path,
 			data : {
-				sasid    : self.id,
-				msg      : event,
-				username : username,
+				sasid     : self.id,
+				msg       : event,
 			},
 		};
+
+		if ( usernames )
+			msg.data.usernames = usernames;
+
 		self.conn.send( msg );
 	}
-	
+
 	/**
 	 * on
 	 *
@@ -5852,7 +7676,7 @@ GuiDesklet = function()
 	 *
 	 * @param event string, name of event to register for
 	 * @param handler function, event of type is passed on to this handler
-	
+
 	 * @return void return value
 	 */
 	ns.SAS.prototype.on = function( event, handler )
@@ -5865,17 +7689,17 @@ GuiDesklet = function()
 			});
 			throw new Error( 'SAS.on - event already registered ^^^' );
 		}
-		
+
 		self.subs[ event ] = handler;
 	}
-	
+
 	/**
 	 * off
 	 *
 	 * Unregister for event type. The handler will be unrefrerenced.
 	 *
 	 * @param event string, event name
-	
+
 	 * @return void return value
 	 */
 	ns.SAS.prototype.off = function( event )
@@ -5883,7 +7707,7 @@ GuiDesklet = function()
 		var self = this;
 		delete self.subs[ event ];
 	}
-	
+
 	/**
 	 * close
 	 *
@@ -5910,9 +7734,9 @@ GuiDesklet = function()
 			delete self.conn;
 		}
 	}
-	
+
 	// Private - if you are calling these, you are doing it wrong
-	
+
 	ns.SAS.prototype.regPath = 'system.library/app/register';
 	ns.SAS.prototype.acceptPath = 'system.library/app/accept';
 	ns.SAS.prototype.invitePath = 'system.library/app/share';
@@ -5921,25 +7745,25 @@ GuiDesklet = function()
 	ns.SAS.prototype.toClientsPath = 'system.library/app/send';
 	ns.SAS.prototype.toHostPath = 'system.library/app/sendowner';
 	ns.SAS.prototype.userlistPath = 'system.library/app/userlist';
-	
+
 	ns.SAS.prototype.init =function() {
 		var self = this;
 		if ( !window.Application )
 			throw new Error( 'SAS - window.Application is not defined' );
-		
+
 		self.conn = new FConn();
-		
+
 		if ( !self.id )
 			self.isHost = true;
-		
+
 		if ( self.isHost )
 			self.registerHost( self.callback );
 		else
 			self.registerClient( self.callback );
-		
+
 		delete self.callback;
 	}
-	
+
 	ns.SAS.prototype.registerHost = function( callback )
 	{
 		var self = this;
@@ -5955,16 +7779,16 @@ GuiDesklet = function()
 				callback( false );
 				return;
 			}
-			
+
 			self.id = res.SASID;
 			self.conn.on( self.id, clientEvents );
 			callback( res );
-			
+
 			function clientEvents( e ) { self.handleEvent( e ); }
 		}
-		
+
 	}
-	
+
 	ns.SAS.prototype.registerClient = function( callback )
 	{
 		var self = this;
@@ -5973,7 +7797,7 @@ GuiDesklet = function()
 			throw new Error( 'SAS.registerClient - missing SAS ID' );
 			return;
 		}
-		
+
 		var accept = {
 			path : self.acceptPath,
 			data : {
@@ -5987,11 +7811,11 @@ GuiDesklet = function()
 			res.host = host;
 			callback( res );
 			self.conn.on( self.id, hostEvents );
-			
+
 			function hostEvents( e ) { self.handleEvent( e ); }
 		}
 	}
-	
+
 	ns.SAS.prototype.handleEvent = function( e )
 	{
 		var self = this;
@@ -6002,14 +7826,634 @@ GuiDesklet = function()
 			handler( event.data, identity );
 			return;
 		}
-		
+
 		console.log( 'handleEvent - no handler', {
 			e : e,
 			s : self.subs
 		});
-		
+
 		if ( self.onevent )
 			self.onevent( e );
 	}
-	
+
 })( window );
+
+// Paste handler handles pasting of files and media ----------------------------
+( function( ns, undefined )
+{
+	ns.PasteHandler = function()
+	{
+		
+	}
+	
+	// Initiate paste handler
+	ns.PasteHandler.prototype.paste = function( evt, callback )
+	{
+		var self = this;
+		
+		function DirectoryContainsFile( filename, directoryContents )
+		{
+			if( !filename ) return false;
+			if( !directoryContents || directoryContents.length == 0 ) return false;
+	
+			for(var i = 0; i < directoryContents.length; i++ )
+			{
+				if( directoryContents[i].Filename == filename ) return true;
+			}
+			return false;
+		}
+		
+		function uploadPastedFile( file )
+		{
+			//get directory listing for Home:Downloads - create folder if it does not exist...
+			var j = new cAjax ();
+		
+			var updateurl = '/system.library/file/dir?wr=1'
+			updateurl += '&path=' + encodeURIComponent( 'Home:Downloads' );
+			updateurl += '&authid=' + encodeURIComponent( Application.authId );
+			
+			var wholePath = 'Home:Downloads/';
+			
+			j.open( 'get', updateurl, true, true );
+			j.onload = function ()
+			{
+				console.log( 'The response was: ' + this.returnCode, this.returnData );
+				var content;
+				// New mode
+				if ( this.returnCode == 'ok' )
+				{
+					try
+					{
+						content = JSON.parse(this.returnData||"null");
+					}
+					catch ( e ){};
+				}
+				// Legacy mode..
+				// TODO: REMOVE FROM ALL PLUGINS AND MODS!
+				else
+				{
+					try
+					{
+						content = JSON.parse(this.responseText() || "null");
+					}
+					catch ( e ){}
+				}
+		
+				if( content )
+				{
+					var newfilename = file.name;
+					var i = 0;
+					while( DirectoryContainsFile( newfilename, content ) )
+					{
+						i++;
+						//find a new name
+						var tmp = file.name.split('.');
+						var newfilename = file.name;
+						if( tmp.length > 1 )
+						{
+							var suffix = tmp.pop();				
+							newfilename = tmp.join('.');
+							newfilename += '_' + i + '.' + suffix;
+						}
+						else
+						{
+							newfilename += '_' + i;
+						}
+						if( i > 100 )
+						{
+							Notify({'title':i18n('i18n_paste_error'),'text':'Really unexpected error. You have pasted too many files.'});
+							if( callback ) callback( { response: false, message: 'Too many files pasted.' } );
+							break; // no endless loop please	
+						}
+					}
+					uploadFileToDownloadsFolder( file, newfilename, wholePath + newfilename );
+				}
+				else
+				{
+					Notify({'title':i18n('i18n_paste_error'),'text':'Really unexpected error. Contact your Friendly administrator.'});
+					if( callback ) callback( { response: false, message: 'Unexpected error occured.' } );
+				}
+			}
+			j.send ();
+		}
+		
+		// end of uploadPastedFile
+		function uploadFileToDownloadsFolder( file, filename, path )
+		{
+			// Setup a file copying worker
+			var url = document.location.protocol + '//' + document.location.host + '/webclient/';
+			var uworker = new Worker( url + 'js/io/filetransfer.js' );
+
+			// Open window
+			var w = new View( {
+				title:  i18n( 'i18n_pasting_files' ),
+				width:  320,
+				height: 100,
+				id:     'fileops'
+			} );
+
+			var uprogress = new File( 'System:templates/file_operation_apilevel.html' );
+
+			uprogress.connectedworker = uworker;
+
+			//upload dialog...
+			uprogress.onLoad = function( data )
+			{
+				var self = this;
+				data = data.split( '{cancel}' ).join( i18n( 'i18n_cancel' ) );
+				w.setContent( data );
+
+				w.connectedworker = this.connectedworker;
+				w.onClose = function()
+				{
+					if( this.connectedworker ) this.connectedworker.postMessage( { 'terminate': 1 } );
+					if( callback )
+					{
+						if( self.progress == 100 )
+						{
+							callback( { response: true, message: 'Upload was completed.', path: path } );
+							callback = false;
+						}
+						else
+						{
+							callback( { response: false, message: 'Upload was terminated.', progress: self.progress } );
+							callback = false;
+						}
+					}
+				}
+				uprogress.myview = w;
+			}
+
+			// For the progress bar
+			uprogress.setProgress = function( percent )
+			{
+				this.progress = percent;
+				// only update display if we are loaded...
+				// otherwise just drop and wait for next call to happen ;)
+				if( uprogress.loaded )
+				{
+					w.sendMessage( { command: 'progress', value: Math.floor( Math.max( 1, percent ) ) } );
+				}
+			};
+
+			// show notice that we are transporting files to the server....
+			uprogress.setUnderTransport = function()
+			{
+				w.sendMessage( { command: 'progress_information', data: 'Transferring files to target volume...' } );
+				uprogress.myview.setFlag( 'height', 125 );
+			}
+
+			// An error occurred
+			uprogress.displayError = function( msg )
+			{
+				w.sendMessage( { command: 'progress_error', data: msg } );
+				uprogress.myview.setFlag( 'height', 140 );
+			}
+
+			// Error happened!
+			uworker.onerror = function( err )
+			{
+				console.log( 'Upload worker error #######' );
+				console.log( err );
+				console.log( '###########################' );
+			}
+			
+			uworker.onmessage = function( e )
+			{
+				if( e.data['progressinfo'] == 1 )
+				{
+					if( e.data['uploadscomplete'] == 1 )
+					{
+						uprogress.setProgress( 100 );
+						w.close();
+						Notify({'title':i18n('i18n_pasted_file'),'text':i18n('i18n_pasted_to_downloads') + '(' + filename +')' });
+						if( callback ) callback( { response: true, message: 'Upload completed.', path: path } );
+						return true;
+					}
+					else if( e.data['progress'] )
+					{
+						uprogress.setProgress( e.data['progress'] );
+						if( e.data['filesundertransport'] && e.data['filesundertransport'] > 0 )
+						{
+							uprogress.setUnderTransport();
+						}
+					}
+
+				}
+				else if( e.data['error'] == 1 )
+				{
+					uprogress.displayError(e.data['errormessage']);
+					if( callback ) callback( { response: false, message: 'Received error 1.' } );
+				}
+
+			}
+
+			uprogress.load();
+
+			//hardcoded pathes here!! TODO!
+			var fileMessage = {
+				'authid': Application.authId,
+				'targetPath': 'Home:Downloads/',
+				'targetVolume': 'Home',
+				'files': [ file ],
+				'filenames': [ filename ]
+			};
+			
+			uworker.postMessage( fileMessage );		
+		}
+		
+		var pastedItems = ( evt.clipboardData || evt.originalEvent.clipboardData ).items;
+		for( i in pastedItems )
+		{
+			var item = pastedItems[i];
+			if( item.kind === 'file' )
+			{
+				var blob = item.getAsFile();
+				filetype = ( blob.type == '' ? 'application/octet-stream' : blob.type );
+				
+				self.uploadBlob = blob;
+				
+				var m = new Library( 'system.library' );
+				m.onExecuted = function( e, d )
+				{
+					//we have a downloads dir in home
+					if( e == 'ok' )
+					{
+						uploadPastedFile( self.uploadBlob );
+					}
+					else
+					{
+						//no downloads dir - try to make one
+						var m2 = new Library( 'system.library' );
+						m2.onExecuted = function( e, d )
+						{
+							//home drive found. create directory
+							if( e == 'ok' )
+							{
+								var shell = new Shell();
+								shell.onReady = function()
+								{
+									shell.execute( 'makedir Home:Downloads/', function( result )
+									{
+										shell.close();
+										
+										var res = result.split( '<!--separate-->' );
+										if( res[0] == 'ok' )
+										{
+											uploadPastedFile( self.uploadBlob );
+										}
+										// Failed - alert user
+										else
+										{
+											Notify( {
+												'title': i18n('i18n_paste_error'),
+												'text': i18n('i18n_could_not_create_downloads')
+											} );
+											if( callback ) callback( { response: false, message: 'Could not create Downloads/ directory.' } );
+											return;
+										}
+									} );
+								}
+							}
+							else
+							{
+								Notify({'title':i18n('i18n_paste_error'),'text':i18n('i18n_no_home_drive')});
+								if( callback ) callback( { response: false, message: 'No home disk.' } );
+								return;
+							}
+						};						
+						m2.execute( 'file/dir', { path: 'Home:' } );
+					}
+				}
+				m.execute( 'file/dir', { path: 'Home:Downloads/' } );
+			} // if file item
+		} // each pasted iteam
+	}
+	
+} )( window );
+
+// Friend API engine - only possible in Javascript! (Y) :)
+///////////////////////////////////////////////////////////////////
+
+// Current versions of the API
+Friend.APIVersion = '1.2';
+Friend.APIVersionMinimal = '1.2';			// We might want to change that one day when the number of versions gets too high
+											// but we should not really...
+
+// API Variables
+Friend.APIDefinition = {};
+Friend.NORETURN = 'noReturn';
+Friend.ERROR = 'error';
+
+GetClass = function( source, root )
+{
+	var start = 0;
+	var end = source.indexOf( '.' );
+	if ( end < 0 ) 
+		end = source.length;
+	var klass = window[ source.substring( start, end ) ];
+	if ( typeof klass == 'undefined' )
+		return null;
+	while( end < source.length )
+	{
+		start = end + 1;
+		end = source.indexOf( '.', start ), source.length;
+		if ( end < 0 ) 
+			end = source.length;
+		klass = klass[ source.substring( start, end ) ];
+		if ( typeof klass == 'undefined' )
+			return null;
+	};
+	return klass;
+};
+CallLowLevelAPI = function( args, functionPath, argumentNames, flags )
+{
+	var message =
+	{
+		type: 'Friend',
+		method: functionPath,
+		arguments: [],
+		flags: flags,
+		extra: typeof extra != 'undefined' ? extra : false
+	}
+
+	// Copy the arguments
+	for ( var a = 0; a < argumentNames.length; a++ )
+	{
+		if ( argumentNames[ a ] != 'callback' )
+		{
+			message.arguments.push( args[ a ] );
+		}
+		else
+		{
+			if ( args[ a ] )
+			{
+				if ( flags.permanent )
+				{
+					message.callback = addPermanentCallback( args[ a ] );		
+				}
+				else 
+				{
+					message.callback = addCallback( args[ a ] );
+				}
+			}
+			message.arguments.push( null );
+		}
+	}
+
+	// Call apiwrapper
+	Application.sendMessage( message );
+};
+
+if( Friend )
+{
+	// To be called at first pass of Javascript
+	Friend.addToAPI = function( functionPath, argumentNames, properties, parentClass )
+	{
+		var definition = {};
+
+		definition.functionName = functionPath.substring( functionPath.lastIndexOf( '.' ) + 1 );
+		definition.functionPath = functionPath;
+		definition.argumentNames = argumentNames;		// Can be ommited
+		definition.properties = properties;
+		if ( !parentClass )
+			parentClass = Friend;
+
+		// Find the position of the callback
+		definition.callbackPosition = -1;
+		for ( var n = 0; n < argumentNames.length; n++ )
+		{
+			if ( argumentNames[ n ] == 'callback' )
+			{
+				definition.callbackPosition = n;
+				break;
+			}
+		}
+		definition.numberOfArguments = argumentNames.length;
+		definition.isDirect = ( properties.tags.indexOf( '#direct' ) >= 0 );
+		definition.isCallback = ( properties.tags.indexOf( '#callback' ) >= 0 );
+
+		// Find the function
+		var functionClass;
+		if ( properties.redirection )
+		{
+			functionClass = GetClass( properties.redirection.functionPath, parentClass );
+		}
+		else
+		{
+			functionClass = GetClass( functionPath, parentClass );
+		}
+
+		// Add to API!
+		if( functionClass )
+		{
+			definition.klass = functionClass;
+			parentClass.APIDefinition[ functionPath ] = definition;
+			return true;
+		}
+		console.log( 'ERROR - API function not found: ' + functionPath );
+		return 'ERROR - API function not found: ' + functionPath;
+	};
+
+	Friend.removeFromAPI = function( functionPath )
+	{
+		if ( Friend.APIDefinition[ functionPath ] )
+		{
+			Friend.APIDefinition = Friend.Utilities.cleanArray( Friend.APIDefinition, Friend.APIDefinition[ functionPath ] );
+			return true;
+		}
+		console.log( 'ERROR - API function not found: ' + functionPath );
+		return false;
+	}
+}
+
+// Check if Friend has focus on input field
+Friend.GUI.checkInputFocus = function()
+{
+	var focused = document.activeElement;
+	if( !focused || focused == document.body )
+		focused = null;
+	else if( document.querySelector )
+		focused = document.querySelector( ':focus' );
+	var response = false;
+	if( focused && ( focused.tagName == 'INPUT' || focused.tagName == 'TEXTAREA' ) )
+	{
+		response = true;
+	}
+	Application.sendMessage( {
+		type: 'view',
+		method: 'windowstate',
+		state: 'input-focus',
+		value: response
+	} );
+}
+
+// Responsive layout
+
+Friend.responsive = {
+	pages: [],
+	history: [],
+	pagesById: {},
+	pageActive: null,
+	init()
+	{
+		if( !window.isMobile ) return;
+		var self = this;
+		var initial = null;
+		var d = document.getElementsByTagName( '*' );
+		for( var a = 0; a < d.length; a++ )
+		{
+			// Page!
+			if( d[a].classList && d[a].classList.contains( 'Responsive-Page' ) )
+			{
+				if( !Friend.responsive.pageActive )
+				{
+					Friend.responsive.pageActive = d[a];
+				}
+				Friend.responsive.pages.push( d[a] );
+				if( !d[a].id )
+				{
+					var id = 'Responsive-Page-';
+					var idnum = 1;
+					while( ge( id + idnum ) )
+					{
+						idnum++;
+					}
+					d[a].id = id + idnum;
+				}
+				if( d[a].classList.contains( 'Responsive-Page-Initial' ) )
+				{
+					initial = d[a];
+				}
+				else
+				{
+					d[ a ].classList.add( 'Responsive-Subpage' );
+				}
+				Friend.responsive.pages.push( d[a] );
+				Friend.responsive.pagesById[ d[a].id ] = d[a];
+			}
+		}
+		// Set the initial active page
+		if( initial && !self.pageActive )
+			self.setPage( initial );
+		// We need an active page
+		else if( !self.pageActive )
+		{
+			self.setPage( self.pages[ 0 ] );
+		}
+		else
+		{
+			self.setPage( self.pageActive );
+		}
+		return true;
+	},
+	// Reinitialize
+	reinit()
+	{
+		if( !window.isMobile ) return;
+		var self = this;
+		return self.init();
+	},
+	previousPage()
+	{
+		if( !window.isMobile ) return;
+		var self = this;
+		var out = [];
+		for( var a = 0; a < self.history.length - 1; a++ )
+		{
+			out.push( self.history[ a ] );
+		}
+		self.history = out;
+		if( out.length )
+		{
+			var pa = self.history[ self.history.length - 1 ];
+			self.setPage( pa );
+			self.reinit();
+		}
+	},
+	// Set active page by dom element or id
+	setPage( element )
+	{
+		if( !window.isMobile ) return;
+		var self = this;
+		
+		// We really do need an element to do anything
+		if( !element )
+		{
+			return;
+		}
+		
+		if( typeof( element ) == 'string' )
+		{
+			element = ge( element );
+			if( !element ) return;
+		}
+		
+		var before = true;
+		
+		for( var a = 0; a < self.pages.length; a++ )
+		{
+			if( self.pages[ a ] == self.pageActive )
+			{
+				before = false;
+			}
+			if( self.pages[ a ].backButton )
+			{
+				var b = self.pages[ a ].backButton;
+				if( b.parentNode )
+				{
+					( function( ele ){
+						setTimeout( function()
+						{
+							ele.parentNode.removeChild( ele );
+						}, 250 );
+						ele.style.height = '0px';
+					} )( b );
+				}
+				self.pages[ a ].backButton = null;
+			}
+			if( before )
+			{
+				self.pages[ a ].classList.remove( 'Responsive-Page-Right' );
+				self.pages[ a ].classList.add( 'Responsive-Page-Left' );
+			}
+			else
+			{
+				self.pages[ a ].classList.remove( 'Responsive-Page-Left' );
+				self.pages[ a ].classList.add( 'Responsive-Page-Right' );
+			}
+			if( self.pages[ a ] != element )
+			{
+				self.pages[ a ].classList.remove( 'Responsive-Page-Active' );
+			}
+			self.pages[ a ].classList.add( 'BackgroundDefault' );
+		}
+		self.pageActive = element;
+		element.classList.add( 'Responsive-Page-Active' );
+		
+		// Set history!
+		if( self.history[ self.history.length - 1 ] != element )
+		{
+			self.history.push( element );
+		}
+		// If we can go back, give button
+		if( self.history.length > 1 )
+		{
+			var backButton = document.createElement( 'div' );
+			backButton.className = 'Responsive-Button-Back MousePointer BorderBottom BackgroundHeavier';
+			backButton.innerHTML = 'Back';
+			document.body.appendChild( backButton );
+			element.backButton = backButton;
+			backButton.onclick = function()
+			{
+				self.previousPage();
+			}
+		}
+		
+		// Current page goes into view
+		element.classList.remove( 'Responsive-Page-Left' );
+		element.classList.remove( 'Responsive-Page-Right' );
+	}
+};
+
+

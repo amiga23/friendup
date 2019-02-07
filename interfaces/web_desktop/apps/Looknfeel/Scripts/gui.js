@@ -1,19 +1,10 @@
 /*©agpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Affero General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Affero General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Affero   *
+* General Public License, found in the file license_agpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
 
@@ -26,7 +17,6 @@ Application.run = function( msg )
 	InitTabs( 'MainTabs' );
 	
 	refreshThemes();	
-	
 }
 
 function getMenuMode()
@@ -80,6 +70,10 @@ function getWindowListMode()
 	{
 		return 'docked';
 	}
+	else if( ge( 'windowlistDockedlist' ).checked )
+	{
+		return 'dockedlist';
+	}
 	return 'separate';
 }
 
@@ -92,14 +86,31 @@ function setWindowListMode( mode )
 
 function refreshThemes()
 {
+	window.onSaveThemeConfig = function(){};
+	
 	var m = new Module( 'system' );
 	m.onExecuted = function( e, d )
 	{
 		if( e == 'ok' )
 		{
 			var j = JSON.parse( d );
+			
+			var sorted = [];
+			var keysor = [];
+			for( var a = 0; a < j.length; a++ )
+			{
+				sorted.push( j[a].Name );
+				keysor[ j[a].Name ] = j[a];
+			}
+			sorted.sort();
+			var out = [];
+			for( var a = 0; a < sorted.length; a++ )
+				out.push( keysor[ sorted[ a ] ] );
+			j = out;
+			sorted = null; keysor = null;
+			
 			Application.themes = j;
-			var ml = '<div class="List">';
+			var ml = '<div class="List NoPadding">';
 			var sw = 2;
 			
 			var def = Application.themes.length - 1;
@@ -113,6 +124,32 @@ function refreshThemes()
 					}
 				}
 			}
+			
+			// Setup theme gui
+			i18nAddPath( '/themes/' + Application.theme.toLowerCase() + '/Locale/' + Application.language + '.lang', function()
+			{
+				var f = new File( 'System:../themes/' + Application.theme.toLowerCase() + '/config.html' );
+				f.i18n();
+				f.onLoad = function( data )
+				{
+					if( data.indexOf( '<title' ) > 0 )
+						data = '<p><strong>' + i18n( 'i18n_no_theme_config' ) + '</strong></p>';
+				
+					var scripts;
+					var endScripts = [];
+					while( scripts = data.match( /\<script.*?\>([\w\W]*)\<\/script\>/i ) )
+					{
+						data = data.split( scripts[0] ).join( '' );
+						endScripts.push( scripts[1] );
+					}
+					ge( 'ThemeConfig' ).innerHTML = data;
+					for( var c = 0; c < endScripts.length; c++ )
+					{
+						eval( endScripts[c] );
+					}
+				}
+				f.load();
+			} );
 			
 			var img = '/webclient/gfx/theme_preview.jpg';
 			
@@ -128,13 +165,15 @@ function refreshThemes()
 						continue;
 				}
 				
+				var ex = '';
 				if( a == def )
 				{
 					cl = ' Active';
 					if( j[a].WebPath )
 						img = '/themes/' + j[a].Name.toLowerCase() + '/preview.jpg';
+					ex = '» ';
 				}
-				ml += '<div class="sw' + sw + cl + ' Padding" onclick="setActive(' + a + ')">' + j[a].Name + '</div>';
+				ml += '<div class="sw' + sw + cl + ' Padding" onclick="setActive(' + a + ')">' + ex + j[a].Name.split( '_' ).join( ' ' ) + '</div>';
 			}
 			ml += '</div>';
 			ge( 'ThemeList' ).innerHTML = ml;
@@ -157,14 +196,26 @@ function refreshThemes()
 			setNavigationMode( dd.navigationmode ? dd.navigationmode : 'browser' );
 			setFocusMode( dd.focusmode ? dd.focusmode : 'clicktofront' );
 			setWindowListMode( dd.windowlist ? dd.windowlist : 'separate' );
+			if( dd.hiddensystem == true )
+				ge( 'hiddenSystem' ).checked = 'checked';
+			ge( 'workspaceCount' ).value = dd.workspacecount > 0 ? dd.workspacecount : 1;
+			ge( 'scrollDesktopIcons' ).checked = dd.scrolldesktopicons == '1' ? 'checked' : '';
+			ge( 'ThemeConfigData' ).value = JSON.stringify( dd[ 'themedata_' + Application.theme.toLowerCase() ] );
 			return;
 		}
 		setMenuMode( 'pear' );
 		setNavigationMode( 'browser' );
 		setFocusMode( 'clicktofront' );
 		setWindowListMode( 'separate' );
+		ge( 'workspaceCount' ).value = '1';
+		ge( 'scrollDesktopIcons' ).checked = '';
+		ge( 'ThemeConfigData' ).value = '';
 	}
-	m.execute( 'getsetting', { settings: [ 'menumode', 'navigationmode', 'focusmode', 'windowlist' ] } );
+	m.execute( 'getsetting', { settings: [ 
+		'menumode', 'navigationmode', 'focusmode', 
+		'windowlist', 'hiddensystem', 'workspacecount',
+		'scrolldesktopicons', 'themedata_' + Application.theme.toLowerCase()
+	] } );
 	
 }
 
@@ -177,6 +228,12 @@ function setActive( num )
 
 function applyTheme()
 {
+	var currTheme = Application.theme ? Application.theme : 'friendup12';
+	
+	// Update data for the theme config
+	if( window.onSaveThemeConfig )
+		window.onSaveThemeConfig();
+	
 	var m = new Module( 'system' );
 	m.onExecuted = function()
 	{
@@ -189,23 +246,47 @@ function applyTheme()
 				var m5 = new Module( 'system' );
 				m5.onExecuted = function()
 				{
-					var m3 = new Module( 'system' );
-					m3.onExecuted = function( e, d )
+					var m6 = new Module( 'system' );
+					m6.onExecuted = function()
 					{
-						if( e == 'ok' )
+						var m7 = new Module( 'system' );
+						m7.onExecuted = function()
 						{
-							Application.sendMessage( {
-								type: 'system',
-								command: 'refreshtheme',
-								theme: Application.themePath ? Application.theme : 'friendup'
-							} );
+							var m8 = new Module( 'system' );
+							m8.onExecuted = function()
+							{
+								var m3 = new Module( 'system' );
+								m3.onExecuted = function( e, d )
+								{
+									// check for extra config
+									var m9 = new Module( 'system' );
+									m.onExecuted = function()
+									{
+										if( e == 'ok' )
+										{
+											var dt = {
+												type: 'system',
+												command: 'refreshtheme',
+												theme: currTheme
+											};
+											if( ge( 'ThemeConfigData' ) )
+												dt.themeConfig = ge( 'ThemeConfigData' ).value;
+											Application.sendMessage( dt );
+										}
+										else
+										{
+											console.log( 'Could not set system theme!' );
+										}
+									}
+									m.execute( 'setsetting', { setting: 'themedata_' + currTheme.toLowerCase(), data: ge( 'ThemeConfigData' ).value } );
+								}
+								m3.execute( 'settheme', { theme: currTheme } );
+							}
+							m8.execute( 'setsetting', { setting: 'scrolldesktopicons', data: ge( 'scrollDesktopIcons' ).checked ? '1': '0' } );
 						}
-						else
-						{
-							console.log( 'Could not set system theme!' );
-						}
+						m7.execute( 'setsetting', { setting: 'workspacecount', data: ge( 'workspaceCount' ).value } );
 					}
-					m3.execute( 'settheme', { theme: Application.themePath ? Application.theme : 'friendup' } );
+					m6.execute( 'setsetting', { setting: 'hiddensystem', data: ge( 'hiddenSystem' ).checked ? 'true' : 'false' } );
 				}
 				m5.execute( 'setsetting', { setting: 'windowlist', data: getWindowListMode() } );
 			}

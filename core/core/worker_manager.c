@@ -1,27 +1,13 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
-/**
- * @file
+/** @file
  *
  * Worker-Manager: handles a set of workers
  *
@@ -30,9 +16,14 @@
  * @author PS (Pawel Stefansky)
  * @date first push by PS (10/02/2015)
  * @sa worker.c worker.h
+ * 
+ * \defgroup FriendCoreWorker Workers
+ * \ingroup FriendCore
+ * @{
  */
 
 #include "worker_manager.h"
+#include <system/systembase.h>
 
 /**
  * Creates a new Worker-Manager
@@ -49,18 +40,13 @@ WorkerManager *WorkerManagerNew( int number )
 	
 	DEBUG( "[WorkerManager] Starting worker manager!\n" );
 	
-	// Fallback to default...
-	if( number < MIN_WORKERS )
-	{
-		number = MIN_WORKERS;		// default numbe of workers
-	}
-	
 	if( ( wm = FCalloc( 1, sizeof( WorkerManager ) ) ) != NULL )
 	{
 		int i = 0;
 		
 		wm->wm_LastWorker = 0;
 		wm->wm_MaxWorkers = number;
+		pthread_mutex_init( &wm->wm_Mutex, NULL );
 		
 		if( ( wm->wm_Workers = FCalloc( wm->wm_MaxWorkers, sizeof(Worker *) ) ) != NULL )
 		{
@@ -68,7 +54,6 @@ WorkerManager *WorkerManagerNew( int number )
 			{
 				wm->wm_Workers[ i ] = WorkerNew( i ); 
 				WorkerRun( wm->wm_Workers[ i ]  ); 
-				//DEBUG( "[WorkerManager] Worker Started (#%d)\n", i );
 			}
 		}
 		else
@@ -84,7 +69,7 @@ WorkerManager *WorkerManagerNew( int number )
 		return NULL;
 	}
 	
-	Log( FLOG_INFO, "Worker manager started %d threads\n", wm->wm_MaxWorkers );
+	Log( FLOG_INFO, "[WorkerManager] started %d threads\n", wm->wm_MaxWorkers );
 	
 	return wm;
 }
@@ -104,15 +89,60 @@ void WorkerManagerDelete( WorkerManager *wm )
 		{
 			for( ; i < wm->wm_MaxWorkers ; i++ )
 			{
-				DEBUG( "Trying to delete worker %d\n", i );
 				WorkerDelete( wm->wm_Workers[ i ] );
-				DEBUG( "Finished deleting worker %d\n", i );
 			}
 			FFree( wm->wm_Workers );
 		}
+		pthread_mutex_destroy( &wm->wm_Mutex );
+		
 		FFree( wm );
 	}
 }
+
+
+
+//
+// Start worker
+//
+
+static inline int WorkerRunCommand( Worker *w, void (*foo)( void *), void *d )
+{
+
+	if( w != NULL )
+	{
+		if( w->w_Thread != NULL )
+		{
+			w->w_Function = foo;
+			w->w_Data = d;
+			
+			if( FRIEND_MUTEX_LOCK( &(w->w_Mut) ) == 0 )
+			{
+				pthread_cond_signal( &(w->w_Cond) );
+				FRIEND_MUTEX_UNLOCK( &(w->w_Mut) );
+			}
+			int wait = 0;
+			
+			while( TRUE )
+			{
+				if( w->w_State == W_STATE_WAITING || w->w_State == W_STATE_COMMAND_CALLED )
+				{
+					break;
+				}
+				DEBUG("[WorkerRunCommand] --------waiting for running state: %d\n", wait++ );
+				usleep( 10 );
+			}
+		}
+		else
+		{
+			//pthread_mutex_unlock( &(w->w_Mut) );
+			FERROR("[WorkerRunCommand] Thread not initalized\n");
+			return 1;
+		}
+	}
+
+	return 0;
+}
+
 
 
 static int testquit = 0;
@@ -128,53 +158,52 @@ static int testquit = 0;
  * @param wm pointer to the Worker-Manager structure
  * @param foo pointer to the message-handler
  * @param d pointer to the data associated with the call
+ * @param path request path
  * @return 0
  * @todo FL>PS debug code still present here, exits Friend Core if some workers
  * 		are stuck!
  */
-int WorkerManagerRun( WorkerManager *wm,  void (*foo)( void *), void *d )
+int WorkerManagerRun( WorkerManager *wm,  void (*foo)( void *), void *d, void *wrkinfo, char *path )
 {
 	int i = 0;
 	int max = 0;
+	Worker *wrk = NULL;
 	
 	if( wm == NULL )
 	{
 		FERROR("Work manager is NULL!\n");
+		return -1;
 	}
 	
 	while( TRUE )
 	{
-		Worker *wrk = NULL;
-		
-		DEBUG("[WorkManagerRun] WORKER %d MAX workers %d\n", wm->wm_LastWorker, wm->wm_MaxWorkers );
-		
+		wrk = NULL;
+
+		FRIEND_MUTEX_LOCK( &wm->wm_Mutex );
 		max++; wm->wm_LastWorker++;
 		if( wm->wm_LastWorker >= wm->wm_MaxWorkers )
 		{ 
 			wm->wm_LastWorker = 0; 
 		}
-		
-		DEBUG("WorkerManager: trying to setup lock\n");
+
 		// Safely test the state of the worker
-		if( pthread_mutex_trylock( &wm->wm_Workers[ wm->wm_LastWorker ]->w_Mut ) == 0 )
+		//if( pthread_mutex_trylock( &wm->wm_Workers[ wm->wm_LastWorker ]->w_Mut ) == 0 )
 		{
-			DEBUG("workerManager: locked\n");
-			if( wm->wm_Workers[ wm->wm_LastWorker ]->w_State == W_STATE_WAITING )
+			int lw = wm->wm_LastWorker;
+			Worker *w1 = wm->wm_Workers[ lw ];
+			if( w1->w_State == W_STATE_WAITING )
 			{
 				wrk = wm->wm_Workers[ wm->wm_LastWorker ];
 			
 				// Register worker index..
-				DEBUG( "[WorkManagerRun] Registering thread data\n" );
 				//struct SocketThreadData *td = ( struct SocketThreadData *)d;
 				//td->workerIndex = wm->wm_LastWorker;
-				DEBUG( "[WorkManagerRun] Done registering.\n" );
 			}
-			pthread_mutex_unlock( &wm->wm_Workers[ wm->wm_LastWorker ]->w_Mut );
+			//pthread_mutex_unlock( &wm->wm_Workers[ wm->wm_LastWorker ]->w_Mut );
 		}
 	
 		if( wrk != NULL )
-		{	
-			DEBUG( "[WorkManagerRun] Running worker %d with function and data\n", wrk->w_Nr );
+		{
 			if( wm->w_AverageWorkSeconds == 0 )
 			{
 				wm->w_AverageWorkSeconds = wrk->w_WorkSeconds;
@@ -184,33 +213,67 @@ int WorkerManagerRun( WorkerManager *wm,  void (*foo)( void *), void *d )
 				wm->w_AverageWorkSeconds += wrk->w_WorkSeconds;
 				wm->w_AverageWorkSeconds /= 2;
 			}
-			WorkerRunCommand( wrk, foo, d );
+			wrk->w_Request = wrkinfo;
 			
-			//break;
+			strncpy( wrk->w_FunctionString, path, WORKER_FUNCTION_STRING_SIZE_MIN1 );
+			
+			WorkerRunCommand( wrk, foo, d );
+			testquit = 0;
+			FRIEND_MUTEX_UNLOCK( &wm->wm_Mutex );
+			
+			break;
 		}
 		else
 		{
+			FRIEND_MUTEX_UNLOCK( &wm->wm_Mutex );
 			Log( FLOG_INFO, "[WorkManagerRun] Worker is busy, waiting\n");
 			usleep( 100 );
 		}
 		
 		if( max > wm->wm_MaxWorkers )
 		{
-			Log( FLOG_INFO, "[WorkManagerRun] All workers are busy, waiting\n");
-			testquit++;
-			if( testquit > 25 )
+			//Log( FLOG_INFO, "[WorkManagerRun] All workers are busy, waiting\n");
+
+			if( testquit++ > 10 )
 			{
-				//
-				FERROR("Worker testquit > 25 \n");
-				exit( 0 ); // <- die! only for debug
+				Log( FLOG_ERROR, "[WorkManagerRun] Worker dispatch timeout, dropping client\n");
+				
+				//exit( 0 ); // <- die! only for debug
 				testquit = 0;
+				//usleep( 15000 );
+				//sleep( 2 );
+				return -1;
 			}
-			usleep( 1500 );
+			usleep( 100 );
 			max = 0;
+			//return -1;
 		}
-	}
+	} //end of infinite loop
 	
-	DEBUG("[WorkManagerRun] WorkerManager: AddWorker END\n");
 	return 0;
 }
 
+/**
+* For debug
+*
+*/
+void WorkerManagerDebug( void *sb )
+{
+	SystemBase *locsb = (SystemBase *)sb;
+	WorkerManager *wm = (WorkerManager *)locsb->sl_WorkerManager;
+	int i;
+	
+	for( i=0 ; i < wm->wm_MaxWorkers ; i++ )
+	{
+		if( wm->wm_Workers[ i ] != NULL )
+		{
+			Http *request = (Http *)wm->wm_Workers[ i ]->w_Request;
+			if( request != NULL )
+			{
+				DEBUG("[WorkerManager] %s pointer to session %p\n", request->content, request->h_UserSession );
+			}
+		}
+	}
+}
+
+/**@}*/

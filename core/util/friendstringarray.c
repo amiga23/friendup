@@ -1,27 +1,13 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
-/**
- * @file
+/** @file
  *
  *  Fast array of Friend Strings
  *
@@ -536,7 +522,7 @@ int FStringArrayFindNumberFromString(FStringArray* pFSArray, char* pString, int 
  * @param flags
  * @return FSTRINGERROR_NOTIMPLEMENTED
  */
-int FStringArrayInsertFileAscii(FStringArray* pFSArray, char* pPath, int number, int nLines, int flags)
+int FStringArrayInsertFileAscii(FStringArray* pFSArray __attribute__((unused)), char* pPath __attribute__((unused)), int number __attribute__((unused)), int nLines __attribute__((unused)), int flags __attribute__((unused)))
 {
 	return FSTRINGERROR_NOTIMPLEMENTED;
 }
@@ -551,7 +537,7 @@ int FStringArrayInsertFileAscii(FStringArray* pFSArray, char* pPath, int number,
  * @param flags
  * @return FSTRINGERROR_NOTIMPLEMENTED
  */
-int FStringArraySaveAscii(FStringArray* pFSArray, int nLines, int flags)
+int FStringArraySaveAscii(FStringArray* pFSArray __attribute__((unused)), int nLines __attribute__((unused)), int flags __attribute__((unused)))
 {
 	return FSTRINGERROR_NOTIMPLEMENTED;
 }
@@ -566,7 +552,7 @@ int FStringArraySaveAscii(FStringArray* pFSArray, int nLines, int flags)
  * @param flags
  * @return FSTRINGERROR_NOTIMPLEMENTED
  */
-int FStringArrayLoadAscii(FStringArray* pFSArray, int nLines, int position, int flags)
+int FStringArrayLoadAscii(FStringArray* pFSArray __attribute__((unused)), int nLines __attribute__((unused)), int position __attribute__((unused)), int flags __attribute__((unused)))
 {
 	return FSTRINGERROR_NOTIMPLEMENTED;
 }
@@ -700,7 +686,7 @@ int FStringArrayInsertStringAtId(FStringArray* pFSArray, char* pString, int id, 
  * @return FSTRINGERROR_OK
  * @return error code (<0)
  */
-int FStringArraySetFStringAtNumber(FStringArray* pFSArray, FString* pFString, int number, int flags)
+int FStringArraySetFStringAtNumber(FStringArray* pFSArray, FString* pFString, int number, int flags __attribute__((unused)))
 {
 	if ( pFSArray== NULL || pFString == NULL)
 		return FSTRINGERROR_NULLPOINTER;
@@ -723,7 +709,7 @@ int FStringArraySetFStringAtNumber(FStringArray* pFSArray, FString* pFString, in
  * @return FSTRINGERROR_OK
  * @return error code (<0)
  */
-int FStringArraySetStringAtNumber(FStringArray* pFSArray, char* pString, int number, int flags)
+int FStringArraySetStringAtNumber(FStringArray* pFSArray, char* pString, int number, int flags __attribute__((unused)))
 {
 	if ( pFSArray== NULL || pString == NULL)
 		return FSTRINGERROR_NULLPOINTER;
@@ -747,7 +733,7 @@ int FStringArraySetStringAtNumber(FStringArray* pFSArray, char* pString, int num
  * @return FSTRINGERROR_OK
  * @return error code (<0)
  */
-int FStringArraySetFStringAtId(FStringArray* pFSArray, FString* pFString, int id, int flags)
+int FStringArraySetFStringAtId(FStringArray* pFSArray, FString* pFString, int id, int flags __attribute__((unused)))
 {
 	if ( pFSArray== NULL || pFString == NULL)
 		return FSTRINGERROR_NULLPOINTER;
@@ -769,7 +755,7 @@ int FStringArraySetFStringAtId(FStringArray* pFSArray, FString* pFString, int id
  * @return FSTRINGERROR_OK
  * @return error code (<0)
  */
-int FStringArraySetStringAtId(FStringArray* pFSArray, char* pString, int id, int flags)
+int FStringArraySetStringAtId(FStringArray* pFSArray, char* pString, int id, int flags __attribute__((unused)))
 {
 	if ( pFSArray== NULL || pString == NULL)
 		return FSTRINGERROR_NULLPOINTER;

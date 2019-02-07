@@ -26,6 +26,9 @@ insert_image                      : Insérer une image
 i18n_print_alert                  : Alerte impression
 i18n_not_saved_cant_print         : Le document n'est pas sauvé. Veuillez le sauver d'abord et ré-essayer.
 
+i18n_close                        : Sortie
+i18n_accept                       : Acceptez
+
 i18n_set_bold                     : Gras
 i18n_set_italic                   : Italique
 i18n_set_underline                : Souligné
@@ -57,6 +60,7 @@ i18n_failed_to_load_document : Le chargement du document a échoué...
 i18n_loaded : Chagé
 i18n_converting : En conversion...
 i18n_written : Ecrit
+menu_print_remote                 : Impression à distance
 i18n_print_preview : Previsualisation impression
 i18n_generating_print_preview : Génération prévisualisation impression...
 i18n_print_ready : Impression prête

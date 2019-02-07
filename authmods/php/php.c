@@ -1,31 +1,19 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
-
-/*
-
-	PHP auth module code
-
-*/
+/** @file
+ *
+ *  PHP auth module code
+ *
+ *  @author PS (Pawel Stefanski)
+ *  @date created 2017
+ */
 
 #include <core/types.h>
 #include <core/library.h>
@@ -37,7 +25,7 @@
 #include <util/string.h>
 #include <openssl/sha.h>
 #include <string.h>
-#include <propertieslibrary.h>
+#include <interface/properties_interface.h>
 #include <system/systembase.h>
 #include <util/sha256.h>
 #include <network/websocket_client.h>
@@ -58,17 +46,16 @@ typedef struct SpecialData
 	char				*sd_ModuleType;
 	char 			*sd_ModulePath;
 	EModule 		*sd_EModule;
-	
-	char 			*(*RunMod)( struct SystemBase *l, const char *mime, const char *path, const char *args, unsigned long *length );
-}SpecialData;
+	module_run_func_t RunMod;
+} SpecialData;
 
 //
-//
+// Init library
 //
 
 int libInit( AuthMod *l, void *sb )
 {
-	DEBUG("PHPAUTH libinit\n");
+	DEBUG("[PHPAUTH] libinit\n");
 
 	if( ( l->SpecialData = FCalloc( 1, sizeof( struct SpecialData ) ) ) == NULL )
 	{
@@ -101,7 +88,7 @@ int libInit( AuthMod *l, void *sb )
 	{
 		if( sd->sd_EModule->GetSuffix != NULL )
 		{
-			DEBUG(" sd->sd_EModule->Name %s suffix %s\n", sd->sd_EModule->Name, sd->sd_EModule->GetSuffix() );
+			DEBUG("[PHPAUTH] sd->sd_EModule->Name %s suffix %s\n", sd->sd_EModule->em_Name, sd->sd_EModule->GetSuffix() );
 			
 			if( strcmp( sd->sd_EModule->GetSuffix(), "php" ) == 0 )
 			{
@@ -116,7 +103,7 @@ int libInit( AuthMod *l, void *sb )
 }
 
 //
-//
+// Close library
 //
 
 void libClose( struct AuthMod *l )
@@ -138,7 +125,7 @@ void libClose( struct AuthMod *l )
 		FFree( l->SpecialData );
 	}
 	
-	DEBUG("PHP.authmod close\n");
+	DEBUG("[PHPAUTH] close\n");
 }
 
 //
@@ -154,6 +141,8 @@ long GetRevision(void)
 {
 	return LIB_REVISION;
 }
+
+/*
 
 #define FUP_AUTHERR_PASSWORD	1
 #define FUP_AUTHERR_TIMEOUT		2
@@ -212,9 +201,10 @@ FBOOL UserIsAdminByAuthID( struct AuthMod *l, Http *r, char *auth )
 // authenticate user
 //
 
-UserSession *Authenticate( struct AuthMod *l, Http *request, struct UserSession *loguser, const char *name, const char *pass, const char *sessionId )
+UserSession *Authenticate( struct AuthMod *l, Http *r, struct UserSession *logsess, char *name, char *pass, char *devname, char *sessionId, FULONG *blockTime )
 {
-	DEBUG("Authenticate PHP\n");
+	DEBUG("[PHPAUTH] Authenticate PHP\n");
+	*/
 /*
 	// Send both get and post
 	int size = 0;
@@ -227,7 +217,6 @@ UserSession *Authenticate( struct AuthMod *l, Http *request, struct UserSession 
 		FBOOL both = request->content && request->uri->queryRaw ? TRUE : FALSE;
 		if( request->content != NULL ) size += strlen( request->content );
 		if( request->uri->queryRaw != NULL ) size += strlen( request->uri->queryRaw );
-		//DEBUG( "Putting them in a combined string\n" );
 		
 		char *allArgs = FCalloc( 1, size + 100 + ( both ? 2 : 1 ) );
 		if( both == TRUE )
@@ -242,15 +231,12 @@ UserSession *Authenticate( struct AuthMod *l, Http *request, struct UserSession 
 		{
 			sprintf( allArgs, "%s", request->uri->queryRaw );
 		}
-		DEBUG( "Put them together: %s\n", allArgs );
 		
 		if( sb->sl_ModuleNames != NULL )
 		{
 			strcat( allArgs, "&modules=" );
 			strcat( allArgs, sb->sl_ModuleNames );
 		}
-		
-		DEBUG("Run module ptr %p\n",  sd->RunMod );
 		
 		char *data = NULL;
 		int dataLength = 0;
@@ -266,14 +252,12 @@ UserSession *Authenticate( struct AuthMod *l, Http *request, struct UserSession 
 		
 		if( data != NULL )
 		{
-			DEBUG( "[PHP.authmod] Ok, we got result with length of %d  text %s\n", (int)strlen( data ), data );
-			
+
 			// 5. Piped response will be output!
 			char *ltype  = dataLength ? CheckEmbeddedHeaders( data, dataLength, "Content-Type"   ) : NULL;
 			char *length = dataLength ? CheckEmbeddedHeaders( data, dataLength, "Content-Length" ) : NULL;
 			
-			//DEBUG("TYPE %s LENGTH %s <<<<<<<<<<<<<<<<<<<<<<<<<<< %s\n", ltype, length, data );
-			
+
 			char *datastart = strstr( data, "---http-headers-end---" );
 			if( datastart != NULL )
 			{
@@ -292,17 +276,6 @@ UserSession *Authenticate( struct AuthMod *l, Http *request, struct UserSession 
 				}
 			}
 			
-			DEBUG("Length : %s\n", length );
-			
-			if( ltype != NULL )
-			{
-				DEBUG( "[System.library] We found Content-Type: %s\n", ltype );
-			}
-			else
-			{
-				DEBUG( "[System.library] We found no Content-Type header in data.\n" );
-			}
-			
 			if( ltype ){ FFree( ltype ); ltype = NULL;}
 			if( length ){ FFree( length ); length = NULL; }
 			
@@ -310,6 +283,7 @@ UserSession *Authenticate( struct AuthMod *l, Http *request, struct UserSession 
 		}
 	}
 	*/
+/*
 	return NULL;
 }
 
@@ -339,25 +313,6 @@ int UserCreate( struct AuthMod *l, Http *r, User *usr )
 {
 	return 0;
 }
-
-//
-// insernal , createUser
-//
-
-/*
-User *UserFromSQL( MYSQL_ROW row )
-{
-	return NULL;
-}
-
-//
-// get user by session
-//
-
-struct User *UserGetBySession( struct AuthMod *l, Http *r, const char *sessionId )
-{
-	return NULL;
-}*/
 
 //
 // Set User Full Name
@@ -396,85 +351,4 @@ int AssignApplicationsToUser( struct AuthMod *l, User *usr )
 {
 	return 0;
 }
-
-//
-// network handler
-//
-
-Http* WebRequest( struct AuthMod *l, char **urlpath, Http* request )
-{
-	Http* response = NULL;
-/*	
-	if( strcmp( urlpath[ 0 ], "Authenticate" ) == 0 )
-	{
-		struct TagItem tags[] = {
-			{ HTTP_HEADER_CONTENT_TYPE, (FULONG)  StringDuplicate( "text/html" ) },
-			{	HTTP_HEADER_CONNECTION, (FULONG)StringDuplicate( "close" ) },
-			{TAG_DONE, TAG_DONE}
-		};
-		
-		response = HttpNewSimple( HTTP_200_OK,  tags );
-
-						//request->query;
-						//
-						// PARAMETERS SHOULD BE TAKEN FROM
-						// POST NOT GET
-						
-		if( request->parsedPostContent != NULL )
-		{
-			char *usr = NULL;
-			char *pass = NULL;
-			char *devname = NULL;
-							
-			HashmapElement *el =  HashmapGet( request->parsedPostContent, "username" );
-			if( el != NULL )
-			{
-				usr = (char *)el->data;
-			}
-							
-			el =  HashmapGet( request->parsedPostContent, "password" );
-			if( el != NULL )
-			{
-				pass = (char *)el->data;
-			}
-			
-			el =  HashmapGet( request->parsedPostContent, "devname" );
-			if( el != NULL )
-			{
-				devname = (char *)el->data;
-			}
-							
-			if( usr != NULL && pass != NULL )
-			{
-				User *loggedUser = l->Authenticate( l, request, NULL, usr, pass, devname, NULL );
-				if( loggedUser != NULL )
-				{
-					char tmp[ 20 ];
-					sprintf( tmp, "LERR: %d\n", loggedUser->u_Error );	// check user.library to display errors
-					HttpAddTextContent( response, tmp );
-				}
-				else
-				{
-					HttpAddTextContent( response, "LERR: -1" );			// out of memory/user not found
-				}
-			}
-		}
-		DEBUG("user login response\n");
-
-		//HttpWriteAndFree( response );
-	}
-	else
-	{
-		struct TagItem tags[] = {
-			{	HTTP_HEADER_CONNECTION, (FULONG)StringDuplicate( "close" ) },
-			{TAG_DONE, TAG_DONE}
-		};
-		
-		response = HttpNewSimple(  HTTP_404_NOT_FOUND,  tags );
-	
-		//HttpWriteAndFree( response );
-		return response;
-	}
-	*/
-	return response;
-}
+*/

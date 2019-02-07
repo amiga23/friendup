@@ -1,27 +1,13 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
-/**
- * @file
+/** @file
  *
  * Definition of various types
  *
@@ -35,56 +21,72 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <util/log/log.h>
 #include "missing_defs.h"
 
-#ifndef FBOOL
-typedef int FBOOL;
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+#define	IS_BIG_ENDIAN			1
+#else
+#define	IS_LITTLE_ENDIAN		1
 #endif
 
-#ifndef FULONG
+// Check windows
+#if _WIN32 || _WIN64
+   #if _WIN64
+     #define ENV64BIT
+  #else
+    #define ENV32BIT
+  #endif
+#endif
+
+// Check GCC
+#if __GNUC__
+  #if __x86_64__ || __ppc64__
+    #define ENV64BIT
+  #else
+    #define ENV32BIT
+  #endif
+#endif
+
+#define SHIFT_LEFT( val, at) (val<<at)
+#define SHIFT_RIGHT( val, at) (val>>at)
+
+typedef int8_t FBOOL;
+
 typedef unsigned long FULONG;
-#endif
 
-#ifndef FLONG
 typedef long FLONG;
-#endif
 
-#ifndef IPTR
-typedef unsigned long * IPTR;
-#endif
+typedef uint64_t * IPTR;
 
-#ifndef FBYTE
 typedef unsigned char FBYTE;
-#endif
 
-#ifndef FUBYTE
 typedef unsigned char FUBYTE;
-#endif
 
-#ifndef FWORD
-typedef short FWORD;
-#endif
+typedef int16_t FWORD;
 
-#ifndef FUWORD
-typedef unsigned short FUWORD;
-#endif
+typedef uint16_t FUWORD;
 
-#ifndef FINT
-typedef int FINT;
-#endif
+typedef int32_t FINT;
 
-#ifndef FUINT
-typedef unsigned int FUINT;
-#endif
+typedef uint32_t FUINT;
 
 #ifndef FQUAD
-typedef long long FQUAD;
+typedef int64_t FQUAD;
 #endif
 
 #ifndef FUQUAD
-typedef unsigned long long FUQUAD;
+typedef uint64_t FUQUAD;
 #endif
+
+//#ifndef FQUAD
+//typedef long long FQUAD;
+//#endif
+
+//#ifndef FUQUAD
+//typedef unsigned long long FUQUAD;
+//#endif
 
 //#ifndef STRPTR
 //typedef char * STRPTR;
@@ -114,6 +116,16 @@ typedef void * APTR;
 // Our Calloc and Malloc 
 //
 
+#ifndef FCallocAlign
+#define FCallocAlign( MSIZE, MTYPE ) \
+	calloc( (((uintptr_t)MSIZE+15) & ~ (uintptr_t)0x0F), MTYPE )
+#endif
+
+#ifndef FMallocAlign
+#define FMallocAlign( MSIZE ) \
+	malloc( (((uintptr_t)MSIZE+15) & ~ (uintptr_t)0x0F) )
+#endif
+
 #ifndef FCalloc
 #define FCalloc( MSIZE, MTYPE ) \
 	calloc( MSIZE, MTYPE )
@@ -123,7 +135,9 @@ typedef void * APTR;
 #define FMalloc( MSIZE ) \
 	malloc( MSIZE )
 #endif
-	
+
+#define FRealloc(ptr, size) realloc(ptr, size)
+
 #ifndef FFree
 #define FFree( PTR ) free( PTR )
 #endif

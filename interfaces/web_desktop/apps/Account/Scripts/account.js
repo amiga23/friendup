@@ -1,29 +1,28 @@
 /*©agpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Affero General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Affero General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Affero   *
+* General Public License, found in the file license_agpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
 
 Application.run = function( msg, iface )
 {
-	var v = new View( {
+	var wflags = {
 		title: i18n( 'i18n_account' ),
-		width: 700,
-		height: 490
-	} );
+		width: 720,
+		height: 600
+	};
+
+	if( msg.args == 'addstorage' )
+	{
+		wflags.invisible = true;
+		wflags.hidden = true;
+	}
+	
+	var v = new View( wflags );
 	
 	v.onClose = function()
 	{
@@ -37,23 +36,117 @@ Application.run = function( msg, iface )
 	{
 		var s = JSON.parse( d );
 		var f = new File( 'Progdir:Templates/main.html' );
-		//f.replacements = {
-		//	'username' : s.Name,
-		//	'fullname' : s.FullName,
-		//	'email'    : s.Email
-		//};
-		f.i18n();
-		f.onLoad = function( data )
+		
+		// Inject available languages in template
+		var availLangs = {
+			'en': 'English',
+			'fr': 'French',
+			'no': 'Norwegian',
+			'fi': 'Finnish',
+			'pl': 'Polish'
+		};
+		var languages = '';
+		for( var a in availLangs )
 		{
-			v.setContent( data );
-			s.command = 'userinfo';
-			v.sendMessage( s );
-			
-			Authenticate.load( 'publickey', displayPublicKey );
+			var sel = a == Application.language ? ' selected="selected"' : '';
+			languages += '<option value="' + a + '"' + sel + '>' + availLangs[ a ] + '</option>';
 		}
-		f.load();
-	}
+		
+		// Inject possible Workspace modes
+		var modes = {
+			normal: i18n( 'i18n_mode_normal' ),
+			developer: i18n( 'i18n_mode_developer' ),
+			gamified: i18n( 'i18n_mode_gamified' )
+		};
+		var modeOut = '';
+		for( var a in modes )
+		{
+			var sel = a == Application.useMode ? ' selected="selected"' : '';
+			modeOut += '<option value="' + a + '"' + sel + '>' + modes[a] + '</option>';
+		}
+		
+		f.replacements = 
+		{
+			languages: languages,
+			modes: modeOut
+		};
+
+		// If FriendNetwork is enabled, add the options		
+		var m = new Module('system');
+		m.onExecuted = function( e,d )
+		{
+			if ( e == 'ok' && parseInt( d ) == 1 )
+			{
+				f.replacements.friendNetwork1 = '\
+<div class="Tab IconSmall fa-institution">' + i18n( 'i18n_friendNetwork' ) + '</div>\
+<div class="Tab IconSmall fa-institution">' + i18n( 'i18n_friendNetworkPowerSharing' ) + '</div>';
+
+				f.replacements.friendNetwork3 = '\
+<div class="Tab IconSmall fa-laptop">' + i18n( 'i18n_device_information' ) + '</div>';
+
+				var ff = new File( 'Progdir:Templates/friendnetwork1.html' );
+				ff.onLoad = function( data )
+				{
+					f.replacements.friendNetwork2 = data;
+
+					var fff = new File( 'Progdir:Templates/friendnetwork2.html' );
+					fff.onLoad = function( data )
+					{
+						f.replacements.friendNetwork4 = data;
+						finish();
+					};
+					fff.load();
+				};
+				ff.load();
+			}				
+			else
+			{
+				f.replacements.friendNetwork1 = '';
+				f.replacements.friendNetwork2 = '';
+				f.replacements.friendNetwork3 = '';
+				f.replacements.friendNetwork4 = '';
+				finish();
+			}
+		};
+		m.execute( 'checkfriendnetwork' );
+
+		function finish()
+		{
+			//f.replacements = {
+			//	'username' : s.Name,
+			//	'fullname' : s.FullName,
+			//	'email'    : s.Email
+			//};
+			f.i18n();
+			f.onLoad = function( data )
+			{
+				v.setContent( data );
+				s.command = 'userinfo';
+				v.sendMessage( s );
+				
+				if( msg.args == 'addstorage' )
+				{
+					v.sendMessage( { command: 'addstorage' } );
+				}				
+				
+				//Authenticate.load( 'publickey', displayPublicKey );
+				
+				Application.sendMessage( { type: 'encryption', command: 'publickey', args: { encoded: false } }, function( data )
+				{
+					if( data && data.publickey )
+					{
+						displayPublicKey( data.publickey );
+					}
+				} );
+			};
+			f.load();
+		}
+	};
 	m.execute( 'userinfoget', { id: msg.userId } );	
+	
+	// Set app in single mode
+	this.setSingleInstance( true );
+		
 }
 
 function displayPublicKey( data )
@@ -61,9 +154,12 @@ function displayPublicKey( data )
 	Application.mainView.sendMessage( { command : 'setkey', data : data } );
 }
 
+// Receive messages
 Application.receiveMessage = function( msg )
 {
 	if( !msg.command ) return;
+	
+	//console.log( 'Application.receiveMessage: ', msg );
 	
 	if( msg.command == 'saveresult' )
 	{
@@ -91,7 +187,7 @@ Application.receiveMessage = function( msg )
 		case 'encrypt':
 			if( msg.key )
 			{
-				console.log( 'encrypt msg: ', msg );
+				//console.log( 'encrypt msg: ', msg );
 				
 				Authenticate.encrypt( {
 					
@@ -117,7 +213,7 @@ Application.receiveMessage = function( msg )
 		case 'decrypt':
 			if( msg.key )
 			{
-				console.log( 'decrypt msg: ', msg );
+				//console.log( 'decrypt msg: ', msg );
 				
 				Authenticate.decrypt( {
 					
@@ -144,3 +240,4 @@ Application.receiveMessage = function( msg )
 			return;
 	}
 }
+

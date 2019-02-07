@@ -1,19 +1,10 @@
 /*©agpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Affero General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Affero General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Affero   *
+* General Public License, found in the file license_agpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
 
@@ -57,6 +48,10 @@ Application.run = function( msg, iface )
 				{
 					name: i18n( 'menu_print' ),
 					command: 'print'
+				},
+				{
+					name: i18n( 'menu_print_remote' ),
+					command: 'print_remote'
 				},
 				{
 					name: i18n( 'menu_quit' ),
@@ -325,6 +320,9 @@ Application.receiveMessage = function( msg )
 	if( !msg.command ) return;
 	switch( msg.command )
 	{
+		case 'applystyle':
+			this.mainView.sendMessage( msg );
+			break;
 		case 'togglevr':
 			this.toggleVR();
 			break;
@@ -351,6 +349,9 @@ Application.receiveMessage = function( msg )
 			this.newDocument();
 			break;
 		case 'print':
+			this.mainView.sendMessage( { command: 'print_iframe' } );
+			break;
+		case 'print_remote':
 			this.print();
 			break;
 		case 'remembercontent':

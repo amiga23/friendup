@@ -1,25 +1,12 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
 /** @file
  * 
  *  JSON converter body
@@ -55,7 +42,7 @@ jsmntok_t * JSONTokenise(char *js, unsigned int *entr )
 	
 	while (ret == JSMN_ERROR_NOMEM)
 	{
-		n = ( n << 1 ) + 1;
+		n = ( SHIFT_LEFT(n, 1) ) + 1;
 		tokens = realloc(tokens, sizeof(jsmntok_t) * n);
 		//log_null(tokens);
 		ret = jsmn_parse(&parser, js, jssize, tokens, n);
@@ -174,8 +161,8 @@ static void process_value(json_value* value, int depth)
 /**
  * Function convert C structure to JSON (char *)
  *
- * @param desc pointer to taglist which describe "to C conversion"
- * @param jsondata json data in string
+ * @param descr pointer to taglist which describe "to C conversion"
+ * @param data json data in string
  * @return new "C" structure or NULL when error will happen
  */
 BufString *GetJSONFromStructure( FULONG *descr, void *data )
@@ -263,7 +250,7 @@ BufString *GetJSONFromStructure( FULONG *descr, void *data )
 				}
 				break;
 				
-			case SQLT_TIMESTAMP:
+			case SQLT_DATETIME:
 				{
 					// '2015-08-10 16:28:31'
 					char date[ 512 ];
@@ -271,12 +258,12 @@ BufString *GetJSONFromStructure( FULONG *descr, void *data )
 					struct tm *tp = (struct tm *)( strptr+dptr[2]);
 					if( opt == 0 )
 					{
-						sprintf( date, "\"%s\": \"%4d-%2d-%2d %2d:%2d:%2d\" ", (char *)dptr[ 1 ], tp->tm_year, tp->tm_mon, tp->tm_mday, tp->tm_hour, tp->tm_min, tp->tm_sec );
+						sprintf( date, "\"%s\": \"%04d-%02d-%02d %20d:%02d:%02d\" ", (char *)dptr[ 1 ], tp->tm_year, tp->tm_mon, tp->tm_mday, tp->tm_hour, tp->tm_min, tp->tm_sec );
 						BufStringAdd( bs, date );
 					}
 					else
 					{
-						sprintf( date, ", \"%s\": \"%4d-%2d-%2d %2d:%2d:%2d\" ", (char *)dptr[ 1 ], tp->tm_year, tp->tm_mon, tp->tm_mday, tp->tm_hour, tp->tm_min, tp->tm_sec );
+						sprintf( date, ", \"%s\": \"%04d-%02d-%02d %02d:%02d:%02d\" ", (char *)dptr[ 1 ], tp->tm_year, tp->tm_mon, tp->tm_mday, tp->tm_hour, tp->tm_min, tp->tm_sec );
 						BufStringAdd( bs, date );
 					}
 					
@@ -297,7 +284,7 @@ BufString *GetJSONFromStructure( FULONG *descr, void *data )
 /**
  * Function convert JSON to C structure
  *
- * @param desc pointer to taglist which describe "to C conversion"
+ * @param descr pointer to taglist which describe "to C conversion"
  * @param jsondata json data in string
  * @return new "C" structure or NULL when error will happen
  */
@@ -369,13 +356,6 @@ void *GetStructureFromJSON( FULONG *descr, const char *jsondata )
 			
 			lastObject = data;
 			
-			for( i=0 ; i < value->u.object.length ; i++ )
-			{
-				//printf("------%d ---- %s\n", i, value->u.object.values[ i ].name );
-			}
-			
-			//DEBUG("Found obejct\n");
-			
 			while( dptr[0] != SQLT_END )
 			{
 				switch( dptr[ 0 ] )
@@ -389,11 +369,8 @@ void *GetStructureFromJSON( FULONG *descr, const char *jsondata )
 					case SQLT_INT:
 					{
 						int retPos = -1;
-						//DEBUG("FIND INT!\n");
-						
 						for( i = 0; i <  value->u.object.length; i++) 
 						{
-							//DEBUG("aaaaaaaaaaobject[%d].name = %s\n", i, locaval->u.object.values[i].name);
 							if( strcmp( value->u.object.values[i].name, (char *) dptr[1] ) == 0 )
 							{
 								retPos = i;
@@ -406,16 +383,28 @@ void *GetStructureFromJSON( FULONG *descr, const char *jsondata )
 							mval = value->u.object.values[retPos].value;
 						}
 						
+						/*
 						if( retPos >= 0 && mval->type == json_integer )
 						{
 							//DEBUG("ENTRY FOUND %s  int val %d\n",(char *) dptr[ 1 ], mval->u.integer );
+							memcpy( strptr + dptr[ 2 ], &(mval->u.integer), sizeof( int ) );
+						}
+						*/
+						
+						if( retPos >= 0  && mval->type == json_string && mval->u.string.ptr != NULL )
+						{
+							char *end;
+							FLONG val = strtol( mval->u.string.ptr, &end, 0 );
+							memcpy( strptr + dptr[ 2 ], &val, sizeof( FLONG ) );
+						}
+						else
+						{
 							memcpy( strptr + dptr[ 2 ], &(mval->u.integer), sizeof( int ) );
 						}
 					}
 					break;
 						
 					case SQLT_STR:
-					case SQLT_TIMESTAMP:
 					{
 						int retPos = -1;
 						for( i = 0; i <  value->u.object.length; i++) 
@@ -436,33 +425,45 @@ void *GetStructureFromJSON( FULONG *descr, const char *jsondata )
 						
 						if( retPos >= 0  && mval->type == json_string && mval->u.string.ptr != NULL )
 						{
-							//DEBUG("STRENTRY FOUND %s data %s\n", (char *)dptr[ 1 ], mval->u.string.ptr );
-							
-							// this is date
-							if( strlen( mval->u.string.ptr ) == 19 && mval->u.string.ptr[ 5 ] == '-' && mval->u.string.ptr[ 8 ] == '-' )
+							char *tmpval = StringDuplicate( mval->u.string.ptr );
+							memcpy( strptr+ dptr[ 2 ], &tmpval, sizeof( char *) );
+						}
+					}
+					break;
+					case SQLT_DATETIME:
+					{
+						int retPos = -1;
+						for( i = 0; i <  value->u.object.length; i++) 
+						{
+							if( strcmp( value->u.object.values[i].name, (char *)dptr[1] ) == 0 )
 							{
-								char *ptr = NULL;
-								struct tm ltm;
-							
-								//DEBUG("TIMESTAMP load\n");
-							
-								//ptr = strptime( row[ i ], "%C%y-%m-%d %H:%M:%S", &ltm );
-								if( ptr != NULL )
-								{
-									// REMEMBER, data fix
-								
-									ltm.tm_year += 1900;
-									ltm.tm_mon ++;
-								
-									memcpy( strptr+ dptr[ 2 ], &ltm, sizeof( struct tm) );
-								
-									//DEBUG("Year %d  month %d  day %d\n", ltm.tm_year, ltm.tm_mon, ltm.tm_mday );
-								}
+								retPos = i;
 							}
-							else		// this is string
+						}
+						
+						json_value*mval = NULL;
+						
+						if( retPos >= 0 )
+						{
+							mval = value->u.object.values[retPos].value;
+						}
+						
+						if( retPos >= 0  && mval->type == json_string && mval->u.string.ptr != NULL )
+						{
+							// this is date
+							if( strlen( mval->u.string.ptr ) == 19 && mval->u.string.ptr[ 4 ] == '-' && mval->u.string.ptr[ 7 ] == '-' )
 							{
-								char *tmpval = StringDuplicate( mval->u.string.ptr );
-								memcpy( strptr+ dptr[ 2 ], &tmpval, sizeof( char *) );
+								struct tm extm;
+								//2017-03-03 15:06:29
+								if( sscanf( (char *)mval->u.string.ptr, "%d-%d-%d %d:%d:%d", &(extm.tm_year), &(extm.tm_mon), &(extm.tm_mday), &(extm.tm_hour), &(extm.tm_min), &(extm.tm_sec) ) != EOF )
+								{
+								}
+								if( extm.tm_year > 1900 )
+								{
+									extm.tm_year -= 1900;
+								}
+							
+								memcpy( strptr + dptr[ 2 ], &extm, sizeof( struct tm) );
 							}
 						}
 					}
@@ -475,7 +476,7 @@ void *GetStructureFromJSON( FULONG *descr, const char *jsondata )
 		else if( value->type == json_array )		// object contain our objects
 		{
 			arrval = value;
-			
+
 			int length = value->u.array.length;
 			int x;
 			for (x = 0; x < length; x++) // get object from array
@@ -500,11 +501,8 @@ void *GetStructureFromJSON( FULONG *descr, const char *jsondata )
 					{
 						case SQLT_NODE:
 						{
-							//DEBUG("Node found\n");
 							MinNode *locnode = (MinNode *)(data + dptr[ 2 ]);
 							locnode->mln_Succ = (MinNode *)lastObject;
-							
-							//DEBUG("\n\nlastObject %x currobject %x\n\n", lastObject, data );
 						}
 						break;
 					
@@ -514,7 +512,6 @@ void *GetStructureFromJSON( FULONG *descr, const char *jsondata )
 							int retPos = -1;
 							for( i = 0; i < intlength; i++) 
 							{
-								//DEBUG("aaaaaaaaaaobject[%d].name = %s\n", i, locaval->u.object.values[i].name);
 								if( strcmp( locaval->u.object.values[i].name, (char *) dptr[1] ) == 0 )
 								{
 									retPos = i;
@@ -522,21 +519,25 @@ void *GetStructureFromJSON( FULONG *descr, const char *jsondata )
 							}
 							json_value*mval = locaval->u.object.values[retPos].value;
 							
-							if( retPos >= 0 && mval->type == json_integer )
+							//DEBUG("INT 1 '%s' '%ld'!\n\n\n\n", mval->u.string.ptr, mval->u.integer );
+							if( retPos >= 0  && mval->type == json_string && mval->u.string.ptr != NULL )
 							{
-								//DEBUG("ENTRY FOUND %s  int val %d\n",(char *) dptr[ 1 ], mval->u.integer );
+								char *end;
+								FLONG val = strtol( mval->u.string.ptr, &end, 0 );
+								memcpy( strptr + dptr[ 2 ], &val, sizeof( FLONG ) );
+							}
+							else
+							{
 								memcpy( strptr + dptr[ 2 ], &(mval->u.integer), sizeof( int ) );
 							}
 						}
 						break;
 						
 						case SQLT_STR:
-						case SQLT_TIMESTAMP:
 						{
 							int retPos = -1;
 							for( i = 0; i < intlength; i++) 
 							{
-								//DEBUG("aaaaaaaaaaobject[%d].name = %s\n", i, locaval->u.object.values[i].name);
 								if( strcmp( locaval->u.object.values[i].name, (char *)dptr[1] ) == 0 )
 								{
 									retPos = i;
@@ -547,33 +548,40 @@ void *GetStructureFromJSON( FULONG *descr, const char *jsondata )
 							
 							if( retPos >= 0  && mval->type == json_string && mval->u.string.ptr != NULL )
 							{
-								//DEBUG("STRENTRY FOUND %s data %s\n", (char *)dptr[ 1 ], mval->u.string.ptr );
-								
-								// this is date
-								if( strlen( mval->u.string.ptr ) == 19 && mval->u.string.ptr[ 5 ] == '-' && mval->u.string.ptr[ 8 ] == '-' )
+								char *tmpval = StringDuplicate( mval->u.string.ptr );
+								memcpy( strptr+ dptr[ 2 ], &tmpval, sizeof( char *) );
+							}
+						}
+						break;
+						
+						case SQLT_DATETIME:
+						{
+							int retPos = -1;
+							for( i = 0; i < intlength; i++) 
+							{
+								if( strcmp( locaval->u.object.values[i].name, (char *)dptr[1] ) == 0 )
 								{
-									char *ptr = NULL;
-									struct tm ltm;
-							
-									//DEBUG("TIMESTAMP load\n");
-							
-									//ptr = strptime( row[ i ], "%C%y-%m-%d %H:%M:%S", &ltm );
-									if( ptr != NULL )
-									{
-										// REMEMBER, data fix
-								
-										ltm.tm_year += 1900;
-										ltm.tm_mon ++;
-								
-										memcpy( strptr+ dptr[ 2 ], &ltm, sizeof( struct tm) );
-								
-										//DEBUG("Year %d  month %d  day %d\n", ltm.tm_year, ltm.tm_mon, ltm.tm_mday );
-									}
+									retPos = i;
 								}
-								else		// this is string
+							}
+							
+							json_value*mval = locaval->u.object.values[retPos].value;
+							
+							if( retPos >= 0  && mval->type == json_string && mval->u.string.ptr != NULL )
+							{
+								// this is date
+								if( strlen( mval->u.string.ptr ) == 19 && mval->u.string.ptr[ 4 ] == '-' && mval->u.string.ptr[ 7 ] == '-' )
 								{
-									char *tmpval = StringDuplicate( mval->u.string.ptr );
-									memcpy( strptr+ dptr[ 2 ], &tmpval, sizeof( char *) );
+									struct tm extm;
+									if( sscanf( (char *)mval->u.string.ptr, "%d-%d-%d %d:%d:%d", &(extm.tm_year), &(extm.tm_mon), &(extm.tm_mday), &(extm.tm_hour), &(extm.tm_min), &(extm.tm_sec) ) != EOF )
+									{
+									}
+									if( extm.tm_year > 1900 )
+									{
+										extm.tm_year -= 1900;
+									}
+							
+									memcpy( strptr + dptr[ 2 ], &extm, sizeof( struct tm) );
 								}
 							}
 						}
@@ -582,7 +590,6 @@ void *GetStructureFromJSON( FULONG *descr, const char *jsondata )
 					i++;
 					dptr += 3;
 				}
-				
 				lastObject = data;
 			}
 		}

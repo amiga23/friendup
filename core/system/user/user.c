@@ -1,25 +1,12 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
 /** @file
  *
  *  User
@@ -31,6 +18,7 @@
  */
 #include "user.h"
 #include <system/systembase.h>
+#include <system/cache/cache_user_files.h>
 
 /**
  * Create new User
@@ -42,7 +30,7 @@ User *UserNew( )
 	User *u;
 	if( ( u = FCalloc( 1, sizeof( User ) ) ) != NULL )
 	{
-		UserInit( &u );
+		UserInit( u );
 	}
 	else
 	{
@@ -55,34 +43,23 @@ User *UserNew( )
 /**
  * Initialize User structure
  *
- * @param pointer to memory where poiniter to User is stored
+ * @param u pointer to memory where poiniter to User is stored
  * @return 0 when success, otherwise error number
  */
-int UserInit( User **up )
+int UserInit( User *u )
 {
 	// First make sure we don't have a duplicate!
-	//User *sess = SLIB->sl_Sessions;
-	User *u = *up;
 	if( u == NULL )
 	{
 		FERROR("User provided = NULL\n");
 		return -1;
 	}
-	/*
-	while( sess != NULL )
-	{
-		// Found a duplicate, use it, clean up u (not needed), return
-		if( sess->u_Name != NULL && strcmp( sess->u_Name, u->u_Name ) == 0 && strcmp( sess->u_Password, u->u_Password ) == 0 )
-		{
-			FERROR( "[UserInit] User already exists. Give the one in this slot.\n" );
-			UserDelete( u );
-			*up = sess;
-			u = sess;
-			return 1;
-		}
-		sess = ( User *)sess->node.mln_Succ;
-	}*/
-	DEBUG( "[UserInit] Attempting to initialize mutex on new user.\n" );
+	
+	DEBUG( "[UserInit] Attempting to initialize mutex on new user. Pointer to new user %p\n", u );
+	
+	pthread_mutex_init( &(u->u_Mutex), NULL );
+	
+	//u->u_FileCache = CacheUserFilesNew( u->u_ID );
 	
 	return 0;
 }
@@ -97,9 +74,9 @@ int UserInit( User **up )
 int UserAddSession( User *usr, void *ls )
 {
 	UserSession *s = (UserSession *)ls;
-	UserSessList *us = NULL;
+	UserSessListEntry *us = NULL;
 	
-	UserSessList *exses = (UserSessList *)usr->u_SessionsList;
+	UserSessListEntry *exses = (UserSessListEntry *)usr->u_SessionsList;
 	while( exses != NULL )
 	{
 		if( exses->us == ls )
@@ -107,17 +84,11 @@ int UserAddSession( User *usr, void *ls )
 			DEBUG("Session was already added to user\n");
 			return 0;
 		}
-		exses = (UserSessList *) exses->node.mln_Succ;
+		exses = (UserSessListEntry *) exses->node.mln_Succ;
 	}
 	
-	if( ( us = FCalloc( 1, sizeof( UserSessList ) ) ) != NULL )
+	if( ( us = FCalloc( 1, sizeof( UserSessListEntry ) ) ) != NULL )
 	{
-		/*
-		if( s->us_MasterSession == NULL )
-		{
-			s->us_MasterSession = StringDuplicate( usr->u_MainSessionID );
-		}
-		*/
 		us->us = s;
 		s->us_User = usr;	// assign user to session
 		s->us_UserID = usr->u_ID;
@@ -140,13 +111,16 @@ int UserAddSession( User *usr, void *ls )
 void UserRemoveSession( User *usr, void *ls )
 {
 	UserSession *remses = (UserSession *)ls;
-	if( usr  == NULL )
+	if( usr  == NULL || ls == NULL )
 	{
 		FERROR("Cannot remove user session, its not connected to user\n");
 		return;
 	}
-	UserSessList *us = (UserSessList *)usr->u_SessionsList;
-	UserSessList *prev = us;
+	
+	FRIEND_MUTEX_LOCK( &(usr->u_Mutex) );
+	
+	UserSessListEntry *us = (UserSessListEntry *)usr->u_SessionsList;
+	UserSessListEntry *prev = us;
 	FBOOL removed = FALSE;
 	
 	if( us != NULL )
@@ -154,7 +128,11 @@ void UserRemoveSession( User *usr, void *ls )
 		// first entry
 		if( remses == us->us )
 		{
-			usr->u_SessionsList = (UserSessList *) us->node.mln_Succ;
+			usr->u_SessionsList = (UserSessListEntry *) us->node.mln_Succ;
+			if( usr->u_SessionsList != NULL )
+			{
+				usr->u_SessionsList->node.mln_Pred = NULL;
+			}
 			
 			usr->u_SessionsNr--;
 			removed = TRUE;
@@ -162,14 +140,14 @@ void UserRemoveSession( User *usr, void *ls )
 		else
 		{
 			prev = us;
-			us = (UserSessList *)us->node.mln_Succ;
+			us = (UserSessListEntry *)us->node.mln_Succ;
 			
 			while( us != NULL )
 			{
 				if( remses == us->us )
 				{
 					prev->node.mln_Succ = (MinNode *)us->node.mln_Succ;
-					UserSessList *nexts = (UserSessList *)us->node.mln_Succ;
+					UserSessListEntry *nexts = (UserSessListEntry *)us->node.mln_Succ;
 					if( nexts != NULL )
 					{
 						nexts->node.mln_Pred = (MinNode *)prev;
@@ -180,61 +158,20 @@ void UserRemoveSession( User *usr, void *ls )
 				}
 				
 				prev = us;
-				us = (UserSessList *)us->node.mln_Succ;
+				us = (UserSessListEntry *)us->node.mln_Succ;
 			}
 		}
-	}
-	
-	if( removed == TRUE )
-	{
-		pthread_mutex_lock( &(remses->us_WSMutex) );
-		if( remses->us_WSConnections != NULL )
-		{
-			WebsocketClient *nwsc = remses->us_WSConnections;
-			WebsocketClient *rws = nwsc;
-			while( nwsc != NULL )
-			{
-				rws = nwsc;
-				nwsc = (WebsocketClient *)nwsc->node.mln_Succ;
-				
-				DEBUG("Remove websockets\n");
-				FCWSData *data = rws->wc_WebsocketsData;
-				if( data != NULL )
-				{
-					data->fcd_ActiveSession = NULL;
-				}
-				rws->wc_UserSession = NULL;
-				FFree( rws );
-				rws = NULL;
-			}
-		}
-		pthread_mutex_unlock( &(remses->us_WSMutex) );
 		
-		DEBUG("Session released  sessid: %s device: %s \n", remses->us_SessionID, remses->us_DeviceIdentity );
-		
-		if( remses->us_DeviceIdentity != NULL )
-		{
-			FFree( remses->us_DeviceIdentity );
-		}
-		
-		/*
-		if( s->us_MasterSession != NULL )
-		{
-			FFree( s->us_MasterSession );
-		}
-		*/
-		
-		if( remses->us_SessionID != NULL )
-		{
-			FFree( remses->us_SessionID );
-		}
-		
-		FFree( remses );
 		if( us != NULL )
 		{
+			if( usr->u_SessionsNr <= 0 )
+			{
+				usr->u_SessionsList = NULL;
+			}
 			FFree( us );
 		}
 	}
+	FRIEND_MUTEX_UNLOCK( &(usr->u_Mutex) );
 }
 
 /**
@@ -246,6 +183,9 @@ void UserDelete( User *usr )
 {
 	if( usr != NULL )
 	{
+		int i;
+		FRIEND_MUTEX_LOCK( &(usr->u_Mutex) );
+		
 		if( usr->u_Printers != NULL )
 		{
 			usr->u_Printers = PrinterDeleteAll( usr->u_Printers );
@@ -253,17 +193,24 @@ void UserDelete( User *usr )
 		
 		if( usr->u_Applications != NULL )
 		{
-			usr->u_Applications = UserAppDeleteAll( usr->u_Applications );
+			UserAppDeleteAll( usr->u_Applications );
+			usr->u_Applications = NULL;
+		}
+		
+		if( usr->u_FileCache != NULL )
+		{
+			CacheUserFilesDelete( usr->u_FileCache );
+			usr->u_FileCache = NULL;
 		}
 		
 		// remove all sessions connected to user
 		
-		UserSessList *us = (UserSessList *)usr->u_SessionsList;
-		UserSessList *delus = us;
+		UserSessListEntry *us = (UserSessListEntry *)usr->u_SessionsList;
+		UserSessListEntry *delus = us;
 		while( us != NULL )
 		{
 			delus = us;
-			us = (UserSessList *)us->node.mln_Succ;
+			us = (UserSessListEntry *)us->node.mln_Succ;
 			
 			FFree( delus );
 		}
@@ -272,6 +219,11 @@ void UserDelete( User *usr )
 		// remove all remote users and drives
 		
 		RemoteUserDeleteAll( usr->u_RemoteUsers );
+		
+		for( i=0 ; i < usr->u_GroupsNr ; i++ )
+		{
+			UserGroupRemoveUser( usr->u_Groups[ i ], usr );
+		}
 
 		if( usr->u_Groups != NULL )
 		{
@@ -303,6 +255,15 @@ void UserDelete( User *usr )
 		{
 			FFree( usr->u_MainSessionID );
 		}
+		
+		if( usr->u_UUID )
+		{
+			FFree( usr->u_UUID );
+		}
+		
+		FRIEND_MUTEX_UNLOCK( &(usr->u_Mutex) );
+		
+		pthread_mutex_destroy( &(usr->u_Mutex) );
 		
 		FFree( usr );
 	}
@@ -433,6 +394,7 @@ File *UserRemDeviceByName( User *usr, const char *name, int *error )
 						lastone->node.mln_Succ = (struct MinNode *)next;
 					}
 				}
+
 				return remdev;
 			}
 			else
@@ -489,11 +451,14 @@ int UserRegenerateSessionID( User *usr, char *newsess )
 		{
 			while( lDev != NULL )
 			{
+				/*
 				if( lDev->f_SessionID )
 				{
 					FFree( lDev->f_SessionID );
 				}
-				lDev->f_SessionID = StringDuplicate( usr->u_MainSessionID );
+				*/
+				//lDev->f_SessionID = StringDuplicate( usr->u_MainSessionID );
+				lDev->f_SessionIDPTR = usr->u_MainSessionID;
 				lDev = (File *)lDev->node.mln_Succ;
 			}
 		}

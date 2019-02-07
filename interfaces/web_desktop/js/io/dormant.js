@@ -1,19 +1,10 @@
 /*©agpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Affero General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Affero General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Affero   *
+* General Public License, found in the file license_agpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
 
@@ -80,22 +71,6 @@ DormantMaster =
 {
 	appDoors: [],
 	events: {}, // Events from all applications, based on type
-	// Connect application to Friend Network
-	connectFriendNetworkTo: function( msg )
-	{
-		if( msg.callback )
-		{
-			msg.callback( { command: 'connect', response: 'ok'} );
-		}
-	},
-	// Disconnect application from Friend Network
-	disconnectFriendNetworkFrom: function( msg )
-	{
-		if( msg.callback )
-		{
-			msg.callback( { command: 'disconnect', response: 'ok' } );
-		}
-	},
 	// Add an application to the dormant master
 	addAppDoor: function( dormantDoorObject )
 	{
@@ -125,7 +100,11 @@ DormantMaster =
 		// Add door object with unique volume name
 		dormantDoorObject.title = namnum;
 		this.appDoors.push( dormantDoorObject );
-		if( typeof( Workspace ) != 'undefined' ) Workspace.refreshDormantDisks();
+		if( typeof( Workspace ) != 'undefined' ) 
+		{
+			if( Workspace.refreshDormantDisks )
+				Workspace.refreshDormantDisks();
+		}
 	},
 	// Get all doors
 	getDoors: function( callback )
@@ -134,18 +113,31 @@ DormantMaster =
 		for ( var a = 0; a < this.appDoors.length; a++ )
 		{
 			if( this.appDoors[a].getDoor )
+			{
 				doors.push( this.appDoors[a].getDoor() );
+			}
 		}
 		if( callback )
 			return callback( doors );
 		return doors;
 	},
-	delAppDoor: function( door )
+	delAppDoor: function( doorOrTitle )
 	{
 		var newd = [];
 		for ( var a = 0; a < this.appDoors.length; a++ )
 		{
-			if ( this.appDoors[a].title == door )
+			var found = false;
+			if ( typeof doorOrTitle == 'object' )
+			{
+				if ( this.appDoors[ a ] == doorOrTitle )
+					found = true;
+			}
+			else
+			{
+				if ( this.appDoors[ a ].title == doorOrTitle )
+					found = true;
+			}
+			if ( found )
 			{
 				for ( var b = 0; b < this.appDoors[a].windows.length; b++ )
 				{

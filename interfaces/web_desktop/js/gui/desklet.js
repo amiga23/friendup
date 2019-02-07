@@ -1,23 +1,45 @@
 /*©agpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Affero General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Affero General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Affero   *
+* General Public License, found in the file license_agpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
 
 var __desklets = [];
+
+function GuiDeskletScrollHorizontal( e )
+{
+	var l = ge( 'DockWindowList' );
+	if( !l ) return;
+	var lw = l.offsetWidth;
+	var m = e.clientX - l.offsetLeft;
+	if( m >= lw ) m = lw - 1;
+	var end = l.childNodes[ l.childNodes.length - 1 ];
+	if( !end ) { l.scrollLeft = 0; l.scrollTop = 0; return; }
+	var whole = end.offsetLeft + end.offsetWidth + 10;
+	var off = m / lw * ( whole - lw );
+	l.scrollLeft = off;
+	l.scrollTop = 0;
+}
+
+function GuiDeskletScrollVertical( e )
+{
+	var l = ge( 'DockWindowList' );
+	if( !l ) return;
+	var lh = l.offsetHeight;
+	var m = e.clientY - l.offsetTop;
+	if( m >= lh ) m = lh - 1;
+	var end = l.childNodes[ l.childNodes.length - 1 ];
+	if( !end ) { l.scrollLeft = 0; l.scrollTop = 0; return }
+	var whole = end.offsetTop + end.offsetHeight + 10;
+	var off = m / lh * ( whole - lh );
+	l.scrollLeft = 0;
+	l.scrollTop = off;
+}
+
 
 // A desklet that can be moved around on top of a div
 GuiDesklet = function ( pobj, width, height, pos, px, py )
@@ -65,11 +87,12 @@ GuiDesklet = function ( pobj, width, height, pos, px, py )
 	
 	// Create dom node
 	this.dom = document.createElement ( 'div' );
-	this.dom.className = 'Desklet';
+	this.dom.className = 'Desklet Initializing';
 	this.dom.id = this.makeUniqueId ();
 	this.desktop.appendChild ( this.dom );
 	this.dom.events = [];
 	this.dom.desklet = this;
+	this.dom.object = this;
 	this.addEvent = function( eve, func )
 	{
 		if( typeof( this.dom.events ) == 'undefined' )
@@ -91,39 +114,56 @@ GuiDesklet = function ( pobj, width, height, pos, px, py )
 			}
 		}
 	}
-	this.dom.onclick = function ( e )
+	
+	this.dom.clickFunc = function( e )
 	{
 		if ( !e ) e = window.event;
-		if ( typeof ( this.events['click'] ) != 'undefined' )
+		if ( this.events && typeof ( this.events['click'] ) != 'undefined' )
 		{
 			for ( var a = 0; a < this.events['click'].length; a++ )
 			{
 				this.events['click'][a]( e );
 			}
 		}
-		// TODO: make it work! And only on mobile!
 		if( window.isMobile )
 		{
-			if( !this.mobileClicked )
+			if( !this.object.open )
 			{
 				this.desklet.openDesklet();
-				this.mobileClicked = true;
 			}
 			else
 			{
 				this.desklet.closeDesklet();
-				this.mobileClicked = false;
 			}
 		}
-		else
-		{
-		}
 	}
-	// For touch devices
-	this.dom.addEventListener( 'touchstart', function( e )
+	
+	if( !isMobile )
 	{
-		this.onclick( e );
-	}, false );
+		this.dom.onclick = this.clickFunc;
+	}
+	else
+	{
+		// For touch devices
+		this.dom.addEventListener( 'touchstart', function( e )
+		{
+			this.touchX = e.touches[0].pageX;
+			this.touchY = e.touches[0].pageY;
+		}, false );
+		this.dom.addEventListener( 'touchend', function( e )
+		{
+			if( !e.changedTouches ) return
+			
+			var px = e.changedTouches[0].clientX;
+			var py = e.changedTouches[0].clientY;
+			
+			var dist = Math.sqrt( Math.pow( this.touchX - px, 2 ) + Math.pow( this.touchY - py, 2 ) );
+			if( dist > 40 || !this.classList.contains( 'Open' ) )
+			{
+				this.clickFunc( e );
+			}
+		}, false );
+	}
 	this.dom.onmouseup = function ( e )
 	{
 		if ( !e ) e = window.event;
@@ -153,92 +193,85 @@ GuiDesklet = function ( pobj, width, height, pos, px, py )
 	
 	this.openDesklet = function( e )
 	{
-		// New drivepanel alike method! (2017!!
-		if( !Workspace.appPanel )
+		var self = this;
+		if( !this.open && !this.opening )
 		{
-			Workspace.appPanel = ge( 'DoorsScreen' ).getElementsByClassName( 'ScreenContent' )[0].getElementsByTagName( 'div' )[0];
-		}
-		var dp = Workspace.appPanel;
-		
-		// Create disposable menu
-		var menu = new FullscreenMenu();
-		var items = this.dom.getElementsByClassName( 'Launcher' );
-		for( var a = 0; a < items.length; a++ )
-		{
-			var iconItem = document.createElement( 'div' );
-			iconItem.className = 'File';
-			iconItem.onclick = items[a].onclick;
-			iconItem.innerHTML = '' +
-				'<div class="Icon"><div class="Door" style="background-image: ' + items[a].style.backgroundImage.split( '"' ).join( '\'' ) + '">' + 
-				'</div></div>';
-			menu.addMenuItem( {
-				text: items[a].getAttribute( 'title' ),
-				clickItem: iconItem
-			} );
-		}
-		menu.show( i18n( 'i18n_run_application' ) );
-	
-		return cancelBubble( e );
-		
-		/* Old method */
-		
-		if( Workspace && typeof Workspace.closeDrivePanel == 'function' )
-			Workspace.closeDrivePanel();
-		
-		this.mobileClicked = true;
-		
-		/* count content + calc our "optimal" dimensions + position ourselves */
-		var items = this.dom.getElementsByClassName('Launcher');
-		var itemWidth = this.width; // - (this.margin*2);
-		var itemHeight = itemWidth; // squared items for now....
-		
-		var margin2 = this.margin * 2;
-		var screenSpaceH = ge ( 'DoorsScreen' ).offsetWidth - margin2;
-		var screenSpaceV = ge ( 'DoorsScreen' ).offsetHeight - margin2 - 80;
-				
-		//console.log( 'Data....', screenSpaceH, screenSpaceV, itemHeight, itemWidth,	'Items amount/list', items.length, items );		
-		
-		var colsAvailable = Math.floor( screenSpaceH / itemWidth ) - 1;
-		var rowsNeeded = Math.ceil( items.length / colsAvailable );
-		
-		if( rowsNeeded * itemHeight > screenSpaceV )
-		{
-			// we need scrolling
-		}
-		
-		//we center us on the screen
-		this.dom.style.height = Math.ceil(rowsNeeded * itemHeight + this.margin*2) + 'px';
-		this.dom.style.top = Math.floor( ( screenSpaceV - rowsNeeded * itemHeight) / 2) + 64 + 'px';
+			this.opening = true;
+			hideKeyboard();
 			
-		var myWidth = Math.min( Math.floor( screenSpaceH ), ( Math.floor( itemWidth * colsAvailable ) + (this.margin*2) + 12 ) );
+			// New drivepanel alike method
+			if( !Workspace.appPanel )
+				Workspace.appPanel = ge( 'DoorsScreen' ).getElementsByClassName( 'ScreenContent' )[0].getElementsByTagName( 'div' )[0];
 		
-		this.dom.style.width = myWidth + 'px';
-		this.dom.style.left = Math.floor( ( screenSpaceH - myWidth ) / 2 ) + 'px';
-		this.dom.style.right = 'auto';
+			if( isMobile )
+			{
+				this.dom.style.overflowY = 'auto';
+				this.dom.classList.add( 'ScrollBarSmall' );
+			}
 		
-		// determine y pos
-		this.dom.className = 'Desklet Open';
+			var dp = Workspace.appPanel;
+		
+			if( Workspace && typeof Workspace.closeDrivePanel == 'function' )
+				Workspace.closeDrivePanel();
+		
+			this.mobileClicked = true;
+		
+			// determine y pos
+			this.dom.className = 'Desklet Open';
+			var d = this.dom;
+			setTimeout( function()
+			{
+				d.classList.add( 'Opened' );
+				self.opening = false;
+				self.open = true;
+			}, 5 );
+			document.body.classList.add( 'AppsShowing' );
+			if( Workspace.widget ) Workspace.widget.slideUp();
+			return cancelBubble( e );
+		}
 	}
 	
-	this.closeDesklet = function()
+	this.closeDesklet = function( e )
 	{
-		this.dom.className = 'Desklet';
-		this.dom.style.bottom = '10px';
-		this.dom.style.right = '10px';
-		this.dom.style.left = 'auto';
-		this.dom.style.top = '100%';
-		this.dom.style.width = '64px';
-		this.dom.style.height = 'auto';
+		var self = this;
+		if( this.open )
+		{
+			this.dom.className = 'Desklet Open';
+			var d = this.dom;
+			setTimeout( function()
+			{
+				d.classList.remove( 'Open' );
+				d.style.overflowY = 'visible';
+				self.open = false;
+			}, 250 );
+			document.body.classList.remove( 'AppsShowing' );
+			Workspace.redrawIcons();
+			return cancelBubble( e );
+		}
 	}
 	
 	// End mobile version ------------------------------------------------------
 	
 	// Overwritable render function --------------------------------------------
 	
-	this.render = function ( forceRefresh )
+	this.render = function( forceRefresh )
 	{
+		var self = this;
+		
 		// Setup the container for the launcher icons
 		this.dom.style.position = 'absolute';
+		
+		if( window.isMobile )
+		{
+			// Create hider
+			var hider = document.createElement( 'div' );
+			hider.className = 'Hider';
+			hider.onclick = function()
+			{
+				self.closeDesklet();
+			}
+			this.dom.appendChild( hider );
+		}
 		
 		// Move window list
 		var viewList = false;
@@ -268,12 +301,24 @@ GuiDesklet = function ( pobj, width, height, pos, px, py )
 				items.push( this.viewList.childNodes[a] );
 		}
 		
+		var horizontal = this.direction == 'horizontal' ? true : false;
+		
 		var itemWidth = this.conf && this.conf.size ? this.conf.size : 56;
 		var itemHeight = this.conf && this.conf.size ? this.conf.size : 56;
-		var margin = 8;
+		var marginWidth = horizontal ? 12 : 7;
+		var marginHeight = !horizontal ? 12 : 7;
 		
 		var pos = this.conf.layout;
 		var position = this.conf.position;
+		
+		var scrollerMargins = {
+			top: 0,
+			left: 0,
+			right: 0,
+			bottom: 0
+		};
+		
+		var positionClass = '';
 		
 		if( position != 'fixed' )
 		{
@@ -282,22 +327,35 @@ GuiDesklet = function ( pobj, width, height, pos, px, py )
 				case 'left_center':
 				case 'left_top':
 				case 'left_bottom':
+					positionClass = 'Left';
+					// Adapt icons
+					scrollerMargins.left = Workspace.mainDock.dom.offsetWidth;
+					this.direction = 'vertical';
+					break;
 				case 'right_center':
 				case 'right_top':
 				case 'right_bottom':
 				default:
+					positionClass = 'Right';
+					scrollerMargins.right = Workspace.mainDock.dom.offsetWidth;
 					this.direction = 'vertical';
 					break;
 				case 'top_left':
 				case 'top_center':
 				case 'top_right':
+					positionClass = 'Top';
+					scrollerMargins.top = Workspace.mainDock.dom.offsetHeight;
+					this.direction = 'horizontal';
+					break;
 				case 'bottom_left':
 				case 'bottom_center':
 				case 'bottom_right':
+					positionClass = 'Bottom';
+					scrollerMargins.bottom = Workspace.mainDock.dom.offsetHeight;
 					this.direction = 'horizontal';
 					break;
 			}
-	
+			
 			if( window.isMobile )
 			{
 				/* we can only have one for now.... */
@@ -306,6 +364,15 @@ GuiDesklet = function ( pobj, width, height, pos, px, py )
 				this.dom.style.top = '100%';
 				this.dom.style.width = '64px';
 				this.dom.style.height = 'auto';
+			}
+			
+			if( positionClass )
+			{
+				this.dom.classList.remove( 'Left' );
+				this.dom.classList.remove( 'Right' );
+				this.dom.classList.remove( 'Top' );
+				this.dom.classList.remove( 'Bottom' );
+				this.dom.classList.add( positionClass );
 			}
 		}
 		// Fixed!
@@ -320,26 +387,61 @@ GuiDesklet = function ( pobj, width, height, pos, px, py )
 		
 		if( window.isMobile )
 		{
-			this.closeDesklet();
 			return;
-		}		
+		}
+		
+		// Event for taskbars that are full
+		if( this.direction == 'horizontal' )
+		{
+			if( this.scrollEvent )
+			{
+				this.dom.removeEventListener( 'mousemove', this.scrollEvent );
+			}
+			this.scrollEvent = GuiDeskletScrollHorizontal;
+			this.dom.addEventListener( 'mousemove', GuiDeskletScrollHorizontal );
+		}
+		// Vertical
+		else
+		{
+			if( this.scrollEvent )
+			{
+				this.dom.removeEventListener( 'mousemove', this.scrollEvent );
+			}
+			this.scrollEvent = GuiDeskletScrollVertical;
+			this.dom.addEventListener( 'mousemove', GuiDeskletScrollVertical );
+		}
 		
 		// Do the rendering of icons
-		var sh = ge( 'DoorsScreen' )[ this.direction == 'vertical' ? 'offsetHeight' : 'offsetWidth' ] - 40; // TODO: 40 is the titlebar, make dynamic
-		var availSpace = sh - 80;
-		var calcLength = ( ( ( this.direction == 'vertical' ? itemHeight : itemWidth ) + margin ) * items.length ) - margin;
+		var sh = ge( 'DoorsScreen' )[ !horizontal ? 'offsetHeight' : 'offsetWidth' ];
+		if( !horizontal )
+		{
+			var t = GetThemeInfo( 'ScreenTitle' );
+			sh -= parseInt( t.height );
+		}
+		
+		// With dockwindowlist we allocate a bit more room for tasks
+		var availSpace = sh - ( ge( 'DockWindowList' ) ? 200 : 80 );
+		
+		var step = horizontal ? marginWidth : marginHeight;
+		
+		var calcLength = ( ( ( !horizontal ? itemHeight : itemWidth ) + step ) * items.length ) - step;
 		var blocks = Math.ceil( calcLength / availSpace ); // TODO: Make dynamic
 		if( blocks < 1 ) blocks = 1;
 		
 		var currBlock = 0;
 		var len = 0;
-		var itemUnit = ( this.direction == 'vertical' ? itemHeight : itemWidth ) + margin;
-		var maxLength = availSpace;
-		var x = margin, y = margin, maxLen = 0;
+		var itemUnit = ( !horizontal ? itemHeight : itemWidth ) + step;
+		var maxLength = availSpace - itemUnit;
+		
+		var x = marginWidth, y = marginHeight, maxLen = 0;
 		var cols = rows = 1;
+		this.iconListPixelLength = 0;
+		var comp;
 		for( var a = 0; a < items.length; a++ )
 		{
 			var cn = items[a];
+			if( cn.classList.contains( 'WindowList' ) || cn.classList.contains( 'DockMenu' ) )
+				continue;
 			cn.style.position = 'absolute';
 			cn.style.left = x + 'px';
 			cn.style.top = y + 'px';
@@ -356,13 +458,13 @@ GuiDesklet = function ( pobj, width, height, pos, px, py )
 				continue;
 			}
 			
-			if( this.direction == 'vertical' )
+			if( !horizontal )
 			{
-				y += itemHeight + margin;
+				y += itemHeight + step;
 			}
 			else
 			{
-				x += itemWidth + margin;
+				x += itemWidth + step;
 			}
 			len += itemUnit;
 			
@@ -371,35 +473,59 @@ GuiDesklet = function ( pobj, width, height, pos, px, py )
 			
 			if( len >= maxLength && a != items.length - 1 )
 			{
+				comp = ( !horizontal ? y : x );
+				if( !this.iconListPixelLength || this.iconListPixelLength < comp )
+					this.iconListPixelLength = comp;
 				len = 0;
-				if( this.direction == 'vertical' )
+				if( !horizontal )
 				{
-					x += itemWidth + margin;
-					y = margin;
+					// Let others be able to read this
+					x += itemWidth + step;
+					y = step;
 					cols++;
 				}
 				else
 				{
-					x = margin;
-					y += itemHeight + margin;
+					// Let others be able to read this
+					x = step;
+					y += itemHeight + step;
 					rows++;
 				}
+			}
+			else
+			{
+				comp = ( !horizontal ? y : x );
+				if( !this.iconListPixelLength || this.iconListPixelLength < comp )
+					this.iconListPixelLength = comp;
 			}
 		}
 		
 		// Size of container
-		if( this.direction == 'vertical' )
+		if( !horizontal )
 		{
-			this.pixelHeight = maxLen + margin;
-			this.dom.style.width = margin + Math.floor( cols * ( itemWidth + margin ) ) + 'px';
+			this.dom.classList.remove( 'Horizontal' );
+			this.dom.classList.add( 'Vertical' );
+			this.pixelHeight = maxLen + step;
+			// We need a full dock here
+			if( globalConfig.viewList == 'dockedlist' )
+			{
+				this.pixelHeight = sh;
+			}
+			this.dom.style.width = marginWidth + Math.floor( cols * ( itemWidth + marginWidth ) ) + 'px';
 			this.dom.style.height = this.pixelHeight + 'px';
 		}
 		else
 		{
-			this.pixelWidth = maxLen + margin;
+			this.dom.classList.remove( 'Vertical' );
+			this.dom.classList.add( 'Horizontal' );
+			this.pixelWidth = maxLen + step;
+			// We need a full dock here
+			if( globalConfig.viewList == 'dockedlist' )
+			{
+				this.pixelWidth = document.body.offsetWidth;
+			}
 			this.dom.style.width = this.pixelWidth + 'px';
-			this.dom.style.height = margin + Math.floor( rows * ( itemHeight + margin ) ) + 'px';
-			
+			this.dom.style.height = marginHeight + Math.floor( rows * ( itemHeight + marginHeight ) ) + 'px';
 		}
 		
 		// Position of container
@@ -465,7 +591,20 @@ GuiDesklet = function ( pobj, width, height, pos, px, py )
 					this.dom.style.right = '0px';
 					break;
 			}
+			// Add margins around icons based on dock!
+			if( !window.isMobile )
+			{
+				var scroller = Workspace.screen.contentDiv;
+				if( scroller )
+				{
+					scroller.style.paddingTop = scrollerMargins.top + 'px';
+					scroller.style.paddingLeft = scrollerMargins.left + 'px';
+					scroller.style.paddingRight = scrollerMargins.right + 'px';
+					scroller.style.paddingBottom = scrollerMargins.bottom + 'px';
+				}
+			}
 		}
+		PollTaskbar();
 	}
 	// End render --------------------------------------------------------------
 	this.toggleViewVisibility = function( ele, state )
@@ -480,6 +619,7 @@ GuiDesklet = function ( pobj, width, height, pos, px, py )
 				if( state ) ele.state = state;
 				else ele.state = ele.state == 'hidden' ? 'visible' : 'hidden';
 				
+				var elementCount = 0;
 				for( var i in ele.views )
 				{
 					var s = ele.views[i].windowObject.getFlag( 'screen' );
@@ -487,14 +627,31 @@ GuiDesklet = function ( pobj, width, height, pos, px, py )
 					if( ele.views[i].windowObject.getFlag( 'invisible' ) ) continue;
 					ele.views[i].windowObject.setFlag( 'hidden', ele.state == 'hidden' ? true : false );
 					_WindowToFront( ele.views[i] );
+					elementCount++;
 				}
 				if( ele.state == 'hidden' )
 				{
 					ele.classList.add( 'Minimized' );
+					if( ele.elementCount )
+					{
+						ele.elementCount.innerHTML = '<span>' + ( elementCount > 0 ? elementCount : '' ) + '</span>';
+					}
+					else
+					{
+						var d = document.createElement( 'div' );
+						d.className = 'ElementCount';
+						d.innerHTML = '<span>' + ( elementCount > 0 ? elementCount : '' ) + '</span>';
+						ele.appendChild( d );
+						ele.elementCount = d;
+					}
 				}
 				else
 				{
 					ele.classList.remove( 'Minimized' );
+					if( ele.elementCount )
+					{
+						ele.removeChild( ele.elementCount );
+					}
 				}
 				return true;
 			}
@@ -516,6 +673,8 @@ GuiDesklet = function ( pobj, width, height, pos, px, py )
 			}
 		}
 		var found = false;
+		var elementCount = 0;
+		
 		for( var a = 0; a < Workspace.applications.length; a++ )
 		{
 			var ap = Workspace.applications[a];
@@ -530,21 +689,48 @@ GuiDesklet = function ( pobj, width, height, pos, px, py )
 				var s = ap.windows[w].getFlag( 'screen' );
 				if( s.div.id != 'DoorsScreen' ) continue;
 				
+				elementCount++; // Count app windows
+				
 				if( st == 'idle' )
 					st = ap.windows[w].getFlag( 'hidden' );
 				if( ap.windows[w].getFlag( 'invisible' ) ) continue;
-				ap.windows[w].setFlag( 'hidden', st ? false : true );
-				if( st )
+				// Just minimize
+				var ws = ap.windows[w].workspace;
+				if( st || ws != globalConfig.workspaceCurrent )
 				{
 					_WindowToFront( ap.windows[w]._window );
 					_ActivateWindowOnly( ap.windows[w]._window.parentNode );
 					ele.classList.remove( 'Minimized' );
+					Workspace.switchWorkspace( ws );
+					ap.windows[w].setFlag( 'hidden', false );
 				}
-				else ele.classList.add( 'Minimized' );
+				else
+				{
+					ele.classList.add( 'Minimized' );
+					ap.windows[w].setFlag( 'hidden', true );
+				}
+			}
+			if( !ele.elementCount )
+			{
+				var d = document.createElement( 'div' );
+				d.className = 'ElementCount';
+				d.innerHTML = '<span>' + ( elementCount > 0 ? elementCount : '' ) + '</span>';
+				ele.elementCount = d;
+				ele.appendChild( d );
+			}
+			else
+			{
+				ele.elementCount.innerHTML = '<span>' + ( elementCount > 0 ? elementCount : '' ) + '</span>';
 			}
 			return true;
 		}
 		return false;
+	}
+	
+	// Tell desklet that it is initialized. Now do animations etc..
+	this.initialized = function()
+	{
+		this.dom.classList.remove( 'Initialized' );
 	}
 	
 	this.addLauncher = function ( o )
@@ -553,7 +739,8 @@ GuiDesklet = function ( pobj, width, height, pos, px, py )
 		if ( o.src && ( o.click || o.exe ) )
 		{
 			var div = document.createElement ( 'div' );
-			div.className = 'Launcher';
+			div.className = 'Launcher MousePointer';
+			if( o.className ) div.className += ' ' + o.className;
 			div.style.width = this.width - ( this.margin * 2 ) + 'px';
 			div.style.backgroundSize = 'contain';
 			div.style.height = this.width - ( this.margin * 2 ) + 'px';
@@ -569,9 +756,13 @@ GuiDesklet = function ( pobj, width, height, pos, px, py )
 				}
 			}
 			
+			// Convert image urls
 			if( o.src.indexOf( ':' ) > 0 && o.src.substr( 0, 4 ) != 'http' )
+			{
 				o.src = getImageUrl( o.src );
+			}
 			
+			// This is web bookmarks
 			if( o.src == '.url' )
 			{
 				function loadIco( u )
@@ -598,7 +789,6 @@ GuiDesklet = function ( pobj, width, height, pos, px, py )
 									div.innerHTML = '<div style="position: absolute; top: 50%; left: 50%"><img style="position: absolute; left: -' + ( j.width * .5 ) + 'px; top: -' + ( j.height * .5 ) + 'px" src="' + j.src + '"/></div>';
 								}
 								j.src = s;
-								console.log( s );
 							}
 						}
 						catch( e ){};
@@ -610,7 +800,7 @@ GuiDesklet = function ( pobj, width, height, pos, px, py )
 				div.style.backgroundImage = '';
 				var d = document.createElement( 'div' );
 				d.className = 'File';
-				d.innerHTML = '<div class="Icon"><div style="background-size: contain" class="TypeWebUrl"></div></div>';
+				d.innerHTML = '<div class="Icon"><div style="background-size: contain" class="TypeWebUrl"><span>' + o.exe + '</span></div></div><span>' + o.exe + '</span>';
 				div.appendChild( d );
 			}
 			else if( o.src.substr( 0, 1 ) == '.' )
@@ -619,19 +809,32 @@ GuiDesklet = function ( pobj, width, height, pos, px, py )
 				var d = document.createElement( 'div' );
 				var t = o.src.substr( 1, o.src.length - 1 ).toUpperCase();
 				d.className = 'File';
-				d.innerHTML = '<div class="Icon"><div class="Type' + t + '"></div></div>';
+				d.innerHTML = '<div class="Icon"><div class="Type' + t + '"></div></div><span>' + o.exe + '</span>';
 				div.appendChild( d );
 			}
 			else
 			{
-				div.style.backgroundImage = 'url(' + o.src + ')';
+				div.style.backgroundImage = 'url(\'' + o.src + '\')';
+				div.innerHTML = '<span>' + ( o.displayname ? o.displayname: o.exe ) + '</span>';
+				div.setAttribute('data-exename', o.exe);
+				div.setAttribute('data-workspace', ( o.workspace ? o.workspace : 0 ) );
+				div.setAttribute('data-displayname', ( o.displayname ? o.displayname: o.exe ) );
+				div.setAttribute('id', 'dockItem_' + o.exe );
 			}
-			if( o.click ) div.onclick = o.click;
-			else div.onclick = function( e )
+			
+			function clickFunc( e )
 			{
-				// We got views? Just manage them
-				if( dk.toggleViewVisibility( this ) ) return;
+				if( div.helpBubble ) div.helpBubble.close();
 				
+				// We got views? Just manage them
+				if( !isMobile )
+				{
+					if( dk.toggleViewVisibility( this ) ) return;
+				}
+
+				if( currentMovable )
+					_DeactivateWindow( currentMovable );
+			
 				var args = '';
 				var executable = o.exe + '';
 
@@ -650,7 +853,10 @@ GuiDesklet = function ( pobj, width, height, pos, px, py )
 						executable = t[0];	
 					}
 				}
-				
+			
+				if( o.workspace && o.workspace >= 0 )
+					args += ' workspace=' + o.workspace;
+			
 				// Extension
 				if( executable.indexOf( ':' ) > 0 )
 				{
@@ -660,20 +866,20 @@ GuiDesklet = function ( pobj, width, height, pos, px, py )
 						l = l.split('/');
 						l = l[l.length-1];
 					}
-					
+				
 					if( l.length > 1 )
 					{
 						var ext = l;
-						ext = '.' + ext[ext.length-1].toLowerCase();
-		
+						ext = '.' + ext[ ext.length - 1 ].toLowerCase();
+	
 						// Check mimetypes
 						for( var a in Workspace.mimeTypes )
 						{
-							var mt = Workspace.mimeTypes[a];
+							var mt = Workspace.mimeTypes[ a ];
 
 							for( var b in mt.types )
 							{
-								if( ext == mt.types[b].toLowerCase() )
+								if( ext == mt.types[ b ].toLowerCase() )
 								{
 									return ExecuteApplication( mt.executable, executable );
 								}
@@ -681,23 +887,29 @@ GuiDesklet = function ( pobj, width, height, pos, px, py )
 						}
 					}
 				}
-				
-				var docked = globalConfig.viewList == 'docked';
-				
+			
+				var docked = globalConfig.viewList == 'docked' || globalConfig.viewList == 'dockedlist';
+			
 				// If not a single instance app, execute
-				if( !docked && !friend.singleInstanceApps[ executable ] || o.exe.indexOf( ' ' ) > 0 )
+				if( !docked && !Friend.singleInstanceApps[ executable ] || o.exe.indexOf( ' ' ) > 0 )
 				{
 					ExecuteApplication( executable, args );
 				}
 				// Just minimize apps if you find them, if not execute
 				else
 				{
-					if( dk.toggleExecutable( div ) ) return;
-					
+					if( dk.toggleExecutable( div ) ) 
+					{
+						return;
+					}
+				
 					// If we didn't find the app, execute
 					ExecuteApplication( executable, args );
 				}
-				
+			
+				// Switch to the workspace of the app
+				Workspace.switchWorkspace( o.workspace );
+			
 				// Close it for mobile
 				if( window.isMobile )
 				{
@@ -705,9 +917,54 @@ GuiDesklet = function ( pobj, width, height, pos, px, py )
 					self.dom.mobileClicked = false;
 				}
 			}
-			div.addEventListener( 'touchstart', div.onclick );
-			if ( o.title )
-				div.setAttribute( 'title', o.title ? o.title : o.src );
+			
+			var evt = window.isMobile || window.isTablet ? 'ontouchend' : 'onclick';
+			
+			if( window.isMobile )
+			{
+				// You have 0.25s to click
+				div.ontouchstart = function( e )
+				{
+					this.touchTime = ( new Date() ).getTime();
+					setTimeout( function()
+					{
+						div.touchTime = null;
+					}, 250 );
+				}
+			}
+			
+			if( o.click )
+			{
+				div[ evt ] = function( e )
+				{
+					var t = e.target ? e.target : e.srcElement;
+					if( t != div ) return;
+					if( window.isMobile && !dk.open ) return;
+					o.click( e );
+					if( div.helpBubble ) div.helpBubble.close();
+				}
+			}
+			else 
+			{
+				div[ evt ] = function( e )
+				{				
+					if( window.isMobile && !this.touchTime )
+						return;
+					
+					var t = e.target ? e.target : e.srcElement;
+					if( t != div ) return;
+					if( window.isMobile && !dk.open ) return;
+					clickFunc( e );
+					if( div.helpBubble ) div.helpBubble.close();
+				}
+			}
+			
+			var bubbletext = o.displayname ? o.displayname : ( o.title ? o.title : o.src );
+			
+			if( bubbletext )
+			{
+				CreateHelpBubble( div, bubbletext );
+			}
 			this.dom.appendChild( div );
 			this.refresh ();
 			return true;
@@ -745,6 +1002,7 @@ GuiDesklet = function ( pobj, width, height, pos, px, py )
 	this.dom.drop = function( eles )
 	{
 		var dropped = 0;
+		
 		for( var a = 0; a < eles.length; a++ )
 		{
 			var el = eles[a];
@@ -762,6 +1020,7 @@ GuiDesklet = function ( pobj, width, height, pos, px, py )
 					application: fi.Title ? fi.Title : fi.Filename,
 					type: 'executable'
 				};
+				if( !element.title ) element.title = element.exe;
 			}
 			// Normal files
 			else if( el.fileInfo && el.Title && el.fileInfo.Type == 'File' )
@@ -777,7 +1036,7 @@ GuiDesklet = function ( pobj, width, height, pos, px, py )
 			
 			// Add to launcher
 			if( self.addLauncher( element ) )
-			{				
+			{
 				var m = new Module( 'dock' );
 				var w = this.view;
 				m.onExecuted = function( r, dat )
@@ -785,7 +1044,8 @@ GuiDesklet = function ( pobj, width, height, pos, px, py )
 					// Refresh dock noe more time
 					Workspace.reloadDocks();
 				}
-				m.execute( 'additem', { type: element.type, application: element.application, shortdescription: '' } );
+				var o = { type: element.type, application: element.application, icon: element.src, shortdescription: '' };
+				m.execute( 'additem', o );
 				dropped++;
 			}
 		}

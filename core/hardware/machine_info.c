@@ -1,25 +1,21 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
+/** @file
+ *
+ *  Machine Info
+ *
+ *  Get information about working machine
+ *
+ *  @author PS (Pawel Stefanski)
+ *  @date pushed 19/10/2016
+ */
 
 #include "machine_info.h"
  
@@ -55,9 +51,12 @@
 
 #include <util/simple_hash.h>
  
-//---------------------------------get MAC addresses ---------------------------------
-// we just need this for purposes of unique machine id. So any one or two 
-// mac's is fine.
+/**
+ * Function is hashing mac address
+ *
+ * @param mac pointer to mac address
+ * @return hashed mac address
+ */
 
 FUWORD HashMacAddress( FBYTE *mac )
 {
@@ -65,15 +64,17 @@ FUWORD HashMacAddress( FBYTE *mac )
  
 	for ( unsigned int i = 0; i < 6; i++ )
 	{
-		hash += ( mac[i] << (( i & 1 ) * 8 ));
+		hash += ( SHIFT_LEFT( mac[i], (( i & 1 ) * 8 ) ) );
 	}
 	return hash;
 }
 
-//
-//
-//
- 
+/**
+ * Get machine name
+ *
+ * @return pointer to machine name
+ */
+
 const char* GetMachineName()
 {
 	static struct utsname u;
@@ -86,10 +87,13 @@ const char* GetMachineName()
 	return u.nodename;
 }
 
-//
-//
-//
- 
+/**
+ * Get hashed mac address
+ *
+ * @param mac1 pointer to memory where hashed mac address will be stored
+ * @param mac2 pointer to memory where hashed mac (of second interface if exist) will be stored
+ */
+
 void GetMacHash( FUWORD *mac1, FUWORD *mac2 )
 {
    *mac1 = 0;
@@ -184,10 +188,12 @@ void GetMacHash( FUWORD *mac1, FUWORD *mac2 )
 	}
 }
 
-//
-//
-//
- 
+/**
+ * Hash information about disks
+ *
+ * @return Hashed disk variable (FUWORD)
+ */
+
 FUWORD GetVolumeHash()
 {
 	// we don't have a 'volume serial number' like on windows. 
@@ -197,7 +203,7 @@ FUWORD GetVolumeHash()
  
 	for ( unsigned int i = 0; sysname[i]; i++ )
 	{
-		hash += ( sysname[i] << (( i & 1 ) * 8 ));
+		hash += SHIFT_LEFT( sysname[i], (( i & 1 ) * 8 ));
 	}
  
 	return hash;
@@ -220,12 +226,26 @@ FUWORD GetVolumeHash()
  
 #else // !DARWIN
 
-//
-//
-//
- 
- static void GetCpuid( FUINT* p, FUINT ax )
+/**
+ * Static locking function.
+ *
+ * @param p pointer to memory where CPUID will be stored
+ * @param ax ax register value
+ */
+
+ static void GetCpuid( FUINT* p, FUINT ax __attribute__((unused)))
  {
+	char *ptr = (char *)p;
+	ptr[ 0 ] = 'u';
+	ptr[ 1 ] = 'n';
+	ptr[ 2 ] = 'k';
+/*
+	#if defined( __arm__ ) || defined( __arm64__ )
+	char *ptr = (char *)p;
+	ptr[ 0 ] = 'a';
+	ptr[ 1 ] = 'r';
+	ptr[ 2 ] = 'm';
+	#else
     __asm __volatile
     (   "movl %%ebx, %%esi\n\t"
         "cpuid\n\t"
@@ -234,12 +254,16 @@ FUWORD GetVolumeHash()
           "=c" (p[2]), "=d" (p[3])
         : "0" (ax)
     );
+	#endif
+*/
  }
  
- //
- //
- //
- 
+/**
+ * Get CPUID as hashed information
+ *
+ * @return CPUID hash as FUBYTE
+ */
+
  FUWORD GetCpuHash()
  {  
 	FUINT cpuinfo[4] = { 0, 0, 0, 0 };
@@ -258,9 +282,11 @@ FUWORD GetVolumeHash()
 
 static FUWORD id[5];
 
-//
-//
-//
+/**
+ * Compute Unique System ID
+ *
+ * @return pointer to FUWORD table with computed ID (4bytes)
+ */
 
 static FUWORD* ComputeSystemUniqueId()
 {
@@ -283,13 +309,18 @@ static FUWORD* ComputeSystemUniqueId()
 	{
 		id[4] += id[i];
 	}
-	DEBUG("ID computed\n");
-    
+
 	Smear( id );
     
 	computed = TRUE;
 	return id;
 }
+
+/**
+ * Get system unique ID
+ *
+ * @return FC Node unique ID as string
+ */
 
 char* GetSystemUniqueId()
 {
@@ -301,19 +332,15 @@ char* GetSystemUniqueId()
 		return NULL;
 	}
 	const char *mname = GetMachineName();
-	DEBUG("Getmachine name %s\n", mname );
 	if( mname != NULL )
 	{
 		strcat( uniqueID, mname );
 	}
 
-	DEBUG("uniqueID %s len %d\n", uniqueID, strlen(uniqueID) );
-	
 #ifndef CYGWIN_BUILD
 	FUWORD *id = ComputeSystemUniqueId();
 	if( id != NULL )
 	{
-		DEBUG("id is not null uniqueID %s len %d\n", uniqueID, strlen(uniqueID) );
 		unsigned int i = 0;
 		
 		for ( i = 0; i < 5; i++ )
@@ -321,7 +348,7 @@ char* GetSystemUniqueId()
 			char num[17];
 			memset( num, 0, sizeof(num) );
 			snprintf( num, 16, "%x", id[i] );
-			//DEBUG("i %d %s\n", i, uniqueID );
+
 			strcat( uniqueID, "-" );
       
 			switch( strlen( num ))

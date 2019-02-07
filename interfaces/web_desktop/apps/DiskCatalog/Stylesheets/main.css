@@ -38,6 +38,31 @@
 	height: 300px;
 }
 
+#Userlist
+{
+	top: 10px;
+	right: 10px;
+	position: absolute;
+	z-index: 2;
+}
+
+#Userlist p
+{
+	margin: 0;
+}
+
+#Userlist p strong
+{
+	display: block;
+	float: left;
+	padding: 5px 10px;
+}
+
+#Userlist select
+{
+	padding: 2px 5px;
+}
+
 .Disk .Image
 {
 	display: block;
@@ -123,3 +148,4 @@
 	display: block;
 	clear: both;
 }
+

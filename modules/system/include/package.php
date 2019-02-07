@@ -1,23 +1,13 @@
 <?php
-/*©lpgl*************************************************************************
+/*©lgpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Lesser General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Lesser General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Lesser   *
+* General Public License, found in the file license_lgpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
-
 
 /*******************************************************************************
 * This command creates a Friend package, ready to be installed in the software * 
@@ -93,12 +83,22 @@ if( isset( $args->args->filename ) )
 				$z = new File( $filename . '.fpkg' );
 				$res = $z->Save( file_get_contents( '/tmp/' . $ff ) );
 				unlink( '/tmp/' . $ff );
-				die( 'ok<!--separate-->' . $args->args->filename . '.fpkg<!--separate-->' . $res );
+				$r = explode( '<!--separate-->', $res );
+				if( $r[0] == 'ok' )
+				{
+					die( 'ok<!--separate-->{"response":0,"message":"File was transferred correctly.","file":"' . $args->args->filename . '.fpkg"}' );
+				}
+				else
+				{
+					die( 'fail<!--separate-->{"response":0,"message":"Could not transfer package to server directory."}' );
+				}
 			}
+			die( 'fail<!--separate-->{"response":0,"message":"Could not unzip package file.","file":"' . $args->args->filename . '"}' );
 		}
+		die( 'fail<!--separate-->{"response":0,"message":"Could not decode the JSON content.","file":"' . $args->args->filename . '"}' );
 	}
+	die( 'fail<!--separate-->{"response":0,"message":"Could not load the file specified.","file":"' . $args->args->filename . '"}' );
 }
 
-die( 'fail' );
-
+die( 'fail<!--separate-->{"response":0,"message":"No file specified."}' );
 ?>

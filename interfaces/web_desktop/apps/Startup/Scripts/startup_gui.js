@@ -1,19 +1,10 @@
 /*©agpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Affero General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Affero General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Affero   *
+* General Public License, found in the file license_agpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
 
@@ -29,6 +20,7 @@ Application.receiveMessage = function( msg )
 	switch( msg.command )
 	{
 		case 'saveitem':
+			
 			var o = [];
 			for( var a in this.views )
 			{
@@ -48,8 +40,15 @@ Application.receiveMessage = function( msg )
 				
 				if( d )
 				{
-					list = JSON.parse( d );
-					list = list.startupsequence;
+					try
+					{
+						list = JSON.parse( d );
+						list = list.startupsequence;
+					}
+					catch( e ) 
+					{ 
+						console.log( { e:e, d:d } ); 
+					}
 				}
 				if( list == '[]' ) list = [];
 
@@ -61,7 +60,7 @@ Application.receiveMessage = function( msg )
 						if( a == msg.itemId ) list[a] = msg.itemcommand;
 					}
 				}
-					
+				
 				var m = new Module( 'system' );
 				m.onExecuted = function( e, d )
 				{
@@ -156,7 +155,17 @@ function LoadStartupSequence()
 			ge( 'Cont' ).innerHTML = str;
 			return;
 		}
-		var sequence = JSON.parse( d );
+		var sequence = false;
+		
+		try
+		{
+			sequence = JSON.parse( d );
+		}
+		catch( e )
+		{
+			console.log( { e:e, d:d } );
+		}
+		
 		sequence = sequence ? sequence.startupsequence : [];
 		if( sequence == '[]' ) sequence = [];
 		if( sequence.length )

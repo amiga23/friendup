@@ -2,24 +2,13 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
+
 
 
 // Get arguments from argv
@@ -44,11 +33,32 @@ if( isset( $argv ) && isset( $argv[1] ) )
 	}
 	$GLOBALS['args'] = $kvdata;
 	$args = $GLOBALS['args'];
+	
 	if( is_string( $argv[1] ) )
 	{
+		// Are we in the wrong place?
 		if( str_replace( array( '/', '.' ), '', $argv[1] ) == '' )
 		{
-			die( '<script>document.location.href=\'/webclient/index.html\';</script>' );
+			$host = '';
+			$conf = parse_ini_file( 'cfg/cfg.ini', true );
+			if( $conf && $conf['FriendCore'][ 'fchost' ] )
+			{
+				$host = $conf['FriendCore'][ 'fchost' ];
+				if( $conf['Core'][ 'SSLEnable' ] )
+					$host = 'https://' . $host;
+				else $host = 'http://' . $host;
+			}
+			
+			// If we're not using a proxy, add the designated Friend Core port
+			if( 
+				isset( $conf['FriendCore']['fcnoproxy'] ) && $conf['FriendCore']['fcnoproxy'] == true &&
+				isset( $conf['FriendCore']['port'] )
+			)
+			{
+				$host .= ':' . $conf[ 'FriendCore' ][ 'port' ];
+			}
+			
+			die( '<script>document.location.href=\'' . $host . '/webclient/index.html\';</script>' );
 		}
 		// Check for quest accounts
 		else if( preg_match( '/\/guests[\/]{0,1}/i', $argv[1], $m ) )
@@ -88,8 +98,14 @@ if( isset( $argv ) && isset( $argv[1] ) )
 			}
 			die( file_get_contents( 'cfg/crt/key.pub' ) );
 		}
+		else if( preg_match( '/\/fileaccess[\/]{0,1}/i', $argv[1], $m ) )
+		{
+			// external server file access interface
+			require_once( 'fileaccess.php' );
+		}
 		else
 		{
+
 			if( substr( $argv[1], 0, 1 ) == '/' )
 				$argv[1] = substr( $argv[1], 1, strlen( $argv[1] ) - 1 );
 			$test = explode( '/', $argv[1] );
@@ -170,6 +186,9 @@ if( isset( $argv ) && isset( $argv[1] ) )
 					print( "---http-headers-end---\n" );
 					
 					$url = ($ar['SSLEnable']?'https://':'http://') . ( $ar['fconlocalhost'] ? 'localhost' : $ar['fchost'] ) . ':' . $ar['fcport'] . '/system.library/file/read/';
+					// Potential new code
+					/*readfile( $url . '?devname=' . urlencode( $devname ) . '&path=' . urlencode( $base . $path ) . '&mode=rs&sessionid=' . urlencode( $auth ? $auth : $session ) );
+					die();*/
 					if( $f = fopen( $url . '?devname=' . urlencode( $devname ) . '&path=' . urlencode( $base . $path ) . '&mode=rs&sessionid=' . urlencode( $auth ? $auth : $session ), 'r' ) )
 					{
 						while( $data = fread( $f, 131072 ) )
@@ -179,6 +198,7 @@ if( isset( $argv ) && isset( $argv[1] ) )
 						fclose( $f );
 						die();
 					}
+					
 				}	
 			}
 		}
@@ -188,9 +208,9 @@ if( isset( $argv ) && isset( $argv[1] ) )
 // If we pass what is allowed, continue.
 if( !strstr( $argv[1], '..' ) && $argv[1] != '/' )
 {
-	if( file_exists( 'scripts' ) && is_dir( 'scripts' ) && file_exists( 'scripts/' . $argv[1] ) )
+	if( file_exists( 'php/scripts' ) && is_dir( 'php/scripts' ) && file_exists( 'php/scripts/' . $argv[1] . '.php' ) )
 	{
-		include( 'scripts' . $argv[1] );
+		require( 'php/scripts/' . $argv[1] . '.php' );
 	}
 }
 

@@ -1,29 +1,19 @@
 <?php
-/*©lpgl*************************************************************************
+/*©lgpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Lesser General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Lesser General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Lesser   *
+* General Public License, found in the file license_lgpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
-
 
 global $Logger;
 
 require_once( 'php/classes/door.php' );
 
-// Device activation
+// Disk activation
 if( strstr( $args->args->application, ':' ) )
 {
 	$deviceName = reset( explode( ':', $args->args->application ) );
@@ -60,8 +50,9 @@ if( strstr( $args->args->application, ':' ) )
 			{
 				$Logger->log( '[ActivateApplication] Refreshing drive permissions.' );
 				$d = new Door( $deviceName . ':' );
-				$d->dosQuery( '/system.library/device/unmount?devname=' . $deviceName );
-				$d->dosQuery( '/system.library/device/mount?devname=' . $deviceName );
+				/*$t1 = $d->dosQuery( '/system.library/device/unmount?devname=' . $deviceName );
+				$t2 = $d->dosQuery( '/system.library/device/mount?devname=' . $deviceName );
+				$t3 = $d->dosQuery( '/system.library/device/refresh?devname=' . $deviceName );*/
 			}
 			else
 			{

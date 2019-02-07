@@ -1,25 +1,12 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
 /** @file
  * 
  *  INRAM Filesystem body
@@ -80,14 +67,16 @@ INRAMFile *INRAMFileNew( int type, char *path, char *name )
  * @param nf pointer to INRAMFile structure which will be deleted
  */
 
-void INRAMFileDelete( INRAMFile *nf )
+FLONG INRAMFileDelete( INRAMFile *nf )
 {
+	FLONG deleted = 0;
 	if( nf != NULL )
 	{
 		if( nf->nf_Type == INRAM_FILE )
 		{
 			if( nf->nf_Data != NULL )
 			{
+				deleted = nf->nf_Data->bs_Size;
 				BufStringDelete( nf->nf_Data );
 			}
 		}
@@ -102,6 +91,7 @@ void INRAMFileDelete( INRAMFile *nf )
 		}
 		FFree( nf );
 	}
+	return deleted;
 }
 
 /**
@@ -353,8 +343,9 @@ INRAMFile *INRAMFileRemoveByPath( INRAMFile *root, char *path )
  *
  * @param root pointer to INRAMFile from which entry will be removed
  */
-void INRAMFileDeleteAll( INRAMFile *root )
+FLONG INRAMFileDeleteAll( INRAMFile *root )
 {
+	FLONG deleted = 0;
 	INRAMFile *f = root->nf_Children;
 	
 	while( f != NULL )
@@ -362,13 +353,14 @@ void INRAMFileDeleteAll( INRAMFile *root )
 		INRAMFile *del = f;
 		if( f->nf_Type == INRAM_DIR )
 		{
-			INRAMFileDeleteAll( f );
+			deleted += INRAMFileDeleteAll( f );
 		}
 		
 		f = (INRAMFile *)f->node.mln_Succ;
 		
-		INRAMFileDelete( del );
+		deleted += INRAMFileDelete( del );
 	}
+	return deleted;
 }
 
 /**

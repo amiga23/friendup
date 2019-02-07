@@ -1,21 +1,14 @@
 /*©agpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Affero General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Affero General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Affero   *
+* General Public License, found in the file license_agpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
+
+var user = '';
 
 /* Init connection window */
 Application.oldSettings = false;
@@ -32,6 +25,7 @@ Application.run = function( msg )
 		}
 		m.execute( 'getlocale', { type: 'DOSDrivers', locale: data.locale } );
 	} );
+	user = Application.userId;
 }
 
 /* Cancel the operation */
@@ -103,6 +97,7 @@ Application.saveChanges = function()
 	// Have hashed password and password is not dummy
 	else if( ge( 'HashedPassword' ) && ge( 'HashedPassword' ).value != '********' )
 		data.Password = 'HASHED' + Sha256.hash( ge( 'HashedPassword' ).value );
+		
 	if( ge( 'Path'      ) ) data.Path = ge( 'Path' ).value;
 	if( ge( 'Type'      ) ) data.Type = ge( 'Type' ).value; else if( Application.oldSettings && Application.oldSettings.Type ) data.Type = Application.oldSettings.Type;
 	if( ge( 'Workgroup' ) ) data.Workgroup = ge( 'Workgroup' ).value;
@@ -128,6 +123,26 @@ Application.saveChanges = function()
 		data.EncryptedKey = ge( 'EncryptedKey' ).value;
 	}
 	
+	if( ge( 'Key' ) )
+	{
+		var keys = [];
+		
+		var opt = ge( 'Key' ).getElementsByTagName( 'option' );
+		
+		if( opt && opt.length > 0 )
+		{
+			for( var a = 0; a < opt.length; a++ )
+			{
+				if( opt[a].value && opt[a].selected )
+				{
+					keys.push( opt[a].value );
+				}
+			}
+		}
+		
+		data.KeysID = ( keys ? keys.join( ',' ) : '' );
+	}
+	
 	// Custom fields
 	var inps = document.getElementsByTagName( 'input' );
 	var txts = document.getElementsByTagName( 'textarea' );
@@ -145,7 +160,7 @@ Application.saveChanges = function()
 			data[inps[a].id] = inps[a].value;
 		}
 	}
-	
+
 
 	var m = new Module( 'system' );
 	m.onExecuted = function( e, dat )
@@ -159,13 +174,12 @@ Application.saveChanges = function()
 			Application.sendMessage( { command: 'refresh' } );
 			Application.cancel();
 		}
-		else
-		{
-			console.log( dat );
-		}
+		
+		console.log( dat );
 	}
+	
+	data.userid = user;
 
-	console.log('dataset is',data);
 	if( ge( 'FileSystemID' ) && ge( 'FileSystemID' ).value > 0 )
 	{
 		m.execute( 'editfilesystem', data );
@@ -185,6 +199,8 @@ Application.receiveMessage = function( msg )
 		
 			var d = msg.info;
 			var out = msg.types;
+			var keys = msg.keys;
+			user = msg.user;
 			
 			if( msg.info && msg.info.ID )
 			{
@@ -215,6 +231,7 @@ Application.receiveMessage = function( msg )
 				if( ge( 'conf.Pollable' ) ) ge( 'conf.Pollable' ).checked = ( conf.Pollable == 'yes' ? 'checked' : '' );
 				if( ge( 'conf.Invisible' ) ) ge( 'conf.Invisible' ).checked = ( conf.Invisible == 'yes' ? 'checked' : '' );
 				if( ge( 'conf.Executable' ) ) ge( 'conf.Executable' ).value = conf.Executable ? conf.Executable : '';
+				if( ge( 'conf.DiskSize' ) ) ge( 'conf.DiskSize' ).value = conf.DiskSize ? conf.DiskSize : '';
 				
 				if( d.Key && ge( 'EncryptedKey' ) && ge( 'PublicKey' ) )
 				{
@@ -242,6 +259,12 @@ Application.receiveMessage = function( msg )
 				ge( 'Types' ).innerHTML = '<select id="Type" class="FullWidth" onchange="LoadDOSDriverGUI()">' + out + '</select>';
 			}
 			
+			if( ge( 'Keys' ) )
+			{
+				var str = '<option value="">' + i18n( 'i18n_select_encryption_key' ) + '</option>' + ( keys ? keys : '' );
+				ge( 'Keys' ).innerHTML = '<select id="Key" class="FullWidth" multiple>' + str + '</select>';
+			}
+			
 			break;
 		
 		case 'setkey':
@@ -264,6 +287,7 @@ function LoadDOSDriverGUI()
 	{
 		if( e == 'ok' )
 		{
+			i18nAddTranslations( d );
 			var f = new File();
 			f.i18n();
 			for( var a in f.replacements )
@@ -277,6 +301,8 @@ function LoadDOSDriverGUI()
 	}
 	m.execute( 'dosdrivergui', { type: ge( 'Type' ).value } );
 }
+
+
 
 function setCover()
 {

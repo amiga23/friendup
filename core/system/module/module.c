@@ -1,25 +1,12 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
 /** @file
  * 
  *  Module body
@@ -61,20 +48,20 @@ EModule *EModuleCreate( void *sb, const char *path, const char *name )
 
 	if( ( mod = FCalloc( sizeof(EModule), 1 ) ) != NULL )
 	{
-		if( ( mod->Name = FCalloc( strlen( name )+1, sizeof(char) ) ) != NULL )
+		if( ( mod->em_Name = FCalloc( strlen( name )+1, sizeof(char) ) ) != NULL )
 		{
-			strcpy( mod->Name, name );
+			strcpy( mod->em_Name, name );
 		}
 
-		if( ( mod->Path = FCalloc( strlen( path )+1, sizeof(char) ) ) != NULL )
+		if( ( mod->em_Path = FCalloc( strlen( path )+1, sizeof(char) ) ) != NULL )
 		{
-			strcpy( mod->Path, path );
+			strcpy( mod->em_Path, path );
 		}
 
-		if( ( mod->handle = dlopen ( path, RTLD_NOW ) ) != NULL )
+		if( ( mod->em_Handle = dlopen( path, RTLD_NOW ) ) != NULL )
 		{
-			mod->Run = dlsym( mod->handle, "Run");
-			mod->GetSuffix = dlsym ( mod->handle, "GetSuffix");
+			mod->Run = dlsym( mod->em_Handle, "Run");
+			mod->GetSuffix = dlsym( mod->em_Handle, "GetSuffix");
 		}
 		
 		mod->em_SB = sb;
@@ -91,22 +78,20 @@ void EModuleDelete( EModule *mod )
 {
 	if( mod != NULL )
 	{
-		if( mod->Name )
+		if( mod->em_Name )
 		{
-			FFree( mod->Name );
+			FFree( mod->em_Name );
 		}
 
-		if( mod->Path )
+		if( mod->em_Path )
 		{
-			FFree( mod->Path );
+			FFree( mod->em_Path );
 		}
 
-		if( mod->handle )
+		if( mod->em_Handle )
 		{
-			dlclose ( mod->handle );
+			dlclose ( mod->em_Handle );
 		}
-
 		FFree( mod );
 	}
-
 }

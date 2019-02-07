@@ -1,19 +1,10 @@
 /*©agpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Affero General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Affero General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Affero   *
+* General Public License, found in the file license_agpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
 
@@ -54,17 +45,70 @@ Application.run = function( msg, iface )
 	
 	this.redrawMenu();
 	
-	// We start with a bang!
-	// TODO: Fix bug
-	if( msg.args && msg.args.toLowerCase().indexOf( '.mp3' ) > 0 )
+	// Started with arguments
+	if( msg.args )
+		this.handleFiles( msg.args );
+}
+
+// Add the files of as playlist
+Application.addPlaylist = function ( fname )
+{
+	var f = new File( fname );
+	f.onLoad = function( data )
 	{
-		this.receiveMessage( {
-			command: 'append_to_playlist_and_play',
-			items: [ { Filename: msg.args } ]
-		} );
+		try
+		{
+			var js = JSON.parse( data );
+			Application.receiveMessage( { 
+				command: 'append_to_playlist_and_play',
+				items: js
+			} );
+		}
+		catch( e )
+		{
+			Notify( { title: 'Could not handle file', text: 'File was corrupted or not a valid playlist.' } );
+		}
+	}
+	f.load();
+}
+
+
+// Handle files by path
+Application.handleFiles = function( args )
+{
+	// We start with a bang!
+	if( args )
+	{
+		var ext = args.split( '.' ).pop();
+		if( ext.length )
+		{
+			switch( ext.toLowerCase() )
+			{
+				case 'mp3':
+				case 'ogg':
+				case 'flac':
+				case 'wav':
+					var fn = args.split( ':' )[1];
+					if( fn.indexOf( '/' ) > 0 )
+						fn = fn.split( '/' ).pop();
+					this.receiveMessage( {
+						command: 'append_to_playlist_and_play',
+						items: [ { Filename: fn, Path: args } ]
+					} );
+					break;
+				case 'pls':
+					this.addPlaylist( args );
+					break;
+			}
+		}
+		else
+		{
+			Notify( { title: 'Unhandled file format', text: 'Could not read ' + args } );
+		}
 	}
 }
 
+// Redraws the main application pulldown menu
 Application.redrawMenu = function()
 {
 	this.mainView.setMenuItems( [
@@ -94,14 +138,16 @@ Application.redrawMenu = function()
 				},
 				{
 					name: i18n( 'i18n_toggle_mini_playlist' + ( this.miniplaylist ? '_hide' : '_show' ) ),
-					command: 'mini_playlist'
+					command: 'toggle_miniplaylist',
+					playlist: this.playlist,
+					index: this.index
 				}
 			]
 		}
 	] );
 }
 
-// About exotica
+// About exotica view window
 Application.openAbout = function()
 {
 	if( this.aboutWindow ) return;
@@ -130,7 +176,7 @@ Application.editPlaylist = function()
 	if( this.playlistWindow ) return;
 	this.playlistWindow = new View( {
 		title: i18n( 'i18n_edit_playlist' ),
-		width: 600,
+		width: 900,
 		height: 600
 	} );
 	var p = this.playlistWindow;
@@ -186,6 +232,7 @@ Application.editPlaylist = function()
 	f.load();
 }
 
+// Opens a playlist using a file dialog
 Application.openPlaylist = function()
 {
 	if( this.of ) return;
@@ -195,6 +242,8 @@ Application.openPlaylist = function()
 	}, '', 'load' );
 }
 
+// Adds items from an array to the playlist...
+// If no items are specified, you get the option of selecting from a file dialog
 Application.addToPlaylist = function( items )
 {
 	if( !items )
@@ -227,21 +276,32 @@ Application.addToPlaylist = function( items )
 	
 }
 
-// 
+// Receives events from OS and child windows
 Application.receiveMessage = function( msg )
 {
 	if( !msg.command ) return;
 	switch( msg.command )
 	{
-		case 'mini_playlist':
-			this.mainView.sendMessage( { command: 'miniplaylist' } );
+		case 'add_source':
+			if( this.playlistWindow )
+				this.playlistWindow.sendMessage( msg );
+			break;
+			
+		// Toggle the visibility of the mini playlist
+		case 'toggle_miniplaylist':
 			this.miniplaylist = this.miniplaylist ? false : true;
+			this.mainView.sendMessage( { command: 'toggle_miniplaylist' } );
+			this.receiveMessage( { command: 'mini_playlist', index: this.index } );
+			this.redrawMenu();
+			break;
+		// Redraw the mini playlist
+		case 'mini_playlist':
 			this.mainView.setFlag( 'resize', true );
-			this.mainView.setFlag( 'height', this.miniplaylist ? 360 : 160 );
 			this.mainView.setFlag( 'min-height', this.miniplaylist ? 360 : 160 );
 			this.mainView.setFlag( 'max-height', this.miniplaylist ? 360 : 160 );
+			this.mainView.setFlag( 'height', this.miniplaylist ? 360 : 160 );
 			this.mainView.setFlag( 'resize', false );
-			this.redrawMenu();
+			this.mainView.sendMessage( { command: 'miniplaylist', playlist: this.playlist, index: this.index, visibility: this.miniplaylist } );
 			break;
 		case 'about_exotica':
 			this.openAbout();
@@ -252,6 +312,13 @@ Application.receiveMessage = function( msg )
 				playlist: this.playlist,
 				index:    this.index
 			} );
+			if( this.playlistWindow )
+			{
+				this.playlistWindow.sendMessage( {
+					command: 'refresh',
+					items: this.playlist
+				} );
+			}
 			break;
 		case 'edit_playlist':
 			this.editPlaylist();
@@ -260,7 +327,13 @@ Application.receiveMessage = function( msg )
 			this.openPlaylist();
 			break;
 		case 'add_to_playlist':
-			this.addToPlaylist();
+			if( msg.items )
+			{
+				for( var a in msg.items )
+					Application.playlist.push( msg.items[a] );
+				Application.receiveMessage( { command: 'get_playlist' } );
+			}
+			else this.addToPlaylist();
 			break;
 		case 'clear_playlist':
 			Application.playlist = [];
@@ -294,6 +367,16 @@ Application.receiveMessage = function( msg )
 				} );
 			}
 			Application.receiveMessage( { command: 'get_playlist' } );
+			break;
+		// Comes from playlist editor
+		case 'set_playlist':
+			this.playlist = msg.items;
+			this.index = msg.index;
+			this.mainView.sendMessage( {
+				command:  'updateplaylist',
+				playlist: this.playlist,
+				index:    this.index
+			} );
 			break;
 		case 'append_to_playlist_and_play':
 			if( msg.items.length )
@@ -353,8 +436,8 @@ Application.receiveMessage = function( msg )
 										items: Application.playlist
 									} );
 								}
-								Application.receiveMessage( { command: 'get_playlist' } );
 							}
+							Application.receiveMessage( { command: 'get_playlist' } );
 						}
 						f.load();
 					}
@@ -382,15 +465,20 @@ Application.receiveMessage = function( msg )
 			if( this.playlistWindow )
 				this.playlistWindow.close();
 			break;
+		case 'resizemainwindow':
+			this.mainView.setFlag( 'min-height', msg.size );
+			break;
+		case 'playsongindex':
+			this.index = msg.index;
 		case 'playsong':
-			this.mainView.sendMessage( { command: 'play', item: this.playlist[this.index] } );
+			this.mainView.sendMessage( { command: 'play', index: this.index, item: this.playlist[this.index] } );
 			break;
 		case 'seek':
 			this.index += msg.dir;
 			if( this.index < 0 ) this.index = this.playlist.length - 1;
 			else if( this.index >= this.playlist.length )
 				this.index = 0;
-			this.mainView.sendMessage( { command: 'play', item: this.playlist[this.index] } );
+			this.mainView.sendMessage( { command: 'play', item: this.playlist[this.index], index: this.index } );
 			break;
 		case 'quit':
 			Application.quit();

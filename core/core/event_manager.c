@@ -1,25 +1,12 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
 /** @file
  *
  *  System of events integrated into Friend Core
@@ -30,8 +17,13 @@
  *
  *  @author PS (Pawel Stefanski)
  *  @date first pushed on 10/02/2015
- *  @todo FL>PS this code is not finished. The thread handling function does nothing.
+ * 
+ * \defgroup EventManager Event manager
+ * \ingroup FriendCore
+ * @{
  */
+
+
 #include <core/types.h>
 #include <core/event_manager.h>
 #include <stdio.h>
@@ -55,12 +47,12 @@ static int threadsNo = 0;
 EventManager *EventManagerNew( void *sb )
 {
 	EventManager *em = FCalloc( sizeof( EventManager) , 1 );
-	DEBUG("EventManager start\n");
+	DEBUG("[EventManager] start\n");
 	if( em != NULL )
 	{
 		em->lastID = 0xf;
 		em->em_SB = sb;
-		em->em_EventThread = ThreadNew( EventManagerLoopThread, em, TRUE );
+		em->em_EventThread = ThreadNew( EventManagerLoopThread, em, TRUE, NULL );
 	}
 	else
 	{
@@ -77,7 +69,7 @@ EventManager *EventManagerNew( void *sb )
  */
 void EventManagerDelete( EventManager *em )
 {
-	DEBUG("EventManagerDelete\n");
+	DEBUG("[EventManager] Delete\n");
 	// remove long time events
 	if( em != NULL )
 	{
@@ -93,40 +85,20 @@ void EventManagerDelete( EventManager *em )
 		
 		if( em->em_EventThread != NULL )
 		{
+			DEBUG("[EventManager] Delete thread\n");
 			ThreadDelete( em->em_EventThread );
 		}
-		DEBUG("EventManager thread removed\n");
+		DEBUG("[EventManager] thread removed\n");
 		
 		// waiting till all functions died
 		
 		while( TRUE )
 		{
-			/*
-			FBOOL allFunctionsQuit = TRUE;
-			CoreEvent *locnce = em->em_EventList;
-			int threadNr = 0;
-			
-			while( locnce != NULL )
-			{
-				DEBUG( "Threadno: %d launched %d  allquit : %d\n", threadNr++, locnce->ce_Thread->t_Launched , allFunctionsQuit );
-				
-				if( locnce->ce_Thread->t_Launched == TRUE )
-				{
-					allFunctionsQuit = FALSE;
-				}
-				
-				locnce = (CoreEvent *) locnce->node.mln_Succ;
-			}
-			
-			if( allFunctionsQuit == TRUE )
-			{
-				break;
-			}*/
 			if( threadsNo <= 0 )
 			{
 				break;
 			}
-			DEBUG("Not all threads were closed properly, waiting. ThreadsNo: %d\n", threadsNo );
+			DEBUG("[EventManager] Not all threads were closed properly, waiting. ThreadsNo: %d\n", threadsNo );
 			usleep( 500 );
 		}
 		
@@ -136,18 +108,12 @@ void EventManagerDelete( EventManager *em )
 			CoreEvent *rem = locnce;
 			locnce = (CoreEvent *)locnce->node.mln_Succ;
 
-			DEBUG("Remove thread ptr: %p\n", rem->ce_Thread );
-			if( rem->ce_Thread != NULL )
-			{
-				//ThreadDelete( rem->ce_Thread );
-				rem->ce_Thread = NULL;
-			}
 			FFree( rem );
 		}
 		
 		FFree( em );
 	}
-	DEBUG("EventManagerDelete end\n");
+	DEBUG("[EventManager] Delete end\n");
 }
 
 /**
@@ -158,7 +124,7 @@ void EventManagerDelete( EventManager *em )
  */
 FUQUAD EventGetNewID( EventManager *em )
 {
-	DEBUG("EVENT: new event created %ld\n", em->lastID+1 );
+	DEBUG("[EventManager] new event created %lu\n", em->lastID+1 );
 	return em->lastID++;
 }
 
@@ -167,20 +133,19 @@ FUQUAD EventGetNewID( EventManager *em )
  *
  * @param ptr pointer to the FThread structure of the Friend thread to send the event to
  */
-void EventLaunch( FThread *ptr )
+void EventLaunch( CoreEvent *ptr )
 {
 	pthread_detach( pthread_self() );
-	ptr->t_Launched = TRUE;
+	ptr->ce_Launched = TRUE;
 	threadsNo++;
 	
-	CoreEvent *ce = (CoreEvent *) ptr->t_Data;
-	if( ce != NULL )
+	if( ptr->ce_Function != NULL )
 	{
-		ce->ce_Function( ce->ce_Data );
+		ptr->ce_Function( ptr->ce_Data );
 	}
 	
 	threadsNo--;
-	ptr->t_Launched = FALSE;
+	ptr->ce_Launched = FALSE;
 	
 	pthread_exit( 0 );
 }
@@ -288,11 +253,9 @@ void *EventManagerLoopThread( FThread *ptr )
  * @param thread pointer to the thread to send the message to
  * @param nextCall delay before sending the message
  * @param repeat number of repetitions
- * @return pointer to the event created
- * @todo FL>PS no specific value returned in case of error
+ * @return 0 when success, otherwise error number
  */
-CoreEvent *EventAdd( EventManager *em, void *function, void *data, time_t nextCall, time_t deltaTime, int repeat )
-//CoreEvent *EventAdd( EventManager *em, FThread *thread, time_t nextCall, time_t deltaTime, int repeat )
+int EventAdd( EventManager *em, void *function, void *data, time_t nextCall, time_t deltaTime, int repeat )
 {
 	CoreEvent *nce = FCalloc( sizeof( CoreEvent ), 1 );
 	if( nce != NULL )
@@ -307,7 +270,7 @@ CoreEvent *EventAdd( EventManager *em, void *function, void *data, time_t nextCa
 		nce->ce_TimeDelta = deltaTime;
 		nce->ce_Data = data;
 
-		DEBUG("ADD NEW EVENT %ld\n", nce->ce_ID );
+		DEBUG("[EventManager] Add new event, ID: %lu\n", nce->ce_ID );
 
 		nce->node.mln_Succ = (MinNode *) em->em_EventList;
 		em->em_EventList = nce;
@@ -315,9 +278,10 @@ CoreEvent *EventAdd( EventManager *em, void *function, void *data, time_t nextCa
 	else
 	{
 		Log( FLOG_ERROR, "Cannot allocate memory for new Event\n");
+		return -1;
 	}
 
-	return nce;
+	return 0;
 }
 
 /**
@@ -351,11 +315,13 @@ CoreEvent *EventCheck( EventManager *em, CoreEvent *ev, time_t ti )
 			ev->ce_RepeatTime--;
 		}
 		
-		DEBUG("Start thread %p  SB ptr %p\n", ev->ce_Function, em->em_SB );
+		DEBUG("[EventManager] Start thread %p  SB ptr %p\n", ev->ce_Function, em->em_SB );
 		//ThreadStart( ev->ce_Thread );
 		//ev->ce_Data = em->em_SB;
-		ev->ce_Thread = ThreadNew( EventLaunch, ev, TRUE );
-		DEBUG("Thread started\n");
+		//ev->ce_Thread = ThreadNew( EventLaunch, ev, TRUE, NULL );
+		pthread_create( &(ev->ce_Thread), NULL, (void *)( void * )EventLaunch, ev );
+		//ThreadStart( ev->ce_Thread );
+		DEBUG("[EventManager] Thread started\n");
 	}
 	
 	if( removeEvent == TRUE )
@@ -366,8 +332,6 @@ CoreEvent *EventCheck( EventManager *em, CoreEvent *ev, time_t ti )
 	/*
 	List *tmp = em->eventTList;
 	CoreEvent *retEv = NULL;
-
-	DEBUG("EVENT: check");
 
 	while( tmp != NULL )
 	{
@@ -388,8 +352,6 @@ CoreEvent *EventCheck( EventManager *em, CoreEvent *ev, time_t ti )
 		while( retEv != NULL )
 		{
 			// we call function with interesting arguments for us
-			DEBUG("EVENT: check, calling function %p\n", retEv->hook.h_Function );
-
 			retEv->hook.h_Function( retEv->hook.h_Entry, retEv->hook.h_SubEntry, retEv->hook.h_Data );
 
 			retEv = (CoreEvent *)retEv->node.mln_Succ;
@@ -400,3 +362,4 @@ CoreEvent *EventCheck( EventManager *em, CoreEvent *ev, time_t ti )
 	return NULL;
 }
 
+/**@}*/

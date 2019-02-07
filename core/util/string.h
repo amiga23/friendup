@@ -1,25 +1,12 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
 
 #ifndef STRING_H_
 #define STRING_H_
@@ -100,12 +87,18 @@ char* StringShellEscapeSize( const char* str, int *len );
 
 char *FindInBinary(char *x, int m, char *y, int n) ;
 
-FQUAD FindInBinaryPOS(char *x, int m, char *y, FUQUAD n);
+FLONG FindInBinaryPOS(char *x, int m, char *y, FULONG n);
 
-FQUAD FindInBinarySimple( char *x, int m, char *y, FUQUAD n );
+FLONG FindInBinarySimple( char *x, int m, char *y, FULONG n );
 
 void HashedString ( char **str );
 
 char *GetStringFromJSON( char *text, char *token );
+
+char *EscapeStringToJSON( char *str );
+
+int StringNToInt( char *s, int len );
+
+void string_escape_quotes(const char *src, char *dst); //destination has to be at least twice as long as src (in worst case)
 
 #endif

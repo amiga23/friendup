@@ -14,6 +14,7 @@ i18n_sessions                        : Sessions
 i18n_regenerate                      : Regenerate
 i18n_add                        	 : Add
 i18n_add_user                        : Add user
+i18n_refresh_list                    : Refresh list
 i18n_add_setup                       : Add setup
 i18n_add_template                    : Add template
 i18n_add_workgroup                   : Add workgroup
@@ -23,11 +24,16 @@ i18n_renew_session                   : Renew user session
 i18n_user_updated                    : User updated.
 i18n_user_created                    : New user is now activated.
 
+i18n_deleting_user                   : Confirm user deletion
+i18n_deleting_verify                 : Please confirm user deletion. The user data will be lost, and disks will be orphaned.
+
 i18n_filter                 		 : Filter
 
-i18n_preinstall                      : preinstall
+i18n_preinstall                      : Pre-install
 
-i18n_startup-sequence                : Startup-sequence
+i18n_startup-sequence                : Startup sequence
+
+i18n_include_in_dock                 : Place in dock
 
 i18n_add_applications                : Add applications
 i18n_add_apps        		         : Add applications
@@ -58,16 +64,20 @@ i18n_unblock_user                    : Unblock user
 i18n_cancel                          : Cancel
 i18n_save                            : Save
 i18n_add_members                     : Add members
+i18n_see_workgroups                  : See workgroups
 i18n_setup_name                	     : Setup name
 i18n_template_name                   : Template name
 i18n_workgroup_name                  : Workgroup name
+i18n_workgroup_parent                : Workgroup parent
 i18n_named_workgroup                 : Write a name
 i18n_members                         : Workgroup members
 i18n_add_selected_members            : Add selected users
 i18n_add_workgroup_members           : Add users
 i18n_no_users_available              : No users available.
+i18n_see_users                       : See users
 i18n_remove_users_from_group         : Remove selected
 i18n_delete                          : Delete
+i18n_see_templates                   : See templates
 
 i18n_apply_template                  : Apply template
 
@@ -78,6 +88,10 @@ i18n_files                		 	 : Files
 i18n_wallpapers                		 : Wallpapers
 i18n_settings                		 : Settings
 
+i18n_none                            : None
+i18n_select_template                 : Select template
+i18n_select_workgroups               : Select workgroups
+
 #Locale ------------------------------------------------------------------------
 
 i18n_locale_no                          : Norwegian
@@ -85,3 +99,8 @@ i18n_locale_en                          : English
 i18n_locale_de                          : German
 i18n_locale_nl                          : Dutch
 i18n_locale_nl                          : Dutch
+i18n_locale_pl				: Polski
+
+i18n_useravatar							: Avatar
+i18n_changeavatar						: Change
+i18n_fileselectoravatar					: Please choose a PNG image

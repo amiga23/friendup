@@ -1,19 +1,10 @@
 /*©agpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Affero General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Affero General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Affero   *
+* General Public License, found in the file license_agpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
 
@@ -28,7 +19,7 @@ FriendConnection = function( conf )
 	
 	self.protocol = '';
 	self.host = '';
-	self.wsPort = 6500;
+	self.wsPort = ( parseInt( conf.wsPort ) > 0 ? parseInt( conf.wsPort ) : 6500 );
 	self.reqPort = null;
 	self.ws = null;
 	
@@ -69,14 +60,13 @@ FriendConnection.prototype.send = function( conf )
 	
 	// messages from 
 	event = self.setId( event, conf );
-	//console.log( 'FriendConnection.send', event );
 	self.sendMessage( event );
 }
 
 FriendConnection.prototype.on = function( event, listener )
-{
+{	
 	var self = this;
-	if ( !self.listeners[ event ])
+	if( !self.listeners[ event ] )
 		self.listeners[ event ] = [];
 	
 	var listenerId = friendUP.tool.uid( 'listener' );
@@ -169,6 +159,9 @@ FriendConnection.prototype.connectWebSocket = function()
 	if ( self.wsPort )
 		url += ':' + self.wsPort;
 	
+	
+	url += '/fcws';
+	
 	var conf = {
 		url : url,
 		sessionId : Workspace.sessionId,
@@ -197,22 +190,28 @@ FriendConnection.prototype.setId = function( event, conf )
 FriendConnection.prototype.onWsMessage = function( msg )
 {
 	var self = this;
+	
 	if ( 'response' === msg.type )
+	{
 		handleResponse( msg );
+	}
 	else
+	{
 		handleEvent( msg );
+	}
 	
 	function handleEvent( msg )
 	{
 		var event = msg.type;
 		var lIds = self.listeners[ event ];
-		if ( !lIds ) {
+		if( !lIds )
+		{
 			console.log( 'FriendConnection - handler ids not found for', {
 				msg : msg,
 				msgJson : JSON.stringify( msg ),
 				event : event,
 				listeners : self.listeners,
-			});
+			} );
 			return;
 		}
 		
@@ -228,7 +227,20 @@ FriendConnection.prototype.onWsMessage = function( msg )
 				return;
 			}
 			
-			handler( msg.data );
+			// Default member
+			if( msg.data )
+			{
+				handler( msg.data );
+			}
+			// Session data member
+			else if( msg.session )
+			{
+				handler( msg.session );
+			}
+			else
+			{
+				console.log( 'Illegal message format.' );
+			}
 		}
 	}
 	

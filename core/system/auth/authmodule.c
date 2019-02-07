@@ -1,27 +1,14 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
-/**
- *  @file
+/** @file
+ * 
  *  AuthenticationModule body
  *
  *  @author PS (Pawel Stefanski)
@@ -38,6 +25,28 @@
 #include <unistd.h>
 #include <system/systembase.h>
 
+// internal function
+
+int GetFunction( void *handle, char *name, void **dstfun, void *def )
+{
+	if( dlsym( handle, name ) != NULL )
+	{
+		*dstfun = dlsym( handle, name );
+	}
+	else
+	{
+		if( def != NULL )
+		{
+			*dstfun = def;
+		}
+		else
+		{
+			return 1;
+		}
+	}
+	return 0;
+}
+
 /**
  * create new AuthMod (AuthenticationModule)
  *
@@ -45,9 +54,10 @@
  * @param path to authmod file
  * @param name name of required AuthenticationModule
  * @param version required version of AuthenticationModule
+ * @param defaultAuthMod default authentication module
  * @return new AuthMod structure or NULL if error appear
  */
-AuthMod *AuthModNew( void *lsb, const char *path, const char* name, long version )
+AuthMod *AuthModNew( void *lsb, const char *path, const char* name, long version, AuthMod *defaultAuthMod )
 {
 	if( name == NULL )
 	{
@@ -132,7 +142,7 @@ AuthMod *AuthModNew( void *lsb, const char *path, const char* name, long version
 		
 		SystemBase *sb = (SystemBase *) lsb;
 		// Get a copy of the properties.library
-		struct PropertiesLibrary *plib = ( struct PropertiesLibrary *)sb->LibraryPropertiesGet( sb );
+		struct PropertiesInterface *plib = &(sb->sl_PropertiesInterface);
 		if( plib != NULL )
 		{
 			char *ptr = getenv("FRIEND_HOME");
@@ -143,15 +153,15 @@ AuthMod *AuthModNew( void *lsb, const char *path, const char* name, long version
 				sprintf( path, "%scfg/cfg.ini", ptr );
 			}
 			
-			DEBUG( "Opening config file: %s\n", path );
+			DEBUG( "[AuthMod] Opening config file: %s\n", path );
 			
 			prop = plib->Open( path );
 			FFree( path );
 			
 			if( prop != NULL)
 			{
-				blockAccountTimeout = plib->ReadInt( prop, "Security:blocktimeout", 3600 );
-				blockAccountAttempts = plib->ReadInt( prop, "Security:blockattempts", 3 );
+				blockAccountTimeout = plib->ReadIntNCS( prop, "Security:blocktimeout", 3600 );
+				blockAccountAttempts = plib->ReadIntNCS( prop, "Security:blockattempts", 3 );
 			}
 			else
 			{
@@ -159,32 +169,47 @@ AuthMod *AuthModNew( void *lsb, const char *path, const char* name, long version
 			}
 			
 			if( prop ) plib->Close( prop );
-			
-			sb->LibraryPropertiesDrop( sb, plib );
 		}
 		
 		
+		l->am_Handle = handle = dlopen ( lmodpath, RTLD_NOW|RTLD_GLOBAL );
+		if( handle != NULL )
 		{
 			l->sb = lsb;
+			int error = 0;
 		
-			DEBUG( "[AuthMod] After init\n" );
+			DEBUG("[AuthMod] After init\n" );
 
-			l->am_Handle = handle = dlopen ( lmodpath, RTLD_NOW|RTLD_GLOBAL );
-			l->libInit = dlsym( l->am_Handle, "libInit" );
-			l->GetRevision = dlsym( l->am_Handle, "GetRevision" );
-			l->libClose = dlsym( l->am_Handle, "libClose" );
-			l->libClose = dlsym ( l->am_Handle, "libClose" );
-			l->GetVersion = dlsym ( l->am_Handle, "GetVersion" );
-			l->GetRevision = dlsym( l->am_Handle, "GetRevision" );
+			if( defaultAuthMod != NULL )
+			{
+				error = GetFunction( l->am_Handle, "libInit", (void **)&(l->libInit), defaultAuthMod->libInit );
+				error = GetFunction( l->am_Handle, "libClose", (void **)&(l->libClose), defaultAuthMod->libClose );
+				error = GetFunction( l->am_Handle, "GetVersion", (void **)&(l->GetVersion), defaultAuthMod->GetVersion );
+				error = GetFunction( l->am_Handle, "GetRevision", (void **)&(l->GetRevision), defaultAuthMod->GetRevision );
 
-			// user.library structure
-			l->Authenticate = dlsym ( l->am_Handle, "Authenticate" );
-			l->IsSessionValid = dlsym ( l->am_Handle, "IsSessionValid" );
-			l->SetAttribute = dlsym ( l->am_Handle, "SetAttribute" );
-			l->CheckPassword = dlsym( l->am_Handle, "CheckPassword" );
-			l->UpdatePassword = dlsym( l->am_Handle, "UpdatePassword" );
-			l->WebRequest = dlsym( l->am_Handle, "WebRequest" );
-			l->Logout = dlsym( l->am_Handle, "Logout" );
+				// user.library structure
+				error = GetFunction( l->am_Handle, "Authenticate", (void **)&(l->Authenticate), defaultAuthMod->Authenticate );
+				error = GetFunction( l->am_Handle, "IsSessionValid", (void **)&(l->IsSessionValid), defaultAuthMod->IsSessionValid );
+				error = GetFunction( l->am_Handle, "SetAttribute", (void **)&(l->SetAttribute), defaultAuthMod->SetAttribute );
+				error = GetFunction( l->am_Handle, "CheckPassword", (void **)&(l->CheckPassword), defaultAuthMod->CheckPassword );
+				error = GetFunction( l->am_Handle, "UpdatePassword", (void **)&(l->UpdatePassword), defaultAuthMod->UpdatePassword );
+				error = GetFunction( l->am_Handle, "Logout", (void **)&(l->Logout), defaultAuthMod->Logout );
+			}
+			else
+			{
+				l->libInit = dlsym( l->am_Handle, "libInit" );
+				l->libClose = dlsym( l->am_Handle, "libClose" );
+				l->GetVersion = dlsym ( l->am_Handle, "GetVersion" );
+				l->GetRevision = dlsym( l->am_Handle, "GetRevision" );
+
+				// user.library structure
+				l->Authenticate = dlsym ( l->am_Handle, "Authenticate" );
+				l->IsSessionValid = dlsym ( l->am_Handle, "IsSessionValid" );
+				l->SetAttribute = dlsym ( l->am_Handle, "SetAttribute" );
+				l->CheckPassword = dlsym( l->am_Handle, "CheckPassword" );
+				l->UpdatePassword = dlsym( l->am_Handle, "UpdatePassword" );
+				l->Logout = dlsym( l->am_Handle, "Logout" );
+			}
 			
 			l->libInit( l, sb ) ;
 	

@@ -1,25 +1,12 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
 /** @file
  *
  *  User Manager
@@ -30,11 +17,14 @@
  *  @date created 11/2016
  */
 
-#include "user_manager.h"
 #include "user.h"
+#include "user_manager.h"
+#include "user_sessionmanager.h"
 
 #include <system/systembase.h>
 #include <util/sha256.h>
+#include <system/fsys/device_handling.h>
+#include <util/session_id.h>
 
 /**
  * Create UserManager
@@ -78,7 +68,7 @@ void UMDelete( UserManager *smgr )
 		
 		if( remusr != NULL )
 		{
-			DEBUG("Releasing user devices\n");
+			DEBUG("[UMDelete] Releasing user devices\n");
 			// Remove all mounted devices
 			File *lf = remusr->u_MountedDevs;
 			File *remdev = lf;
@@ -89,6 +79,8 @@ void UMDelete( UserManager *smgr )
 				
 				if( remdev != NULL )
 				{
+					DeviceRelease( smgr->um_SB, remdev );
+					/*
 					FHandler *fsys = (FHandler *)remdev->f_FSys;
 
 					if( fsys != NULL && fsys->UnMount != NULL )
@@ -99,25 +91,25 @@ void UMDelete( UserManager *smgr )
 						
 						if( fsys->Release( fsys, remdev ) != 0 )
 						{
-							DEBUG("Device released\n");
+							DEBUG("[UMDelete] Device released\n");
 						}
 					}
 					else
 					{
 						FERROR("Cannot free FSYS (null)\n");
 					}
+					*/
 				
 					FileDelete( remdev );
 					remdev = NULL;
 				}
 			}
 
-			DEBUG("Free user %s\n", remusr->u_Name );
+			DEBUG("[UMDelete] Free user %s\n", remusr->u_Name );
 			
 			UserDelete( remusr );
 			
 			remusr = NULL;
-			//DEBUG("======================================\n\n\n");
 		}
 	}
 	
@@ -125,10 +117,12 @@ void UMDelete( UserManager *smgr )
 	
 	RemoteUserDeleteAll( smgr->um_RemoteUsers );
 	
-	if( smgr != NULL )
+	//if( smgr != NULL )
 	{
+		UserGroupDeleteAll( smgr->um_SB, smgr->um_UserGroups );
+		/*
 		UserGroup *g = smgr->um_UserGroups, *rg;
-		DEBUG("Cleaning groups\n");
+		DEBUG("[UMDelete] Cleaning groups\n");
 		while( g!= NULL )	// remove global groups
 		{
 			rg = g;
@@ -147,6 +141,7 @@ void UMDelete( UserManager *smgr )
 				FFree( rg );
 			}
 		}
+		*/
 		smgr->um_UserGroups = NULL;
 		
 		FFree( smgr );
@@ -160,36 +155,34 @@ void UMDelete( UserManager *smgr )
  * @param usr pointer to user structure to which groups will be assigned
  * @return 0 when success, otherwise error number
  */
-
 int UMAssignGroupToUser( UserManager *smgr, User *usr )
 {
 	char tmpQuery[ 512 ];
-	struct User *user = NULL;
-	DEBUG("Assign group to user\n");
+	DEBUG("[UMAssignGroupToUser] Assign group to user\n");
 
 	//sprintf( tmpQuery, "SELECT UserGroupID FROM FUserToGroup WHERE UserID = '%lu'", usr->u_ID );
 	
 	SystemBase *sb = (SystemBase *)smgr->um_SB;
-	MYSQLLibrary *sqlLib = sb->LibraryMYSQLGet( sb );
+	SQLLibrary *sqlLib = sb->LibrarySQLGet( sb );
 
 	if( sqlLib != NULL )
 	{
 		sqlLib->SNPrintF( sqlLib, tmpQuery, sizeof(tmpQuery), "SELECT UserGroupID FROM FUserToGroup WHERE UserID = '%lu'", usr->u_ID );
 
-		MYSQL_RES *result = sqlLib->Query(  sqlLib, tmpQuery );
+		void *result = sqlLib->Query(  sqlLib, tmpQuery );
 	
 		if ( result == NULL ) 
 		{
 			FERROR("SQL query result is empty!\n");
-			sb->LibraryMYSQLDrop( sb, sqlLib );
+			sb->LibrarySQLDrop( sb, sqlLib );
 			return 2;
 		}
 		
 		FBOOL isAdmin = FALSE;
+		FBOOL isAPI = FALSE;
 
-		MYSQL_ROW row;
+		char **row;
 		int j = 0;
-		int actgroup = 0;
 	
 		if( usr->u_Groups )
 		{
@@ -204,8 +197,7 @@ int UMAssignGroupToUser( UserManager *smgr, User *usr )
 			usr->u_Groups = FCalloc( rows, sizeof( UserGroup *) );
 		}
 	
-	//FERROR("\n\n\n\n\\n\n\n\n\n\\n\n-\n");
-		DEBUG("Memory for %d  groups allocated\n", rows );
+		DEBUG("[UMAssignGroupToUser] Memory for %d  groups allocated\n", rows );
 	
 		if( usr->u_Groups != NULL )
 		{
@@ -215,19 +207,15 @@ int UMAssignGroupToUser( UserManager *smgr, User *usr )
 		
 			while( ( row = sqlLib->FetchRow( sqlLib, result ) ) )
 			{
-				DEBUG("Going through loaded rows %d -> %s\n", j, row[ 0 ] );
-			
-				// first are column names
-				//if( j >= 1 )
+				DEBUG("[UMAssignGroupToUser] Going through loaded rows %d -> %s\n", j, row[ 0 ] );
 				{
 					FULONG gid = atol( row[ 0 ] );
 				
-					DEBUG("User is in group %lu\n", gid  );
+					DEBUG("[UMAssignGroupToUser] User is in group %lu\n", gid  );
 				
 					UserGroup *g = smgr->um_UserGroups;
 					while( g != NULL )
 					{
-						//DEBUG("comparing %ld   -  %ld\n", g->ug_ID, gid );
 						if( g->ug_ID == gid )
 						{
 							if( strcmp( g->ug_Name, "Admin" ) == 0 )
@@ -235,28 +223,27 @@ int UMAssignGroupToUser( UserManager *smgr, User *usr )
 								isAdmin = TRUE;
 							}
 							
-							DEBUG("Added group %s to user %s\n", g->ug_Name, usr->u_Name );
+							if( strcmp( g->ug_Name, "API" ) == 0 )
+							{
+								isAPI = TRUE;
+							}
+							
+							UserGroupAddUser( g, usr );
+							DEBUG("[UMAssignGroupToUser] Added group %s to user %s\n", g->ug_Name, usr->u_Name );
 							usr->u_Groups[ pos++ ] = g;
 						}
 						g  = (UserGroup *) g->node.mln_Succ;
 					}
-				} 
-				//j++;
+				}
 			}
 		}
 		
-		if( isAdmin == TRUE )
-		{
-			usr->u_IsAdmin = TRUE;
-		}
-		else
-		{
-			usr->u_IsAdmin = FALSE;
-		}
+		usr->u_IsAdmin = isAdmin;
+		usr->u_IsAPI = isAPI;
 	
 		sqlLib->FreeResult( sqlLib, result );
 
-		sb->LibraryMYSQLDrop( sb, sqlLib );
+		sb->LibrarySQLDrop( sb, sqlLib );
 	}
 	
 	return 0;
@@ -271,7 +258,6 @@ int UMAssignGroupToUser( UserManager *smgr, User *usr )
  * @param groups groups provided as string, where comma is separator between group names
  * @return 0 when success, otherwise error number
  */
-
 int UMAssignGroupToUserByStringDB( UserManager *um, User *usr, char *groups )
 {
 	if( groups == NULL )
@@ -281,10 +267,10 @@ int UMAssignGroupToUserByStringDB( UserManager *um, User *usr, char *groups )
 	}
 	char tmpQuery[ 512 ];
 	
-	DEBUG("Assign group to user start NEW GROUPS: %s\n", groups );
+	DEBUG("[UMAssignGroupToUserByStringDB] Assign group to user start NEW GROUPS: %s\n", groups );
 	
 	SystemBase *sb = (SystemBase *)um->um_SB;
-	MYSQLLibrary *sqlLib = sb->LibraryMYSQLGet( sb );
+	SQLLibrary *sqlLib = sb->LibrarySQLGet( sb );
 	
 	if( sqlLib == NULL )
 	{
@@ -336,7 +322,8 @@ int UMAssignGroupToUserByStringDB( UserManager *um, User *usr, char *groups )
 		BufStringAdd( bs, "INSERT INTO FUserToGroup (UserID, UserGroupID ) VALUES ");
 		
 		FBOOL isAdmin = FALSE;
-		DEBUG("Memory for groups allocated\n");
+		FBOOL isAPI = FALSE;
+		DEBUG("[UMAssignGroupToUserByStringDB] Memory for groups allocated\n");
 		for( i = 0; i < pos; i++ )
 		{
 			UserGroup *gr = um->um_UserGroups;
@@ -350,8 +337,12 @@ int UMAssignGroupToUserByStringDB( UserManager *um, User *usr, char *groups )
 					{
 						isAdmin = TRUE;
 					}
+					if( strcmp( gr->ug_Name, "API" ) == 0 )
+					{
+						isAPI = TRUE;
+					}
 					
-					DEBUG("Group found %s will be added to user %s\n", gr->ug_Name, usr->u_Name );
+					DEBUG("[UMAssignGroupToUserByStringDB] Group found %s will be added to user %s\n", gr->ug_Name, usr->u_Name );
 					
 					char loctmp[ 255 ];
 					if( i == 0 )
@@ -369,14 +360,8 @@ int UMAssignGroupToUserByStringDB( UserManager *um, User *usr, char *groups )
 			}
 		}
 		
-		if( isAdmin == TRUE )
-		{
-			usr->u_IsAdmin = TRUE;
-		}
-		else
-		{
-			usr->u_IsAdmin = FALSE;
-		}
+		usr->u_IsAdmin = isAdmin;
+		usr->u_IsAPI = isAPI;
 		
 		// removeing old group conections from DB
 		
@@ -386,14 +371,12 @@ int UMAssignGroupToUserByStringDB( UserManager *um, User *usr, char *groups )
 		{
 			FERROR("Cannot call query: '%s'\n", tmpQuery );
 		}
-		DEBUG("call query: '%s'\n", tmpQuery );
-		
+
 		if( sqlLib->QueryWithoutResults( sqlLib, bs->bs_Buffer  ) !=  0 )
 		{
 			FERROR("Cannot call query: '%s'\n", bs->bs_Buffer );
 		}
-		DEBUG("call query: '%s'\n", bs->bs_Buffer );
-		
+
 		if( usr->u_Groups != NULL )
 		{
 			FFree( usr->u_Groups );
@@ -407,8 +390,8 @@ int UMAssignGroupToUserByStringDB( UserManager *um, User *usr, char *groups )
 		
 		FFree( ptr );
 	}
-	sb->LibraryMYSQLDrop( sb, sqlLib );
-	DEBUG("Assign  groups to user end\n");
+	sb->LibrarySQLDrop( sb, sqlLib );
+	DEBUG("[UMAssignGroupToUserByStringDB] Assign  groups to user end\n");
 	
 	return 0;
 }
@@ -420,11 +403,10 @@ int UMAssignGroupToUserByStringDB( UserManager *um, User *usr, char *groups )
  * @param usr pointer to user structure to which will be updated in DB
  * @return 0 when success, otherwise error number
  */
-
 int UMUserUpdateDB( UserManager *um, User *usr )
 {
 	SystemBase *sb = (SystemBase *)um->um_SB;
-	MYSQLLibrary *sqlLib = sb->LibraryMYSQLGet( sb );
+	SQLLibrary *sqlLib = sb->LibrarySQLGet( sb );
 	
 	if( sqlLib == NULL )
 	{
@@ -434,7 +416,7 @@ int UMUserUpdateDB( UserManager *um, User *usr )
 	
 	sqlLib->Update( sqlLib, UserDesc, usr );
 	
-	sb->LibraryMYSQLDrop( sb, sqlLib );
+	sb->LibrarySQLDrop( sb, sqlLib );
 	return 0;
 }
 
@@ -445,42 +427,40 @@ int UMUserUpdateDB( UserManager *um, User *usr )
  * @param usr pointer to user structure to which applications will be assigned
  * @return 0 when success, otherwise error number
  */
-
 int UMAssignApplicationsToUser( UserManager *smgr, User *usr )
 {
 	char tmpQuery[ 255 ];
-	//sprintf( tmpQuery, "SELECT * FROM FUserApplication WHERE UserID='%lu'", usr->u_ID );
-	
+
 	SystemBase *sb = (SystemBase *)smgr->um_SB;
-	MYSQLLibrary *sqlLib = sb->LibraryMYSQLGet( sb );
+	SQLLibrary *sqlLib = sb->LibrarySQLGet( sb );
 	int actapp = 0;
 	
 	if( sqlLib != NULL )
 	{
 		sqlLib->SNPrintF( sqlLib, tmpQuery, sizeof(tmpQuery), "SELECT * FROM FUserApplication WHERE UserID='%lu'", usr->u_ID );
 
-		MYSQL_RES *result = sqlLib->Query( sqlLib, tmpQuery );
+		void *result = sqlLib->Query( sqlLib, tmpQuery );
 		if( result == NULL )
 		{
-			sb->LibraryMYSQLDrop( sb, sqlLib );
+			sb->LibrarySQLDrop( sb, sqlLib );
 			return 2;
 		}
 
 		// Free previous applications
 		if( usr->u_Applications )
 		{
-			usr->u_Applications = UserAppDeleteAll( usr->u_Applications );
+			UserAppDeleteAll( usr->u_Applications );
+			usr->u_Applications = NULL;
 		}
 	
 		// Make room
 		//usr->u_Applications = FCalloc( result->row_count, sizeof( UserApplication * ) );
 	
 		// Fetch from mysql
-		MYSQL_ROW row;
+		char **row;
 		int j = 0;
 		UserApplication *prev = NULL;
 	
-		DEBUG( "Starting process\n" );
 		while( ( row = sqlLib->FetchRow( sqlLib, result ) ) )
 		{
 			// first are column names
@@ -505,12 +485,42 @@ int UMAssignApplicationsToUser( UserManager *smgr, User *usr )
 
 		sqlLib->FreeResult( sqlLib, result );
 	
-		DEBUG( "%d applications added.\n", actapp );
+		DEBUG( "[UMAssignApplicationsToUser] %d applications added.\n", actapp );
 	
 		// Return with amount of application
-		sb->LibraryMYSQLDrop( sb, sqlLib );
+		sb->LibrarySQLDrop( sb, sqlLib );
 	}
 	return actapp;
+}
+
+/**
+ * Get User structure from by his name
+ *
+ * @param um pointer to UserManager
+ * @param name user name
+ * @return User structure or NULL value when problem appear
+ */
+User *UMUserGetByName( UserManager *um, const char *name )
+{
+	SystemBase *sb = (SystemBase *)um->um_SB;
+	SQLLibrary *sqlLib = sb->LibrarySQLGet( sb );
+	
+	if( sqlLib == NULL )
+	{
+		FERROR("Cannot get user, mysql.library was not open\n");
+		return NULL;
+	}
+
+	User *user = sb->sl_UM->um_Users;
+	while( user != NULL )
+	{
+		if( strcmp( user->u_Name, name ) == 0 )
+		{
+			break;
+		}
+		user = (User *)user->node.mln_Succ;
+	}
+	return user;
 }
 
 /**
@@ -520,11 +530,10 @@ int UMAssignApplicationsToUser( UserManager *smgr, User *usr )
  * @param name user name
  * @return User structure or NULL value when problem appear
  */
-
 User * UMUserGetByNameDB( UserManager *um, const char *name )
 {
 	SystemBase *sb = (SystemBase *)um->um_SB;
-	MYSQLLibrary *sqlLib = sb->LibraryMYSQLGet( sb );
+	SQLLibrary *sqlLib = sb->LibrarySQLGet( sb );
 	
 	if( sqlLib == NULL )
 	{
@@ -534,30 +543,25 @@ User * UMUserGetByNameDB( UserManager *um, const char *name )
 
 	User *user = NULL;
 	char tmpQuery[ 1024 ];
-	//snprintf( tmpQuery, sizeof(tmpQuery)," Name = '%s'", name );
 	sqlLib->SNPrintF( sqlLib, tmpQuery, sizeof(tmpQuery)," Name = '%s'", name );
 	
-	DEBUG( "Loading user.\n" );
 	int entries;
 	user = sqlLib->Load( sqlLib, UserDesc, tmpQuery, &entries );
 	
-	DEBUG("User poitner %p  number of entries %d\n", user, entries );
 	// No need for sql lib anymore here
-	sb->LibraryMYSQLDrop( sb, sqlLib );
+	sb->LibrarySQLDrop( sb, sqlLib );
 
 	if( user != NULL )
 	{
-		int res = UserInit( &user );
-		if( res == 0 )
 		{
-			DEBUG("[UserGet] User found %s  id %ld\n", user->u_Name, user->u_ID );
+			DEBUG("[UMUserGetByNameDB] User found %s  id %ld\n", user->u_Name, user->u_ID );
 			UMAssignGroupToUser( um, user );
 			UMAssignApplicationsToUser( um, user );
 			user->u_MountedDevs = NULL;
 		}
 	}
 	
-	DEBUG("GETUSER data filled, END\n");
+	DEBUG("[UMUserGetByNameDB] END\n");
 
 	return user;
 }
@@ -569,11 +573,10 @@ User * UMUserGetByNameDB( UserManager *um, const char *name )
  * @param name user id
  * @return User structure or NULL value when problem appear
  */
-
 User * UMUserGetByIDDB( UserManager *um, FULONG id )
 {
 	SystemBase *sb = (SystemBase *)um->um_SB;
-	MYSQLLibrary *sqlLib = sb->LibraryMYSQLGet( sb );
+	SQLLibrary *sqlLib = sb->LibrarySQLGet( sb );
 	
 	if( sqlLib == NULL )
 	{
@@ -583,30 +586,27 @@ User * UMUserGetByIDDB( UserManager *um, FULONG id )
 
 	User *user = NULL;
 	char tmpQuery[ 1024 ];
-	//snprintf( tmpQuery, sizeof(tmpQuery)," ID = '%lu'", id );
+
 	sqlLib->SNPrintF( sqlLib, tmpQuery, sizeof(tmpQuery)," ID = '%lu'", id );
 	
-	DEBUG( "Loading user, pointer to sqllib %p.\n", sqlLib );
 	int entries = 0;
 	user = sqlLib->Load( sqlLib, UserDesc, tmpQuery, &entries );
 	
-	DEBUG("User poitner %p  number of entries %d\n", user, entries );
+	DEBUG("[UMUserGetByIDDB] User poitner %p  number of entries %d\n", user, entries );
 	// No need for sql lib anymore here
-	sb->LibraryMYSQLDrop( sb, sqlLib );
+	sb->LibrarySQLDrop( sb, sqlLib );
 
 	if( user != NULL )
 	{
-		int res = UserInit( &user );
-		if( res == 0 )
 		{
-			DEBUG("[UserGet] User found %s\n", user->u_Name );
+			DEBUG("[UMUserGetByIDDB] User found %s\n", user->u_Name );
 			UMAssignGroupToUser( um, user );
 			UMAssignApplicationsToUser( um, user );
 			user->u_MountedDevs = NULL;
 		}
 	}
 	
-	DEBUG("GETUSER data filled, END\n");
+	DEBUG("[UMUserGetByIDDB] END\n");
 
 	return user;
 }
@@ -619,11 +619,10 @@ User * UMUserGetByIDDB( UserManager *um, FULONG id )
  * @param usr user structure which will be stored in DB
  * @return 0 when success, otherwise error number
  */
-
-int UMUserCreate( UserManager *smgr, Http *r, User *usr )
+int UMUserCreate( UserManager *smgr, Http *r __attribute__((unused)), User *usr )
 {
 	SystemBase *sb = (SystemBase *)smgr->um_SB;
-	MYSQLLibrary *sqlLib = sb->LibraryMYSQLGet( sb );
+	SQLLibrary *sqlLib = sb->LibrarySQLGet( sb );
 	
 	if( sqlLib == NULL )
 	{
@@ -638,8 +637,8 @@ int UMUserCreate( UserManager *smgr, Http *r, User *usr )
 
 	if( UMUserExistByNameDB( smgr, usr->u_Name ) == TRUE )
 	{
-		DEBUG("CreateUser: user exist already!\n");
-		sb->LibraryMYSQLDrop( sb, sqlLib );
+		DEBUG("[UMUserCreate]: user exist already!\n");
+		sb->LibrarySQLDrop( sb, sqlLib );
 		return 1;
 	}
 	time_t timestamp = time ( NULL );
@@ -663,7 +662,7 @@ int UMUserCreate( UserManager *smgr, Http *r, User *usr )
 				hashTarget[ 2 ] = '6';
 				hashTarget[ 3 ] = '}';
 		
-				DEBUG("Encrypt password\n");
+				DEBUG("[UMUserCreate] Encrypt password\n");
 		
 				Sha256Init( &ctx );
 				Sha256Update( &ctx, (unsigned char *)usr->u_Password, strlen( usr->u_Password ) );
@@ -688,9 +687,11 @@ int UMUserCreate( UserManager *smgr, Http *r, User *usr )
 			}
 		}
 	}
+	
+	generate_uuid( &( usr->u_UUID ) );
 
 	int val = sqlLib->Save( sqlLib, UserDesc, usr );
-	sb->LibraryMYSQLDrop( sb, sqlLib );
+	sb->LibrarySQLDrop( sb, sqlLib );
 	
 	return val;
 }
@@ -698,55 +699,22 @@ int UMUserCreate( UserManager *smgr, Http *r, User *usr )
 /**
  * Return information if user is admin
  *
- * @param smgr pointer to UserManager
- * @param r http request
+ * @param smgr pointer to UserManager UNUSED
+ * @param r http request UNUSED
  * @param usr pointer to user structure which will be checked
  * @return TRUE if user is administrator, otherwise FALSE
  */
-
-FBOOL UMUserIsAdmin( UserManager *smgr, Http *r, User *usr )
+FBOOL UMUserIsAdmin( UserManager *smgr __attribute__((unused)), Http *r __attribute__((unused)), User *usr )
 {
-	if( usr->u_IsAdmin == TRUE )
+	if( usr != NULL &&  usr->u_IsAdmin == TRUE )
 	{
 		return TRUE;
 	}
-	/*
-	SystemBase *sb = (SystemBase *)smgr->um_SB;
-	MYSQLLibrary *sqlLib = sb->LibraryMYSQLGet( sb );
-	
-	if( sqlLib == NULL)
+	else
 	{
-		FERROR("Cannot get user, mysql.library was not open\n");
+		FERROR("User is: %p or not admin\n", usr );
 		return FALSE;
 	}
-	
-	char *tmpQuery = FCalloc( 2048, sizeof(char) );;
-	
-	sqlLib->SNPrintF( sqlLib, tmpQuery, 2048, "select u.ID from FUser u, FUserToGroup utg, FUserGroup g where u.ID = utg.UserID AND g.ID = utg.UserGroupID AND g.Name = 'Admin' AND u.Name = '%s'", usr->u_Name );
-	//sprintf( tmpQuery, "select count(*) from FUser u, FUserToGroup utg, FUserGroup g where u.ID = utg.UserID AND g.ID = utg.UserGroupID AND g.Name = 'Admin' AND u.Name = '%s'", usr->u_Name );
-	
-	MYSQL_RES *res = sqlLib->Query( sqlLib, tmpQuery );
-
-	if( res != NULL )
-	{
-		int rows = 0;
-		// Check if it was a real result
-		if( ( rows = sqlLib->NumberOfRows( sqlLib, res ) )> 0 )
-		{
-			DEBUG("rows %d\n", rows );
-			
-			sqlLib->FreeResult( sqlLib, res );
-			sb->LibraryMYSQLDrop( sb, sqlLib );
-			FFree( tmpQuery );
-			return TRUE;
-		}
-		sqlLib->FreeResult( sqlLib, res );
-	}
-	
-	sb->LibraryMYSQLDrop( sb, sqlLib );
-	FFree( tmpQuery );
-	*/
-	return FALSE;
 }
 
 /**
@@ -757,11 +725,10 @@ FBOOL UMUserIsAdmin( UserManager *smgr, Http *r, User *usr )
  * @param auth authentication id as string
  * @return TRUE if user is administrator, otherwise FALSE
  */
-
-FBOOL UMUserIsAdminByAuthID( UserManager *smgr, Http *r, char *auth )
+FBOOL UMUserIsAdminByAuthID( UserManager *smgr, Http *r __attribute__((unused)), char *auth )
 {
 	SystemBase *sb = (SystemBase *)smgr->um_SB;
-	MYSQLLibrary *sqlLib = sb->LibraryMYSQLGet( sb );
+	SQLLibrary *sqlLib = sb->LibrarySQLGet( sb );
 	
 	if( sqlLib == NULL )
 	{
@@ -774,9 +741,7 @@ FBOOL UMUserIsAdminByAuthID( UserManager *smgr, Http *r, char *auth )
 	
 	sqlLib->SNPrintF( sqlLib, tmpQuery, sizeof(tmpQuery), "select count(*) from FUser u, FUserToGroup utg, FUserGroup g, FUserApplication a where u.ID = utg.UserID AND g.ID = utg.UserGroupID AND g.Name = 'Admin'  AND a.UserID = u.ID AND  a.AuthID=\"%s\"", auth );
 	
-	//sprintf( tmpQuery, "select count(*) from FUser u, FUserToGroup utg, FUserGroup g, FUserApplication a where u.ID = utg.UserID AND g.ID = utg.UserGroupID AND g.Name = 'Admin'  AND a.UserID = u.ID AND  a.AuthID=\"%s\"", auth );
-	
-	MYSQL_RES *res = sqlLib->Query( sqlLib, tmpQuery );
+	void *res = sqlLib->Query( sqlLib, tmpQuery );
 
 	if( res != NULL )
 	{
@@ -784,13 +749,13 @@ FBOOL UMUserIsAdminByAuthID( UserManager *smgr, Http *r, char *auth )
 		if( sqlLib->NumberOfRows( sqlLib, res ) > 0 )
 		{
 			sqlLib->FreeResult( sqlLib, res );
-			sb->LibraryMYSQLDrop( sb, sqlLib );
+			sb->LibrarySQLDrop( sb, sqlLib );
 			return TRUE;
 		}
 		sqlLib->FreeResult( sqlLib, res );
 	}
 	
-	sb->LibraryMYSQLDrop( sb, sqlLib );
+	sb->LibrarySQLDrop( sb, sqlLib );
 	
 	return FALSE;
 }
@@ -802,7 +767,6 @@ FBOOL UMUserIsAdminByAuthID( UserManager *smgr, Http *r, char *auth )
  * @param u pointer to user structure which will be checked
  * @return pointer to User structure, otherwise NULL
  */
-
 User *UMUserCheckExistsInMemory( UserManager *smgr, User *u )
 {
 	// First make sure we don't have a duplicate!
@@ -831,24 +795,23 @@ User *UMUserCheckExistsInMemory( UserManager *smgr, User *u )
  * @param name user name
  * @return TRUE if user is in database, otherwise FALSE
  */
-
 FBOOL UMUserExistByNameDB( UserManager *smgr, const char *name )
 {
 	SystemBase *sb = (SystemBase *)smgr->um_SB;
 	char query[ 1024 ];
-	sprintf( query, " FUser where`Name` = '%s'" , name );
+	sprintf( query, " FUser where `Name` = '%s'" , name );
 	
-	MYSQLLibrary *sqlLib = sb->LibraryMYSQLGet( sb );
+	SQLLibrary *sqlLib = sb->LibrarySQLGet( sb );
 	if( sqlLib != NULL )
 	{
 		int res = sqlLib->NumberOfRecords( sqlLib, UserDesc,  query );
 		if( res <= 0 )
 		{
-			sb->LibraryMYSQLDrop( sb, sqlLib );
+			sb->LibrarySQLDrop( sb, sqlLib );
 			return FALSE;
 		}
 	
-		sb->LibraryMYSQLDrop( sb, sqlLib );
+		sb->LibrarySQLDrop( sb, sqlLib );
 		return TRUE;
 	}
 	return FALSE;
@@ -861,8 +824,7 @@ FBOOL UMUserExistByNameDB( UserManager *smgr, const char *name )
  * @param name user name
  * @return User structure when success, otherwise NULL
  */
-
-User *UMGetUserByName( UserManager *um, char *name )
+User *UMGetUserByName( UserManager *um, const char *name )
 {
 	User *tuser = um->um_Users;
 	while( tuser != NULL )
@@ -884,7 +846,6 @@ User *UMGetUserByName( UserManager *um, char *name )
  * @param id user id
  * @return User structure when success, otherwise NULL
  */
-
 User *UMGetUserByID( UserManager *um, FULONG id )
 {
 	User *tuser = um->um_Users;
@@ -901,52 +862,136 @@ User *UMGetUserByID( UserManager *um, FULONG id )
 }
 
 /**
- * 
- */
-
-/**
  * Get user from database by his name
  *
  * @param um pointer to UserManager
  * @param name name of the user
  * @return User or NULL when error will appear
  */
-
 User *UMGetUserByNameDB( UserManager *um, const char *name )
 {
 	SystemBase *sb = (SystemBase *)um->um_SB;
-	MYSQLLibrary *sqlLib = sb->LibraryMYSQLGet( sb );
+	SQLLibrary *sqlLib = sb->LibrarySQLGet( sb );
 	char where[ 128 ];
 	where[ 0 ] = 0;
 	
-	DEBUG("UMGetUserByNameDB start\n");
+	DEBUG("[UMGetUserByNameDB] start\n");
 	
 	if( sqlLib == NULL )
 	{
 		FERROR("Cannot get user, mysql.library was not open\n");
 		return NULL;
 	}
-	//snprintf( where, sizeof(where), " `Name` = '%s'", name );
+
 	sqlLib->SNPrintF( sqlLib, where, sizeof(where), " `Name` = '%s'", name );
 	
 	struct User *user = NULL;
 	int entries;
 	
 	user = ( struct User *)sqlLib->Load( sqlLib, UserDesc, where, &entries );
-	sb->LibraryMYSQLDrop( sb, sqlLib );
+	sb->LibrarySQLDrop( sb, sqlLib );
 	
 	User *tmp = user;
 	while( tmp != NULL )
 	{
-		// TODO: Reenable application stuff when it works
 		UMAssignGroupToUser( um, tmp );
 		UMAssignApplicationsToUser( um, tmp );
-		UserInit( &tmp );
 		
 		tmp = (User *)tmp->node.mln_Succ;
 	}
 	
-	DEBUG("UMGetUserByNameDB end\n");
+	DEBUG("[UMGetUserByNameDB] end\n");
+	return user;
+}
+
+/**
+ * Get user ID database by his name
+ *
+ * @param um pointer to UserManager
+ * @param name name of the user
+ * @return User or NULL when error will appear
+ */
+FULONG UMGetUserIDByName( UserManager *um, const char *name )
+{
+	User *usr = UMGetUserByName( um, name );
+	if( usr == NULL )
+	{
+		SystemBase *sb = (SystemBase *)um->um_SB;
+		SQLLibrary *sqlLib = sb->LibrarySQLGet( sb );
+	
+		if( sqlLib )
+		{
+			FULONG id = 0;
+			DEBUG("[UMGetUserIDByName] %s\n", name );
+
+			char query[ 1024 ];
+			sqlLib->SNPrintF( sqlLib, query, sizeof(query), "SELECT ID FROM `FUser` WHERE Name='%s'", name );
+		
+			void *result = sqlLib->Query( sqlLib, query );
+			if( result != NULL )
+			{
+				char **row;
+				if( ( row = sqlLib->FetchRow( sqlLib, result ) ) )
+				{
+					char *end;
+					if( row[ 0 ] != NULL )
+					{
+						id = strtol( (char *)row[ 0 ], &end, 0 );
+						
+						sqlLib->FreeResult( sqlLib, result );
+						sb->LibrarySQLDrop( sb, sqlLib );
+						return id;
+					}
+				}
+				sqlLib->FreeResult( sqlLib, result );
+			}
+			sb->LibrarySQLDrop( sb, sqlLib );
+		}
+	}
+
+	return usr->u_ID;
+}
+
+/**
+ * Get user from database by ID
+ *
+ * @param um pointer to UserManager
+ * @param id ID of the user
+ * @return User or NULL when error will appear
+ */
+User *UMGetUserByIDDB( UserManager *um, FULONG id )
+{
+	SystemBase *sb = (SystemBase *)um->um_SB;
+	SQLLibrary *sqlLib = sb->LibrarySQLGet( sb );
+	char where[ 128 ];
+	where[ 0 ] = 0;
+	
+	DEBUG("[UMGetUserByNameDB] start\n");
+	
+	if( sqlLib == NULL )
+	{
+		FERROR("Cannot get user, mysql.library was not open\n");
+		return NULL;
+	}
+
+	sqlLib->SNPrintF( sqlLib, where, sizeof(where), " `ID` = '%lu'", id );
+	
+	struct User *user = NULL;
+	int entries;
+	
+	user = ( struct User *)sqlLib->Load( sqlLib, UserDesc, where, &entries );
+	sb->LibrarySQLDrop( sb, sqlLib );
+	
+	User *tmp = user;
+	while( tmp != NULL )
+	{
+		UMAssignGroupToUser( um, tmp );
+		UMAssignApplicationsToUser( um, tmp );
+		
+		tmp = (User *)tmp->node.mln_Succ;
+	}
+	
+	DEBUG("[UMGetUserByNameDB] end\n");
 	return user;
 }
 
@@ -954,27 +999,25 @@ User *UMGetUserByNameDB( UserManager *um, const char *name )
  * Get User structure from database by authentication id
  *
  * @param um pointer to UserManager
- * @param authid authentication id
+ * @param authId authentication id
  * @return User structure when success, otherwise NULL
  */
-
 void *UMUserGetByAuthIDDB( UserManager *um, const char *authId )
 {
 	SystemBase *sb = (SystemBase *)um->um_SB;
-	MYSQLLibrary *sqlLib = sb->LibraryMYSQLGet( sb );
+	SQLLibrary *sqlLib = sb->LibrarySQLGet( sb );
 	
 	if( sqlLib && sqlLib->con.sql_Con )
 	{
-		DEBUG("GetAuthByAuthid %s\n", authId );
+		DEBUG("[UMUserGetByAuthIDDB] %s\n", authId );
 		// temporary solution, using MYSQL connection
 		char query[ 1024 ];
-		//snprintf( query, sizeof(query), "SELECT u.ID FROM `FUser` u, `FApplication` f WHERE f.AuthID=\"%s\" AND f.UserID = u.ID LIMIT 1", authId );
 		sqlLib->SNPrintF( sqlLib, query, sizeof(query), "SELECT u.ID FROM `FUser` u, `FApplication` f WHERE f.AuthID=\"%s\" AND f.UserID = u.ID LIMIT 1", authId );
 		
-		MYSQL_RES *result = sqlLib->Query( sqlLib, query );
+		void *result = sqlLib->Query( sqlLib, query );
 		if( result != NULL )
 		{
-			MYSQL_ROW row;
+			char **row;
 			if( ( row = sqlLib->FetchRow( sqlLib, result ) ) )
 			{
 				struct User *user = NULL;
@@ -985,9 +1028,7 @@ void *UMUserGetByAuthIDDB( UserManager *um, const char *authId )
 				user = sqlLib->Load( sqlLib, UserDesc, tmpQuery, &entries );
 				if( user != NULL )
 				{
-					sb->LibraryMYSQLDrop( sb, sqlLib );
-					int res = UserInit( &user );
-					if( res == 0 )
+					sb->LibrarySQLDrop( sb, sqlLib );
 					{
 						UMAssignGroupToUser( um, user );
 						UMAssignApplicationsToUser( um, user );
@@ -1002,7 +1043,7 @@ void *UMUserGetByAuthIDDB( UserManager *um, const char *authId )
 		}
 	}
 	
-	sb->LibraryMYSQLDrop( sb, sqlLib );
+	sb->LibrarySQLDrop( sb, sqlLib );
 	
 	return NULL;
 }
@@ -1013,11 +1054,12 @@ void *UMUserGetByAuthIDDB( UserManager *um, const char *authId )
  * @param um pointer to UserManager
  * @return User list or NULL when error will appear
  */
-
 User *UMGetAllUsersDB( UserManager *um )
 {
 	SystemBase *sb = (SystemBase *)um->um_SB;
-	MYSQLLibrary *sqlLib = sb->LibraryMYSQLGet( sb );
+	SQLLibrary *sqlLib = sb->LibrarySQLGet( sb );
+	
+	DEBUG("[UMGetAllUsersDB] start\n");
 	
 	if( sqlLib == NULL )
 	{
@@ -1029,20 +1071,18 @@ User *UMGetAllUsersDB( UserManager *um )
 	int entries;
 	
 	user = ( struct User *)sqlLib->Load( sqlLib, UserDesc, NULL, &entries );
-	sb->LibraryMYSQLDrop( sb, sqlLib );
+	sb->LibrarySQLDrop( sb, sqlLib );
 	
 	User *tmp = user;
 	while( tmp != NULL )
 	{
-		// TODO: Reenable application stuff when it works
 		UMAssignGroupToUser( um, tmp );
 		UMAssignApplicationsToUser( um, tmp );
-		UserInit( &tmp );
 		
 		tmp = (User *)tmp->node.mln_Succ;
 	}
 	
-	DEBUG("GetAllUsers end\n");
+	DEBUG("[UMGetAllUsersDB] end\n");
 	return user;
 }
 
@@ -1053,7 +1093,6 @@ User *UMGetAllUsersDB( UserManager *um )
  * @param usr user which will be added to FC user list
  * @return 0 when success, otherwise error number
  */
-
 int UMAddUser( UserManager *um,  User *usr )
 {
 	User *lu =  UMGetUserByID( um, usr->u_ID );
@@ -1079,30 +1118,46 @@ int UMAddUser( UserManager *um,  User *usr )
  *
  * @param um pointer to UserManager
  * @param usr user which will be removed from FC user list
+ * @param user_session_manager Session manager of the currently running instance
  * @return 0 when success, otherwise error number
  */
-
-int UMRemoveUser( UserManager *um, User *usr )
+int UMRemoveUser(UserManager *um, User *usr, UserSessionManager *user_session_manager)
 {
-	User *lusr = um->um_Users;
-	User *prevusr = lusr;
-	
-	while( lusr != NULL )
-	{
-		if( lusr == usr )
-		{
-			DEBUG("UserManagerRemove: user removed\n");
+	User *user_current = um->um_Users; //current element of the linked list, set to the beginning of the list
+	User *user_previous = NULL; //previous element of the linked list
+
+	FULONG user_id = usr->u_ID;
+
+	UserSession *session_to_delete;
+    while ((session_to_delete = USMGetSessionByUserID(user_session_manager, user_id)) != NULL){
+    	int status = USMUserSessionRemove(user_session_manager, session_to_delete);
+    	DEBUG("%s removing session at %p, status %d\n", __func__, session_to_delete, status);
+    }
+
+    unsigned int n = 0;
+    bool found = false;
+	while (user_current != NULL){
+		if (user_current == usr){
+			DEBUG("%s removing user at %p, place in list %d\n", __func__, user_current, n);
+			found = true;
+			n++;
 			break;
 		}
-		prevusr = lusr;
-		lusr = (User *)lusr->node.mln_Succ;
+		user_previous = user_current;
+		user_current = (User *)user_current->node.mln_Succ; //this is the next element in the linked list
 	}
 	
-	if( lusr != NULL )
-	{
-		prevusr->node.mln_Succ = lusr->node.mln_Succ;
-		DEBUG("User will be removed from memory\n");
-		UserDelete( lusr );
+	if (found){ //the requested user has been found in the list
+
+		if (user_previous){ //we are in the middle or at the end of the list
+
+			DEBUG("Deleting from the middle or end of the list\n");
+			user_previous->node.mln_Succ = user_current->node.mln_Succ;
+
+		} else { //we are at the very beginning of the list
+			um->um_Users = (User *)user_current->node.mln_Succ; //set the global start pointer of the list
+		}
+		UserDelete(user_current);
 		
 		return 0;
 	}
@@ -1117,26 +1172,23 @@ int UMRemoveUser( UserManager *um, User *usr )
  * @param name username which will be checked
  * @return 0 or time from which user is allowed to login (0 is also the value when he can login)
  */
-
 FULONG UMGetAllowedLoginTime( UserManager *um, const char *name )
 {
 	FULONG tm = 0;
 	
 	SystemBase *sb = (SystemBase *)um->um_SB;
-	MYSQLLibrary *sqlLib = sb->LibraryMYSQLGet( sb );
+	SQLLibrary *sqlLib = sb->LibrarySQLGet( sb );
 	
 	if( sqlLib != NULL )
 	{
-		DEBUG("UMGetAllowedLoginTime %s\n", name );
-		// temporary solution, using MYSQL connection
+		DEBUG("[UMGetAllowedLoginTime] user name: %s\n", name );
 		char query[ 1024 ];
-		//snprintf( query, sizeof(query), "SELECT u.ID FROM `FUser` u, `FApplication` f WHERE f.AuthID=\"%s\" AND f.UserID = u.ID LIMIT 1", authId );
 		sqlLib->SNPrintF( sqlLib, query, sizeof(query), "SELECT `LoginTime` FROM `FUser` WHERE `Name`='%s' LIMIT 1", name );
 		
-		MYSQL_RES *result = sqlLib->Query( sqlLib, query );
+		void *result = sqlLib->Query( sqlLib, query );
 		if( result != NULL )
 		{ 
-			MYSQL_ROW row;
+			char **row;
 			if( ( row = sqlLib->FetchRow( sqlLib, result ) ) )
 			{
 				tm = atol( row[ 0 ] );
@@ -1144,9 +1196,8 @@ FULONG UMGetAllowedLoginTime( UserManager *um, const char *name )
 			sqlLib->FreeResult( sqlLib, result );
 		}
 		
-		sb->LibraryMYSQLDrop( sb, sqlLib );
+		sb->LibrarySQLDrop( sb, sqlLib );
 	}
-	
 	return tm;
 }
 
@@ -1159,15 +1210,14 @@ FULONG UMGetAllowedLoginTime( UserManager *um, const char *name )
  * @param failReason if field is not equal to NULL then user is not authenticated
  * @return 0 when success otherwise error number
  */
-
 int UMStoreLoginAttempt( UserManager *um, const char *name, const char *info, const char *failReason )
 {
 	UserLogin ul;
 	SystemBase *sb = (SystemBase *)um->um_SB;
-	MYSQLLibrary *sqlLib = sb->LibraryMYSQLGet( sb );
+	SQLLibrary *sqlLib = sb->LibrarySQLGet( sb );
 	User *usr = UMGetUserByNameDB( um, name );
 	
-	DEBUG("UMStoreLoginAttempt\n");
+	DEBUG("[UMStoreLoginAttempt] start\n");
 	
 	if( sqlLib != NULL )
 	{
@@ -1186,7 +1236,7 @@ int UMStoreLoginAttempt( UserManager *um, const char *name, const char *info, co
 		
 		sqlLib->Save( sqlLib, UserLoginDesc, &ul );
 		
-		sb->LibraryMYSQLDrop( sb, sqlLib );
+		sb->LibrarySQLDrop( sb, sqlLib );
 	}
 	
 	if( usr != NULL )
@@ -1210,11 +1260,11 @@ FBOOL UMGetLoginPossibilityLastLogins( UserManager *um, const char *name, int nu
 {
 	FBOOL canILogin = FALSE;
 	SystemBase *sb = (SystemBase *)um->um_SB;
-	MYSQLLibrary *sqlLib = sb->LibraryMYSQLGet( sb );
+	SQLLibrary *sqlLib = sb->LibrarySQLGet( sb );
 	
 	if( sqlLib != NULL )
 	{
-		DEBUG("UMGetLastFailLogins %s\n", name );
+		DEBUG("[UMGetLoginPossibilityLastLogins] username %s\n", name );
 		// temporary solution, using MYSQL connection
 		char query[ 2048 ];
 		time_t tm = time( NULL );
@@ -1222,10 +1272,10 @@ FBOOL UMGetLoginPossibilityLastLogins( UserManager *um, const char *name, int nu
 		// we are checking failed logins in last hour
 		sqlLib->SNPrintF( sqlLib, query, sizeof(query), "SELECT `LoginTime`,`Failed` FROM `FUserLogin` WHERE `Login`='%s' AND (`LoginTime` > %lu AND `LoginTime` <= %lu) ORDER BY `LoginTime` DESC", name, tm-(3600l), tm );
 		
-		MYSQL_RES *result = sqlLib->Query( sqlLib, query );
+		void *result = sqlLib->Query( sqlLib, query );
 		if( result != NULL )
 		{ 
-			MYSQL_ROW row;
+			char **row;
 			int i = 0;
 			FBOOL goodLogin = FALSE;
 			
@@ -1267,495 +1317,74 @@ FBOOL UMGetLoginPossibilityLastLogins( UserManager *um, const char *name, int nu
 			}
 		}
 		
-		sb->LibraryMYSQLDrop( sb, sqlLib );
+		sb->LibrarySQLDrop( sb, sqlLib );
 	}
-	
 	return canILogin;
 }
 
 /**
- * Add remote user
+ * Check and set API user if thats neccessary
  *
  * @param um pointer to UserManager
- * @param name user name as string
- * @param sessid sessionid
- * @param hostname hostname string
  * @return 0 when success, otherwise error number
  */
-int UMAddRemoteUser( UserManager *um, const char *name, const char *sessid, const char *hostname )
+int UMCheckAndLoadAPIUser( UserManager *um )
 {
-	DEBUG("UMAddRemoteUser start\n");
-	
-	RemoteUser *actUsr = um->um_RemoteUsers;
-	while( actUsr != NULL )
-	{
-		if( strcmp( name, actUsr->ru_Name ) == 0 && strcmp( hostname, actUsr->ru_Host ) == 0 )
-		{
-			break;
-		}
-		
-		actUsr = (RemoteUser *)actUsr->node.mln_Succ;
-	}
-	
-	if( actUsr == NULL )
-	{
-		actUsr = RemoteUserNew( (char *) name, (char *)hostname );
-		if( actUsr != NULL )
-		{
-			actUsr->node.mln_Succ = (MinNode *) um->um_RemoteUsers;
-			um->um_RemoteUsers = actUsr;
-			
-			//actUsr->ru_Name = StringDuplicate( name );
-			actUsr->ru_SessionID = StringDuplicate( sessid );
-			//actUsr->ru_Host = StringDuplicate( hostname );
-		}
-	}
-	
-	if( actUsr != NULL )
-	{
-		actUsr->ru_ConNumber++;
-		
-		SystemBase *sb = (SystemBase *)um->um_SB;
-		CommService *service = sb->fcm->fcm_CommService;
-		
-		Socket *newsock;
-		
-		newsock = SocketConnectHost( service->s_SB, service->s_secured, actUsr->ru_Host, service->s_port );
-		//newcon->cfcc_Socket = SocketOpen( service->s_secured, service->s_port, SOCKET_TYPE_CLIENT );
-		if( newsock != NULL )
-		{
-			CommFCConnection *con = CommServiceAddConnection( service, newsock, actUsr->ru_Host, NULL, SERVICE_CONNECTION_OUTGOING );
-			if( con != NULL )
-			{
-				actUsr->ru_Connection = con;
-			}
-			
-			// now we must send authid and later notification about changes
-		}
-		else
-		{
-			FERROR("Cannot open socket\n");
-		}
-	}
-	
-	DEBUG("UMAddRemoteUser end\n");
-	
-	return 0;
-}
-
-/**
- * Remove remote user
- *
- * @param uname user name as string
- * @param hostname hostname string
- * @return 0 when success, otherwise error number
- */
-int UMRemoveRemoteUser( UserManager *um, const char *name, const char *hostname )
-{
-	DEBUG("UMRemoveRemoteUser start\n");
 	SystemBase *sb = (SystemBase *)um->um_SB;
-	CommService *service = sb->fcm->fcm_CommService;
+	DEBUG("[UMCheckAndLoadAPIUser] Start\n" );
 	
-	RemoteUser *actUsr = um->um_RemoteUsers;
-	RemoteUser *prevUsr = actUsr;
-	while( actUsr != NULL )
+	User *tuser = um->um_Users;
+	while( tuser != NULL )
 	{
-		if( strcmp( name, actUsr->ru_Name ) == 0 && strcmp( hostname, actUsr->ru_Host ) == 0 )
+		// Check both username and password
+		if( tuser->u_IsAPI && strcmp( tuser->u_Name, "apiuser" ) == 0 )
 		{
-			break;
+			um->um_APIUser = tuser;
+			return 0;
 		}
-		
-		prevUsr = actUsr;
-		actUsr = (RemoteUser *)actUsr->node.mln_Succ;
+		tuser = (User *)tuser->node.mln_Succ;
 	}
 	
-	if( actUsr != NULL )
+	SQLLibrary *sqlLib = sb->LibrarySQLGet( sb );
+	
+	if( sqlLib != NULL )
 	{
-		actUsr->ru_ConNumber--;
-		
-		// we have less or equal connections to 0
-		// user can be removed from list
-		
-		if( actUsr->ru_ConNumber <= 0 )
+		User *user = NULL;
+
+		int entries;
+		user = sqlLib->Load( sqlLib, UserDesc, "Name = 'apiuser'", &entries );
+		sb->LibrarySQLDrop( sb, sqlLib );
+
+		if( user != NULL )
 		{
-			if( actUsr == um->um_RemoteUsers )
+			// Generate the API user session
+			char temptext[ 2048 ];
+			char *sesid = session_id_generate( );
+			if( user->u_MainSessionID != NULL )
 			{
-				um->um_RemoteUsers = (RemoteUser *) um->um_RemoteUsers->node.mln_Succ;
+				FFree( user->u_MainSessionID );
 			}
-			else
-			{
-				prevUsr->node.mln_Succ = actUsr->node.mln_Succ;
-			}
+			user->u_MainSessionID = sesid;
 			
-			//CommServiceDelConnection( service, actUsr->ru_Connection, actUsr->ru_Connection->cfcc_Socket );
-			RemoteUserDelete( actUsr );
-		}
-	}
-	
-	DEBUG("UMRemoveRemoteUser end\n");
-	
-	return 0;
-}
-
-/**
- * Add remote drive (and user if needed)
- *
- * @param um pointer to UserManager
- * @param uname user name as string
- * @param authid authenticationid
- * @param hostname hostname string
- * @param localDevName local device name
- * @param remoteDevName remote device name
- * @return 0 when success, otherwise error number
- */
-int UMAddRemoteDrive( UserManager *um, const char *locuname, const char *uname, const char *authid, const char *hostname, char *localDevName, char *remoteDevName )
-{
-	DEBUG("UMAddRemoteUser start\n");
-	FBOOL registerUser = FALSE;
-	FBOOL registerDrive = FALSE;
-	CommFCConnection *con = NULL;
-	SystemBase *sb = (SystemBase *)um->um_SB;
-	CommService *service = sb->fcm->fcm_CommService;
-	
-	RemoteUser *actUsr = um->um_RemoteUsers;
-	RemoteDrive *remDri = NULL;
-	
-	// try to find user first
-	
-	while( actUsr != NULL )
-	{
-		if( strcmp( uname, actUsr->ru_Name ) == 0 && strcmp( hostname, actUsr->ru_Host ) == 0 )
-		{
-			DEBUG("User found %s - host %s\n", uname, hostname );
-			con = actUsr->ru_Connection;
-			break;
-		}
-		
-		actUsr = (RemoteUser *)actUsr->node.mln_Succ;
-	}
-	
-	// if user do not exist then connection must be created
-	
-	if( actUsr == NULL )
-	{
-		registerUser = TRUE;
-		registerDrive = TRUE;
-		
-		actUsr = RemoteUserNew( (char *)uname, (char *) hostname );
-		if( actUsr != NULL )
-		{
-			actUsr->node.mln_Succ = (MinNode *) um->um_RemoteUsers;
-			um->um_RemoteUsers = actUsr;
-
-			actUsr->ru_AuthID = StringDuplicate( authid );
+			sqlLib->SNPrintF( sqlLib, temptext, 2048, "UPDATE `FUser` f SET f.SessionID = '%s' WHERE`ID` = '%ld'",  user->u_MainSessionID, user->u_ID );
+			sqlLib->QueryWithoutResults( sqlLib, temptext );
 			
-			Socket *newsock;
+			DEBUG("[UMCheckAndLoadAPIUser] User found %s  id %ld\n", user->u_Name, user->u_ID );
+			UMAssignGroupToUser( um, user );
+			UMAssignApplicationsToUser( um, user );
+			user->u_MountedDevs = NULL;
 			
-			newsock = SocketConnectHost( service->s_SB, service->s_secured, actUsr->ru_Host, service->s_port );
-			if( newsock != NULL )
+			user->node.mln_Succ  = (MinNode *) um->um_Users;
+			if( um->um_Users != NULL )
 			{
-				con = CommServiceAddConnection( service, newsock, actUsr->ru_Host, NULL, SERVICE_CONNECTION_OUTGOING );
-				if( con != NULL )
-				{
-					actUsr->ru_Connection = con;
-					
-					CommServiceRegisterEvent( con, newsock );
-				}
+				um->um_Users->node.mln_Pred = (MinNode *)user;
 			}
-		}
-	}
-	
-	if( actUsr != NULL )
-	{
-		// we are increasing connection number
-		
-		actUsr->ru_ConNumber++;
-		
-		// try to find remote drive
-
-		remDri = actUsr->ru_RemoteDrives;
-		while( remDri != NULL )
-		{
-			if( remDri->rd_LocalName != NULL && strcmp( localDevName, remDri->rd_LocalName ) == 0 &&
-				remDri->rd_RemoteName != NULL && strcmp( remoteDevName, remDri->rd_RemoteName ) == 0 )
-			{
-				break;
-			}
-		}
-		
-		// if drive doesnt exist, we must create one
-		
-		if( remDri == NULL )
-		{
-			registerDrive = TRUE;
+			um->um_Users = user;
 			
-			remDri = RemoteDriveNew( localDevName, remoteDevName );
-			if( remDri != NULL )
-			{
-				remDri->node.mln_Succ = (MinNode *)actUsr->ru_RemoteDrives;
-				actUsr->ru_RemoteDrives = remDri;
-			}
-		}
-	}
-	
-	/*
-	if( registerUser == TRUE )
-	{
-		char *luname = FCalloc( strlen(uname)+10, sizeof(char));
-		char *lauthid = FCalloc( strlen(authid)+8, sizeof(char));
-		char *llocuname = FCalloc( strlen(locuname)+13, sizeof(char));
-		
-		int iuname = sprintf( luname, "username=%s", uname );
-		int iauthid = sprintf( lauthid, "authid=%s", authid );
-		int ilocuname = sprintf( llocuname, "locusername=%s", locuname );
-		
-		MsgItem tags[] = {
-			{ ID_FCRE,  (FULONG)0, (FULONG)MSG_GROUP_START },
-			{ ID_FCID,  (FULONG)FRIEND_CORE_MANAGER_ID_SIZE,  (FULONG)sb->fcm->fcm_ID },
-			{ ID_FRID, (FULONG)0 , MSG_INTEGER_VALUE },
-			{ ID_RUSR, (FULONG)0 , MSG_INTEGER_VALUE },
-			{ ID_PARM, (FULONG)0, MSG_GROUP_START },
-				{ ID_PRMT, (FULONG) iuname, (FULONG)luname },
-				{ ID_PRMT, (FULONG) iauthid, (FULONG)lauthid },
-				{ ID_PRMT, (FULONG) ilocuname, (FULONG)llocuname },
-			{ MSG_GROUP_END, 0,  0 },
-			{ TAG_DONE, TAG_DONE, TAG_DONE }
-		};
-		
-		DataForm *df = DataFormNew( tags );
-		
-		DEBUG("Register user\n");
-
-		//int sbytes = SocketWrite( con->cfcc_Socket, (char *)df, df->df_Size );
-		
-		BufString *result = SendMessageAndWait( con, df );
-		
-		//BufString *result = SocketReadTillEnd( con->cfcc_Socket, 0, 15 );
-		if( result != NULL )
-		{
-			DEBUG("Response received\n");
-			if( result->bs_Size > 0 )
-			{
-				DEBUG("Answer received\n");
-				DataForm *resultDF = (DataForm *)result->bs_Buffer;
-				if( resultDF->df_ID == ID_FCRE )
-				{
-					DEBUG("Received proper response\n");
-				}
-			}
-			else
-			{
-				FERROR("Register user fail\n");
-				registerDrive = FALSE;
-			}
+			um->um_APIUser = user;
 			
-			BufStringDelete( result );
-		}
-		else
-		{
-			FERROR("Register user fail\n, result = NULL\n");
-			registerDrive = FALSE;
-		}
-		DataFormDelete( df );
-		
-		FFree( llocuname );
-		FFree( luname );
-		FFree( lauthid );
-	}
-	*/
-	
-	DEBUG("Before register drive %d\n", registerDrive );
-	
-	if( registerUser == TRUE || registerDrive == TRUE )
-	{
-		char *luname = FCalloc( strlen(uname)+10, sizeof(char));
-		char *lauthid = FCalloc( strlen(authid)+8, sizeof(char));
-		char *llocuname = FCalloc( strlen(locuname)+13, sizeof(char));
-		
-		int iuname = sprintf( luname, "username=%s", uname );
-		int iauthid = sprintf( lauthid, "authid=%s", authid );
-		int ilocuname = sprintf( llocuname, "locusername=%s", locuname );
-		
-		char *llocalDevName = FCalloc( strlen(localDevName)+12, sizeof(char));
-		char *lremoteDevName  = FCalloc( strlen(remoteDevName)+20, sizeof(char));
-		
-		int ilocalDevName = sprintf( llocalDevName, "locdevname=%s", localDevName );
-		int iremoteDevName = sprintf( lremoteDevName, "remotedevname=%s", remoteDevName );
-		
-		MsgItem tags[] = {
-			{ ID_FCRE,  (FULONG)0, (FULONG)MSG_GROUP_START },
-			{ ID_FCID,  (FULONG)FRIEND_CORE_MANAGER_ID_SIZE,  (FULONG)sb->fcm->fcm_ID },
-			{ ID_FRID, (FULONG)0 , MSG_INTEGER_VALUE },
-			{ ID_CMMD, (FULONG)0, MSG_INTEGER_VALUE },
-			{ ID_RDRI, (FULONG)0 , MSG_INTEGER_VALUE },
-			{ ID_PARM, (FULONG)0, MSG_GROUP_START },
-				{ ID_PRMT, (FULONG) iuname, (FULONG)luname },
-				{ ID_PRMT, (FULONG) iauthid, (FULONG)lauthid },
-				{ ID_PRMT, (FULONG) ilocuname, (FULONG)llocuname },
-				{ ID_PRMT, (FULONG) ilocalDevName, (FULONG)llocalDevName },
-				{ ID_PRMT, (FULONG) iremoteDevName, (FULONG)lremoteDevName },
-			{ MSG_GROUP_END, 0,  0 },
-			{ TAG_DONE, TAG_DONE, TAG_DONE }
-		};
-		
-		DataForm *df = DataFormNew( tags );
-		
-		DEBUG("Register device\n");
-		
-		BufString *result = SendMessageAndWait( con, df );
-		
-		if( result != NULL )
-		{
-			DEBUG("Response received Register device\n");
-			if( result->bs_Size > 0 )
-			{
-				DataForm *resultDF = (DataForm *)result->bs_Buffer;
-				if( resultDF->df_ID == ID_FCRE )
-				{
-					char *ptr = result->bs_Buffer + (9*sizeof(FULONG))+FRIEND_CORE_MANAGER_ID_SIZE;
-					DEBUG("Received proper response1\n");
-					
-					resultDF = (DataForm *)ptr;
-					if( resultDF->df_ID == ID_CMMD && resultDF->df_Size == 0 && resultDF->df_Data == MSG_INTEGER_VALUE )
-					{
-						INFO("FC connection set\n");
-					}
-					else
-					{
-						FERROR("Cannot  setup connection with other FC\n");
-					}
-				}
-			}
-			BufStringDelete( result );
-		}
-		DataFormDelete( df );
-		
-		FFree( llocalDevName );
-		FFree( lremoteDevName );
-		
-		FFree( llocuname );
-		FFree( luname );
-		FFree( lauthid );
-	}
-	
-	DEBUG("UMAddRemoteUser end\n");
-	
-	return 0;
-}
-
-/**
- * Remove and delete remote drive (and user if there will be need)
- *
- * @param um pointer to UserManager
- * @param uname user name as string
- * @param hostname hostname string
- * @param localDevName local device name
- * @param remoteDevName remote device name
- * @return 0 when success, otherwise error number
- */
-int UMRemoveRemoteDrive( UserManager *um, const char *uname, const char *hostname, char *localDevName, char *remoteDevName )
-{
-	return 0;
-}
-
-/**
- * Add remote drive to user
- *
- * @param um pointer to UserManager
- * @param uname user name as string
- * @param authid authenticationid
- * @param hostname hostname string
- * @param localDevName local device name
- * @param remoteDevName remote device name
- * @return 0 when success, otherwise error number
- */
-int UMAddRemoteDriveToUser( UserManager *um, CommFCConnection *con, const char *locuname, const char *uname, const char *authid, const char *hostname, char *localDevName, char *remoteDevName )
-{
-	User *locusr = um->um_Users;
-	RemoteDrive *locremdri = NULL;
-	
-	while( locusr != NULL )
-	{
-		if( strcmp( locuname, locusr->u_Name ) == 0 )
-		{
-			DEBUG("User found: %s\n", locuname );
-			break;
-		}
-		locusr = (User *)locusr->node.mln_Succ;
-	}
-	
-	if( locusr == NULL )
-	{
-		FERROR("Cannot find user\n");
-		return -1;
-	}
-	
-	// we are trying to find remote user with same/existing connection
-	RemoteUser *remusr = locusr->u_RemoteUsers;
-	while( remusr != NULL )
-	{
-		if( strcmp( uname, remusr->ru_RemoteDrives->rd_LocalName ) == 0 && con == remusr->ru_Connection )
-		{
-			DEBUG("User found: %s\n", uname );
-			break;
-		}
-		remusr = (RemoteUser *)remusr->node.mln_Succ;
-	}
-	
-	// user do not exist, we must create new one and attach it
-	if( remusr == NULL )
-	{
-		remusr = RemoteUserNew( (char *)uname, (char *)hostname );
-		if( remusr != NULL )
-		{
-			remusr->ru_AuthID = StringDuplicate( authid );
-			remusr->ru_Connection = con;
-			
-			remusr->node.mln_Succ = (MinNode *)locusr->u_RemoteUsers;
-			locusr->u_RemoteUsers = remusr;
-			DEBUG("New remote user added %s\n", uname );
+			return 0;
 		}
 	}
-
-	if( remusr != NULL )
-	{
-		locremdri = remusr->ru_RemoteDrives;
-		while( locremdri != NULL )
-		{
-			if( strcmp( locremdri->rd_LocalName, localDevName ) == 0 && strcmp( locremdri->rd_RemoteName, remoteDevName ) == 0 )
-			{
-				DEBUG("Remote drive found %s\n", localDevName );
-				break;
-			}
-			locremdri = (RemoteDrive *)locremdri->node.mln_Succ;
-		}
-	}
-	
-	if( locremdri == NULL )
-	{
-		locremdri = RemoteDriveNew( localDevName, remoteDevName );
-		if( locremdri != NULL )
-		{
-			locremdri->node.mln_Succ = (MinNode *)remusr->ru_RemoteDrives;
-			remusr->ru_RemoteDrives = locremdri;
-			DEBUG("New remote drive added\n");
-		}
-	}
-	
-	return 0;
-}
-
-/**
- * Remove and delete remote drive from User
- *
- * @param um pointer to UserManager
- * @param uname user name as string
- * @param hostname hostname string
- * @param localDevName local device name
- * @param remoteDevName remote device name
- * @return 0 when success, otherwise error number
- */
-int UMRemoveRemoteDriveFromUser( UserManager *um, CommFCConnection *con, const char *uname, const char *hostname, char *localDevName, char *remoteDevName )
-{
-	return 0;
+	return 1;
 }

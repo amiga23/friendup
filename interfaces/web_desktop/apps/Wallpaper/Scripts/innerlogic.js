@@ -1,19 +1,10 @@
 /*©agpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Affero General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Affero General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Affero   *
+* General Public License, found in the file license_agpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
 
@@ -22,6 +13,7 @@ Application.currentPath = 'Mountlist:';
 Application.run = function( msg, iface )
 {
 	this.sendMessage( { command: 'getimages' } );
+	scrapeImages();
 }
 
 Application.selectedImage = -3;
@@ -51,6 +43,24 @@ Application.addImages = function( images )
 	this.showImages();
 }
 
+function scrapeImages()
+{
+	/*var m = new Module( 'system' );
+	m.onExecuted = function( e, d )
+	{
+		if( e == 'ok' )
+		{
+			console.log( d );
+		}
+		else
+		{
+			console.log( e, d );
+		}
+	}
+	m.execute( 'proxyget', { url: 'https://www.pexels.com/new-photos/' } );*/
+	ge( 'Webimages' ).innerHTML = '<h2>' + i18n( 'i18n_unfinished' ) + '</h2>' + '<p>' + i18n( 'i18n_soon' ) + '</p>';
+}
+
 // Show the wallpaper images
 Application.showImages = function()
 {
@@ -62,8 +72,15 @@ Application.showImages = function()
 		{
 			if( d )
 			{
-				d = JSON.parse( d );
-				current = d['wallpaper'+Application.mode];
+				try
+				{
+					d = JSON.parse( d );
+					current = d['wallpaper'+Application.mode];
+				}
+				catch( e )
+				{
+					d = null;
+				}
 			}
 		}
 		

@@ -1,19 +1,10 @@
 /*©agpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Affero General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Affero General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Affero   *
+* General Public License, found in the file license_agpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
 
@@ -21,7 +12,7 @@ var system = window.system || {};
 
 // TODO -> js file
 window.config = {
-	defaultHost : 'store.openfriendup.net',
+	defaultHost : 'friendup.world',
 	protocol : 'https://',
 	display : '1',
 	module : 'main',
@@ -37,12 +28,16 @@ window.config = {
 	ns.Treeroot = function( app, config )
 	{
 		var self = this;
+		
+		
+		var msg = config;
+	
 		self.app = app;
 		self.config = config;
-		
+
 		self.host = null;
 		self.account = null;
-		
+
 		self.view = false;
 		
 		self.init();
@@ -90,19 +85,24 @@ window.config = {
 			pubKey = pubKey.split( /\rn/ ).join( '' );
 			pubKey = window.encodeURIComponent( pubKey );
 			
-			self.main.loadedEvent = {
-				type : 'open',
-				data : {
-					host : self.host,
-					uniqueId : msg.data.uniqueId || self.uniqueId,
-					privKey : privKey,
-					pubKey : pubKey,
-					sessionId : msg.data.sessionId,
-					config : window.config
-				},
-			};
+			self.getServerSettings( function( param )
+			{
 			
-			self.main.showMain();
+				self.main.loadedEvent = {
+					type : 'open',
+					data : {
+						host : self.host,
+						uniqueId : msg.data.uniqueId || self.uniqueId,
+						privKey : privKey,
+						pubKey : pubKey,
+						sessionId : msg.data.sessionId,
+						config : window.config
+					},
+				};
+			
+				self.main.showMain();
+			
+			} );
 		}
 		else
 		{
@@ -156,7 +156,7 @@ window.config = {
 				}
 			}
 			m.execute( 'proxyget', {
-				url: 'https://store.openfriendup.net/components/register/recover/',
+				url: 'https://friendup.world/components/register/recover/',
 				Email: msg.data.username,
 				Encoding: 'json'
 			} );
@@ -252,7 +252,7 @@ window.config = {
 										}
 									}
 									mmm.execute( 'proxyget', {
-										url: 'https://store.openfriendup.net/components/register/activate/',
+										url: 'https://friendup.world/components/register/activate/',
 										UniqueID: uniqueId,
 										Firstname: firstName,
 										Lastname: lastName,
@@ -278,7 +278,7 @@ window.config = {
 							}
 						}
 						mm.execute( 'proxyget', {
-							url: 'https://store.openfriendup.net/authenticate/',
+							url: 'https://friendup.world/authenticate/',
 							Username: email,
 							Source: 'friendup',
 							Encoding: 'json'
@@ -299,7 +299,7 @@ window.config = {
 				}
 			}
 			m.execute( 'proxyget', {
-				url: 'https://store.openfriendup.net/components/register/',
+				url: 'https://friendup.world/components/register/',
 				Email: email,
 				Username: username,
 				Encoding: 'json'
@@ -332,7 +332,15 @@ window.config = {
 		
 		window.config.closeall = true;
 		
-		self.run();
+		var m = new Module( 'system' );
+		m.onExecuted = function( e, d )
+		{
+			self.run();
+		}
+		m.execute( 'setsetting', { 
+			'setting' : 'fullscreen', 
+			'data' : 'true' 
+		} );
 	}
 	
 	ns.Treeroot.prototype.windowmode = function()
@@ -347,7 +355,50 @@ window.config = {
 		
 		window.config.closeall = true;
 		
-		self.run();
+		var m = new Module( 'system' );
+		m.onExecuted = function( e, d )
+		{
+			self.run();
+		}
+		m.execute( 'setsetting', { 
+			'setting' : 'fullscreen', 
+			'data' : 'false' 
+		} );
+	}
+	
+	ns.Treeroot.prototype.getServerSettings = function( callback )
+	{
+		//host settings...
+		var m2 = new Module( 'system' );
+		m2.onExecuted = function( e, d )
+		{
+			if( e == 'ok' )
+			{
+				var tmp;
+			
+				try
+				{
+					 tmp = JSON.parse( d );	
+					 tmp = JSON.parse( tmp[0].Data );
+				}
+				catch(e)
+				{
+					console.log(d);
+				}
+			
+				if( tmp )
+				{
+					if( callback ) return callback( tmp );
+				}
+			}
+			else
+			{
+				console.log( {e:e,d:d} );
+			}
+		
+			if( callback ) return callback( false );
+		}
+		m2.execute( 'getsystemsetting', {'type':'friendcommunity','key':'parameters'} );
 	}
 	
 	ns.Treeroot.prototype.authenticate = function( username, password, recoverykey )
@@ -376,7 +427,8 @@ window.config = {
 			.then( loggedIn )
 			.catch( loginFailed );
 			
-		function loggedIn( account ) {
+		function loggedIn( account )
+		{
 			// account contains sessionId, among other things
 			self.account = {
 				username : account.username,
@@ -385,12 +437,16 @@ window.config = {
 				keys	 : account.keys*/
 			};
 			
+			console.log( 'self.saveAccount()' );
 			self.saveAccount();
+			console.log( 'self.setLastHost()' );
 			self.setLastHost();
+			console.log( 'self.main.open( self.host, account ) ', { host: self.host, account: account } );
 			self.main.open( self.host, account );
 		}
 		
-		function loginFailed( err ) {
+		function loginFailed( err )
+		{
 			console.log( 'loginFailed', err );
 			self.main.showLogin();
 		}
@@ -402,10 +458,10 @@ window.config = {
 		
 		var self = this;
 		
-		if ( !self.host )
+		if( !self.host )
 			return;
 		
-		if ( !self.account )
+		if( !self.account )
 		{
 			self.main.showLogin();
 			return;
@@ -413,7 +469,7 @@ window.config = {
 		
 		console.log( 'self.account: ', self.account );
 		
-		if ( !self.account.publickey || !self.account.privatekey || !self.account.uniqueId )
+		if( !self.account.publickey || !self.account.privatekey || !self.account.uniqueId )
 			return;
 		
 		var conf = {
@@ -443,7 +499,8 @@ window.config = {
 			} );
 		}
 		
-		function loginFailed( err ) {
+		function loginFailed( err )
+		{
 			console.log( 'loginFailed', err );
 			self.main.showLogin();
 		}
@@ -475,7 +532,24 @@ window.config = {
 		self.app.run = fun;
 		function fun( fupConf )
 		{
-			self.run( fupConf );
+			var m = new Module( 'system' );
+			m.onExecuted = function( e, d )
+			{
+				if( e == 'ok' )
+				{
+					var j = {};
+					
+					try
+					{
+						j = JSON.parse( d );
+					}
+					catch ( e ) { console.log( d ) }
+					
+					window.config.mode = j.fullscreen === true ? 'screen' : 'view';
+				}
+				self.run( fupConf );
+			}
+			m.execute( 'getsetting', { 'setting' : 'fullscreen' } );
 		}
 		
 		Application.receiveMessage = receiveMessage;
@@ -490,17 +564,19 @@ window.config = {
 	{
 		var self = this;
 		self.loadLastHost(  hostBack );
-		function hostBack( data ) {
+		function hostBack( data )
+		{
 			console.log( 'lasthostbackback', data );
 			if ( !data )
-				data = 'store.openfriendup.net';
+				data = 'friendup.world';
 			
 			self.host = data;
 			loadAccount();
 		}
 		
 		function loadAccount() { self.loadAccount( accBack ); }
-		function accBack( data ) {
+		function accBack( data )
+		{
 			console.log( 'accountBack', data );
 			self.account = data || null;
 			initMain();
@@ -508,7 +584,9 @@ window.config = {
 		
 		function initMain()
 		{
+			console.log( 'initMain()' );
 			self.main = new system.Main();
+			window.mainSystem = self.main; // <- breaks espens back
 			if ( self.account )
 			{
 				self.authenticate();
@@ -759,8 +837,8 @@ window.config = {
 		m.onExecuted = result;
 		m.execute( 'setsetting', {
 			setting: setting,
-			data: dataStr,
-		});
+			data: dataStr
+		} );
 		
 		function result( e, d )
 		{
@@ -784,21 +862,25 @@ window.config = {
 		var m = new Module( 'system' );
 		m.onExecuted = result;
 		m.execute( 'getsetting', {
-			setting: setting,
-		});
+			setting: setting
+		} );
 		
 		function result( e, d )
 		{
 			console.log( 'load result', { e : e, d : d, s : setting });
-			if( e !== 'ok' )
+			if( e !== 'ok' || d === 'fail' )
 			{
 				done( false );
 				return;
 			}
 			
 			d = objectify( d );
-			console.log( 'loadBack', d );
-			var data = d[ setting ];
+			var data = false;
+			if( d && typeof( d[ setting ] ) != 'undefined' )
+			{
+				//console.log( 'loadBack', d );
+				data = d[ setting ];
+			}
 			
 			if ( !data )
 				done( false );
@@ -907,10 +989,10 @@ window.config = {
 	{
 		var self = this;
 		
+		console.log( 'Opening screen: ' + window.config.mode );
+		
 		if( window.config.mode == 'screen' )
-		{
-			console.log( 'mode: screen' );
-			
+		{	
 			self.view = new Screen( { 
 				title: 'Friend Community',
 				id: 'Friend Community'
@@ -922,8 +1004,6 @@ window.config = {
 		}
 		else
 		{
-			console.log( 'mode: view' );
-			
 			self.view = new View( { 
 				title: 'Friend Community', 
 				width: 1280, 
@@ -957,19 +1037,31 @@ window.config = {
 		var keys = getKeys( account );
 		//var pubKey = getPubKey( account );
 		
-		self.loadedEvent = {
-			type : 'open',
-			data : {
-				host : host,
-				uniqueId : account.uniqueId,
-				privKey : keys.privKey,
-				pubKey : keys.pubKey,
-				sessionId : account.sessionId,
-				config : window.config
-			},
-		};
+		console.log( 'ns.Main.prototype.open = function( host, account )' );
 		
-		self.showMain();
+		getServerSettings( function( param )
+		{
+			
+			console.log( 'param: ', param );
+			
+			self.loadedEvent = {
+				type : 'open',
+				data : {
+					host : host, 
+					uniqueId : account.uniqueId, 
+					privKey : keys.privKey, 
+					pubKey : keys.pubKey, 
+					sessionId : account.sessionId, 
+					config : window.config, 
+					param : ( param ? param : false ) 
+				},
+			};
+			
+			console.log( 'self.showMain() ' );
+			
+			self.showMain();
+			
+		} );
 		
 		function getPubKey()
 		{
@@ -1000,6 +1092,59 @@ window.config = {
 			pubKey = window.encodeURIComponent( pubKey );
 			
 			return { 'privKey': privKey, 'pubKey': pubKey };
+		}
+		
+		function getServerSettings( callback )
+		{
+			//console.log( 'getServerSettings( callback ) ', callback );
+			
+			//console.log( 'bypassing getServerSettings() since there is none ... and it\'s not working ...' );
+			
+			// Bypassing getting settings somehow it doesn't work ...
+			//if( callback ) return callback( false );
+			
+			var timeout = setTimeout( function()
+			{
+				if( callback ) return callback( false );
+			}, 3000 );
+			
+			//host settings...
+			var m2 = new Module( 'system' );
+			m2.onExecuted = function( e, d )
+			{
+				console.log( { e:e, d:d } );
+				
+				clearTimeout( timeout );
+				
+				if( e == 'ok' )
+				{
+					var tmp;
+					
+					try
+					{
+						 tmp = JSON.parse( d );	
+						 tmp = JSON.parse( tmp[0].Data );
+					}
+					catch(e)
+					{
+						console.log(d);
+					}
+					
+					if( tmp )
+					{
+						if( callback ) return callback( tmp );
+					}
+				}
+				else
+				{
+					console.log( {e:e,d:d} );
+				}
+				
+				if( callback ) return callback( false );
+			}
+			m2.execute( 'getsystemsetting', {'type':'friendcommunity','key':'parameters'} );
+			
+			//console.log( '... ??? ... ' );
 		}
 	}
 	

@@ -16,9 +16,40 @@ i18n_paste                          : Lim
 i18n_new                            : Ny fil
 i18n_about_codeeditor               : Om Friend Create
 
+i18n_your_devices                   : Dine enheter
+i18n_bookmarks                      : Bokmerker
+
+i18n_autosaved                      : Autolagret.
+i18n_no_project                     : Fant ikke prosjektet
+i18n_cant_project_filename          : Fant ikke et filnavn for prosjektet.
+
+tb_newfile                          : Ny fil
+tb_open                             : Åpne fil
+tb_save                             : Lagre fil
+tb_saveas                           : Lagre som
+tb_close                            : Lukk fil
+tb_project                          : Prosjekt egenskaper
+tb_find                             : Finn/Erstatt
+
+#help menu
+i18n_help                           : Hjelp
+i18n_documentation                  : Dokumentasjon
+
+#context menus
+
+i18n_file_menu                      : Filmeny
+i18n_open_directory                 : Åpne mappe
+i18n_close_directory                : Lukk mappe
+i18n_open_file                      : Åpne fil
+i18n_create_folder                  : Ny mappe
+i18n_create_file                    : Ny tom fil
+i18n_open_volume                    : Åpne disk
+i18n_close_volume                   : Lukk disk
+
 #project menu
 i18n_project                        : Prosjekt
 i18n_project_new                    : Nytt prosjekt
+i18n_project_fromweb				: Nytt prosjekt fra nettsiden
 i18n_project_properties             : Prosjektegenskaper
 i18n_open_project_files             : Åpne prosjektfiler
 i18n_load_project                   : Åpne prosjekt
@@ -35,6 +66,11 @@ i18n_error_occ                      : En feil oppsto
 i18n_package_generation_error       : Pakken kunne ikke genereres. Det oppsto en feil. Vennligst sjekk prosjektegenskapene.
 i18n_package_submitted              : Pakken er sendt
 i18n_submitted_desc                 : Pakken er sent til Friend Store. Logg gjerne inn der for å spore pakken.
+
+i18n_checking_file                  : Undersøker fil.
+i18n_add_file_to_project            : Filen er ikke lagt til prosjektet. Ønsker du å legge den til?
+i18n_add_to_project                 : Legg til
+i18n_could_not_add_file             : Kunne ikke tilføye til prosjektet.
 
 #macro menu
 i18n_macros                         : Makroer
@@ -60,6 +96,11 @@ i18n_application_settings           : Endre innstillinger
 i18n_save_settings                  : Lagre innstillinger
 i18n_load_settings                  : Åpne innstillinger
 i18n_reset_settings                 : Standardverdier
+i18n_initiate_sas                   : Start delt app økt
+
+i18n_sas_window                     : Konfigurer delt økt
+
+i18n_join_friendc_session           : Bli med i en delt Friend Create økt
 
 i18n_new_filename                   : Ny fil
 i18n_empty_file                     : Tom fil
@@ -90,6 +131,7 @@ i18n_sure_remove                     : Er du sikker?
 i18n_sure_remove_desc                : Er du sikker på at du ønsker å fjerne dette skjermskuddet?
 
 i18n_files                           : Filer
+i18n_file_browser                    : Filutforsker
 i18n_tab_width                       : Fanebredde
 i18n_php                             : PHP
 i18n_css                             : CSS
@@ -102,6 +144,7 @@ i18n_javascriptexe                   : JavascriptEXE
 i18n_solidity                        : Solidity
 i18n_json                            : JSON
 i18n_html                            : HTML
+i18n_conf                            : Konfigurasjon
 i18n_c_code                          : C/C++ kode
 i18n_d_code                          : D kode
 i18n_ini_script                      : INI script
@@ -142,6 +185,14 @@ i18n_could_not_save : Kunne ikke lagre!
 i18n_friend_create_iot_monitor : Friend Create - IOT Monitor
 i18n_search_and_replace : Søk og erstatt
 
+#visual editor
+
+i18n_please_choose_session           : Vennligst velg økt
+i18n_standard_HTML5                  : Standard HTML5
+i18n_tree_engine_HTML5               : Tree Engine HTML5
+i18n_tree_engine_canvas              : Tree Engine Canvas
+i18n_tree_engine_3D                  : Tree Engine 3D
+i18n_start_editing                   : Start å redigere
 
 
 

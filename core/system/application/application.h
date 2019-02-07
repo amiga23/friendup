@@ -1,33 +1,26 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
-
+/** @file
+ * 
+ *  Application
+ *
+ *  @author PS (Pawel Stefanski)
+ *  @date created 2016
+ */
 
 #ifndef __APPLICATION_H__
 #define __APPLICATION_H__
 
 #include <time.h>
 #include <core/types.h>
-#include <mysql/mysqllibrary.h>
+#include <db/sqllib.h>
 #include "app_category.h"
 #include "app_permission.h"
 #include <system/user/user.h>
@@ -77,15 +70,13 @@ typedef struct Application
 	char 			    *a_DateInstalled;		//
 	char		 	    *a_DateModified;	//
 	char				*a_Config;		// Config
-	//MYSQL_TIME 		a_DateCreated;		//
-	//MYSQL_TIME 		a_DateInstalled;	//
 	MinNode 			node;
 }Application;
 
 
-static FULONG ApplicationDesc[] = { SQLT_TABNAME, (FULONG)"FApplication", SQLT_STRUCTSIZE, sizeof( struct Application ), 
-	SQLT_IDINT, (FULONG)"ID", offsetof( struct Application, a_ID ), 
-	SQLT_IDINT, (FULONG)"UserID", offsetof( struct Application, a_UserID ), 
+static FULONG ApplicationDesc[] = { SQLT_TABNAME, (FULONG)"FApplication", SQLT_STRUCTSIZE, sizeof( struct Application ),
+	SQLT_IDINT, (FULONG)"ID", offsetof( struct Application, a_ID ),
+	SQLT_INT, (FULONG)"UserID", offsetof( struct Application, a_UserID ),
 	SQLT_STR, (FULONG)"Name", offsetof( struct Application, a_Name ),
 	SQLT_STR, (FULONG)"InstallPath", offsetof( struct Application, a_InstallPath ),
 	SQLT_STR, (FULONG)"Permissions", offsetof( struct Application, a_Permissions ),

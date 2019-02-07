@@ -1,19 +1,10 @@
 /*©agpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Affero General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Affero General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Affero   *
+* General Public License, found in the file license_agpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
 
@@ -29,6 +20,8 @@ Application.run = function( msg, iface )
 		Permissions: [],
 		Libraries: []
 	};
+	
+	refreshCategories();
 }
 
 Application.receiveMessage = function( msg )
@@ -90,6 +83,21 @@ Application.receiveMessage = function( msg )
 			for( var a in msg.data )
 			{
 				this.project[a] = msg.data[a];
+				if( a == 'Permissions' && !msg.data['ProjectName'] )
+				{
+					this.project.Permissions = [
+						{
+							Permission: 'Module',
+							Name:       'system',
+							Options:    ''
+						},
+						{
+							Permission: 'Module',
+							Name:       'files',
+							Options:    ''
+						}
+					];
+				}
 				switch( a )
 				{
 					case 'ProjectName':
@@ -99,7 +107,7 @@ Application.receiveMessage = function( msg )
 						ge( 'tAuthor' ).value = msg.data[a];
 						break;
 					case 'Category':
-						ge( 'tCategory' ).value = msg.data[a];
+						refreshCategories( msg.data[a] );
 						break;
 					case 'Version':
 						ge( 'tVersion' ).value = msg.data[a];
@@ -116,6 +124,25 @@ Application.receiveMessage = function( msg )
 			redrawLibraries();
 			redrawScreenshots();
 			break;
+	}
+}
+
+function refreshCategories( value )
+{
+	var cats = [
+		'Office', 'Games', 'Demonstration', 'Internet', 'Graphics', 'Audio',
+		'Programming', 'System', 'Educational', 'Tools'
+	];
+	var sel = ge( 'tCategory' );
+	sel.innerHTML = '';
+	for( var a = 0; a < cats.length; a++ )
+	{
+		var o = document.createElement( 'option' );
+		o.value = cats[a];
+		if( value && value == o.value )
+			o.selected = 'selected';
+		o.innerHTML = cats[a];
+		sel.appendChild( o );
 	}
 }
 
@@ -190,7 +217,11 @@ function setupLibraryHTML( command, data )
 
 function addPrivileges()
 {
-	if( Application.pa ) return;
+	if( Application.pa )
+	{
+		Application.pa.activate();
+		return;
+	}
 	
 	var v = new View( {
 		title: 'Add permission',
@@ -367,7 +398,8 @@ function saveProject()
 		Permissions: Application.project.Permissions,
 		Files:       Application.project.Files,
 		Screenshots: Application.project.Screenshots,
-		Libraries:   JSON.parse( ge( 'Libraries' ).value )
+		Libraries:   ge( 'Libraries' ).value ? 
+		             JSON.parse( ge( 'Libraries' ).value ) : []
 	};
 	Application.sendMessage( { command: 'project_save', data: o, filename: Application.projectFilename } );
 }

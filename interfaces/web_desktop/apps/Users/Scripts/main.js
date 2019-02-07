@@ -1,23 +1,25 @@
 /*©agpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Affero General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Affero General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Affero   *
+* General Public License, found in the file license_agpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
 
 var state = { mode: null, user: null };
+
+var startlimit = 0;
+var maxlimit = 50;
+
+var nothingnew = false;
+
+var limit = ( maxlimit ? ( startlimit + ', ' + maxlimit ) : '' );
+
+var updateuserlist = true;
+
+var searchQuery = {};
 
 Application.run = function( msg, iface )
 {
@@ -25,10 +27,19 @@ Application.run = function( msg, iface )
 	this.listUsers();
 	RefreshSetup();
 	RefreshWorkgroups();
-	RefreshSessions();
+	//RefreshSessions();
 	this.guiHTML = '\
 	<div class="Padding"><h1>' + i18n( 'i18n_idle_title' ) + '</h1><p>' + i18n( 'i18n_idle_desc' ) + '</p></div>';
 	ge( 'UserGui' ).innerHTML = this.guiHTML;
+	
+	var tabs = document.getElementsByClassName( 'Tab' );
+	this.tabs = {};
+	for( var a = 0; a < tabs.length; a++ )
+	{
+		if( tabs[a].id )
+			this.tabs[ tabs[a].id ] = tabs[a];
+	}
+	
 }
 
 Application.receiveMessage = function( msg )
@@ -36,6 +47,22 @@ Application.receiveMessage = function( msg )
 	if( !msg.command ) return;
 	switch( msg.command )
 	{
+		case 'users_add':
+			this.tabs[ 'UsersTab' ].click();
+			AddUser();
+			break;
+		case 'templates_add':
+			this.tabs[ 'TemplatesTab' ].click();
+			AddSetup();
+			break;
+		case 'workgroups_add':
+			this.tabs[ 'WorkgroupsTab' ].click();
+			AddWorkgroup();
+			break;
+		case 'activate_tab':
+			if( this.tabs[ msg.tab ] )
+				this.tabs[ msg.tab ].click();
+			break;
 		case 'renewedsession':
 			if( msg.sessionid )
 			{
@@ -43,14 +70,14 @@ Application.receiveMessage = function( msg )
 					this.renewSessionGui.close();
 				this.renewSessionGui = false;
 			}
-			RefreshSessions();
+			//RefreshSessions( msg.uid );
 			break;
 		case 'refreshworkgroups':
 			RefreshWorkgroups();
 			//console.log( 'Fodah' );
 			break;
 		case 'refreshsessions':
-			RefreshSessions();
+			//RefreshSessions();
 			break;
 		case 'addmembers':
 			if( msg.members )
@@ -96,29 +123,58 @@ Application.listUsers = function( current, mode )
 	// TODO: Use user.library
 	var m = new Module( 'system' );
 	
+	updateuserlist = false;
+	
+	var query = ( ge( 'UserFilterInput' ).value ? ge( 'UserFilterInput' ).value : '' );
+	
 	// What happens when we've executed?
 	m.onExecuted = function( e, d )
 	{
+		var users; var i = 0;
+		
 		if( e == 'ok' )
 		{
-			var users;
 			try
 			{
 				users = JSON.parse( d );
 			}
 			catch(e)
 			{
-				ge( 'UserList' ).innerHTML = '<h4 style="#F00">ERROR!</h4><p>Could not parse user list!</p><p>' + e + ' :: ' + d + '</p>';
+				console.log( '<h4 style="#F00">ERROR!</h4><p>Could not parse user list!</p><p>' + e + ' :: ' + d + '</p>' );
+				Notify({'title':'ERROR in Users app','text':'Could not parse user list!'});
+				//ge( 'UserList' ).innerHTML = '<h4 style="#F00">ERROR!</h4><p>Could not parse user list!</p><p>' + e + ' :: ' + d + '</p>';
 				return;
 			}
+			
 			var ml = '';
-			var i = 0;
+			
 			var sw = 1;
+		
+			console.log('users',users);
+			
+			if( ge( 'UsersCount' ) && users['Count'] )
+			{
+				ge( 'UsersCount' ).innerHTML = ' (' + users['Count'] + ')';
+			}
+			
 			for( var a in users )
 			{
+				if( a == 'Count' ) continue;
+				
 				var icon = users[a].Level == 'Admin' ? '-secret' : '-md';
-				ml += '<div userId="' + users[a].ID + '" class="sw' + sw + ' HRow BorderBottom Padding" onclick="EditUser(' + users[a].ID + ')" onmouseover="SwitchRow(this, \'over\')" onmouseout="SwitchRow(this, \'out\')"><div class="IconMedium fa-user' + icon + ' FloatLeft"></div><div class="FloatLeft LineHeight2x MarginLeft"><span name="' + (users[a].Name ? users[a].Name : 'n/a' ) + '" email="' + ( users[a].Email ? users[a].Email : '' ) + '">' + ( users[a].FullName ? users[a].FullName : 'n/a' ) + '</span></div></div>';
+				var str = '<div userId="' + users[a].ID + '" onclick="EditUser(' + users[a].ID + ')" class="HRow BorderBottom Padding" onmouseover="SwitchRow(this, \'over\')" onmouseout="SwitchRow(this, \'out\')"><div class="IconMedium fa-user' + icon + ' FloatLeft"></div><div class="FloatLeft LineHeight2x MarginLeft"><span name="' + (users[a].Name ? users[a].Name : 'n/a' ) + '" email="' + ( users[a].Email ? users[a].Email : '' ) + '">' + ( users[a].FullName ? users[a].FullName : 'n/a' ) + '</span></div></div>';
+				
+				if( !ge( 'UserListID_' + users[a].ID ) )
+				{
+					ml += '<div id="UserListID_' + users[a].ID + '" class="sw' + sw + '">' + str + '</div>';
+				}
+				else
+				{
+					ge( 'UserListID_' + users[a].ID ).innerHTML = str;
+				}
+				
 				sw = sw == 1 ? 2 : 1;
+				
 				i++;
 			}
 			
@@ -128,18 +184,34 @@ Application.listUsers = function( current, mode )
 				//ge( 'UserFilter' ).style.display = 'none';
 			}
 			
-			ge( 'UserList' ).innerHTML = ml;
+			ge( 'UserList' ).innerHTML = ( ge( 'UserList' ).innerHTML + ml );
 			
 			if( current )
 			{
 				EditUser( current, mode );
 			}
+			
+			nothingnew = false;
 		}
+		else
+		{
+			if( !query )
+			{
+				nothingnew = true;
+				
+				startlimit = 0;
+			}
+		}
+		
+		updateuserlist = true;
+		
+		console.log( 'listusers result: ', { limit: ( !current ? limit : '' ), userid: current, count: true, query: query, res: e, num: i } );
 	}
-	
 	// Execute the "get user list"
-	m.execute( 'listusers' );
+	m.execute( 'listusers', { limit: ( !current ? limit : '' ), userid: current, count: true, query: query } );
 }
+
+var FilterQueue = [];
 
 function FilterUsers()
 {
@@ -150,7 +222,7 @@ function FilterUsers()
 	
 	if( v )
 	{
-		i = v.toLowerCase()
+		i = v.toLowerCase();
 	}
 	
 	if( u )
@@ -170,9 +242,12 @@ function FilterUsers()
 					if( span.innerHTML.length )
 					{
 						if( !v || v == '' 
-						|| span.innerHTML.toLowerCase().split( i ).join( '' ).length < span.innerHTML.length
-						|| span.getAttribute( 'name' ).toLowerCase().split( i ).join( '' ).length < span.getAttribute( 'name' ).length
-						|| span.getAttribute( 'email' ).toLowerCase().split( i ).join( '' ).length < span.getAttribute( 'email' ).length 
+						//|| span.innerHTML.toLowerCase().split( i ).join( '' ).length < span.innerHTML.length
+						//|| span.getAttribute( 'name' ).toLowerCase().split( i ).join( '' ).length < span.getAttribute( 'name' ).length
+						//|| span.getAttribute( 'email' ).toLowerCase().split( i ).join( '' ).length < span.getAttribute( 'email' ).length 
+						|| span.innerHTML.toLowerCase().substr( 0, i.length ) == i 
+						|| span.getAttribute( 'name' ).toLowerCase().substr( 0, i.length ) == i
+						|| span.getAttribute( 'email' ).toLowerCase().substr( 0, i.length ) == i
 						)
 						{
 							e[a].style.display = '';
@@ -185,6 +260,99 @@ function FilterUsers()
 				}
 			}
 		}
+		
+		if( i && updateuserlist )
+		{
+			FilterQueue.push( function() 
+			{ 
+				startlimit = 0;
+				
+				limit = ( startlimit + ', ' + maxlimit );
+				
+				Application.listUsers(); 
+			} );
+			
+			FilterInit();
+		}
+	}
+}
+
+var InitFilter = false;
+
+function FilterInit()
+{
+	var query = ( ge( 'UserFilterInput' ).value ? ge( 'UserFilterInput' ).value : '-' );
+	
+	if( !searchQuery[query] )
+	{
+		//console.log( 'running a setTimeout ... ', { query: query } );
+		
+		setTimeout( function()
+		{ 
+			
+			if( FilterQueue )
+			{
+				var query = ( ge( 'UserFilterInput' ).value ? ge( 'UserFilterInput' ).value : '-' );
+				
+				for( var key in FilterQueue )
+				{
+					if( !searchQuery[query] )
+					{
+						FilterQueue[key]();
+					}
+					
+					delete FilterQueue[key];
+					
+					if( !searchQuery[query] )
+					{
+						FilterInit();
+					}
+					
+					searchQuery[query] = query;
+					
+					break;
+				}
+			}
+		
+		}, 1000 );
+	}
+}
+
+function CheckScroll( ele )
+{
+	if( !ele ) return;
+	
+	if( ( ele.scrollHeight - ele.clientHeight ) > 0 )
+	{
+		//console.log( ele.scrollTop + ' / ' + ( ele.scrollHeight - ele.clientHeight ) + ' * ' + 100 );
+		
+		var pos = Math.round( ele.scrollTop / ( ele.scrollHeight - ele.clientHeight ) * 100 );
+		
+		// Outputs prosentage
+		
+		return pos;
+	}
+}
+
+function CheckUserList( ele )
+{
+	var check = CheckScroll( ele );
+	
+	var query = ( ge( 'UserFilterInput' ).value ? ge( 'UserFilterInput' ).value : '' );
+	
+	if( maxlimit > 0 && !query && !nothingnew && updateuserlist && check && check >= 50 )
+	{
+		// 
+		
+		startlimit = ( startlimit + maxlimit );
+		
+		
+		
+		//console.log( 'limit [' + check + '] ' + limit );
+		
+		Application.listUsers();
+		//RefreshSessions();
+		
 	}
 }
 
@@ -202,7 +370,7 @@ function EditUser( id, mode )
 		{
 			state = { mode: mode ? mode : 'edit', user: d };
 			
-			var str = '';
+			var str = ''; var ugs = '';
 			
 			
 			var dat;
@@ -213,7 +381,7 @@ function EditUser( id, mode )
 			
 			if( dat.Setup && dat.Setup.length > 0 )
 			{
-				str += '<option value="0">none</option>';
+				str += '<option value="0">' + i18n( 'i18n_none' ) + '</option>';
 				
 				var set = false;
 				
@@ -244,6 +412,18 @@ function EditUser( id, mode )
 				}
 			}
 			
+			/*if( dat.Workgroup && dat.Workgroup.length > 0 )
+			{
+				ugs += '<option value="0">' + i18n( 'i18n_select_workgroups' ) + '</option>';
+				
+				for( k in dat.Workgroup )
+				{
+					var s = ( dat.Workgroup[k].UserID > 0 ? ' selected="selected"' : '' );
+					
+					ugs += '<option value="' + dat.Workgroup[k].ID + '"' + s + '>' + dat.Workgroup[k].Name + '</option>';
+				}
+			}*/
+			
 			var f = new File( 'Progdir:Templates/user.html' );
 			f.replacements = {
 				'id'        : dat.ID,
@@ -253,7 +433,7 @@ function EditUser( id, mode )
 				'email'     : (dat.Email ? dat.Email : ''),
 				'level'     : dat.Level,
 				'setup' 	: str,
-				'workgroup' : ( dat.Workgroup ? dat.Workgroup : '' ) 
+				'workgroup' : ugs
 			};
 			f.i18n();
 			f.onLoad = function( data )
@@ -265,9 +445,14 @@ function EditUser( id, mode )
 					ge( 'SetupContainer' ).style.display = 'none';
 				}
 				
-				if( ge( 'WorkgroupContainer' ) && !ge( 'Workgroup' ).value )
+				if( ge( 'WorkgroupContainer' ) && !dat.Workgroup.length )
 				{
 					ge( 'WorkgroupContainer' ).style.display = 'none';
+				}
+				
+				if( dat.Workgroup )
+				{
+					RefreshUserGroups( dat.Workgroup );
 				}
 				
 				var f = ge( 'UserGui' ).getElementsByTagName( 'option' );
@@ -294,8 +479,13 @@ function EditUser( id, mode )
 			}
 			f.load();
 		}
+		// Else if user is deleted, remove from list of users if found
+		else if( ge( 'UserListID_' + id ) )
+		{
+			ge( 'UserListID_' + id ).parentNode.removeChild( ge( 'UserListID_' + id ) );
+		}
 	}
-	m.execute( 'userinfoget', { id: id } );
+	m.execute( 'userinfoget', { id: id, mode: 'all' } );
 }
 
 function SaveUser( id )
@@ -312,7 +502,7 @@ function SaveUser( id )
 		}
 		else if ( inps[a] == 'Username' || inps[a] == 'FullName' )
 		{
-			args[ inps[a].toLowerCase() ] = htmlentities( Trim( ge(inps[a]).value ) );
+			args[ inps[a].toLowerCase() ] = Trim( ge(inps[a]).value );
 		}
 		else if ( inps[a] == 'Password' )
 		{
@@ -340,14 +530,27 @@ function SaveUser( id )
 				Notify({'title':i18n( 'i18n_users' ),'text':i18n( 'i18n_user_updated' )});
 			}
 			
-			EditUser( id );
-			Application.listUsers();
+			if( ge( 'Setup' ) )
+			{
+				ApplySetup( id );
+			}
+			else
+			{
+				EditUser( id );
+			}
+			
+			if( ge( 'pUserWorkgroup' ) )
+			{
+				ApplyUserGroups( id );
+			}
+			
+			Application.listUsers( id );
 		}
 		else
 		{
 			console.log('Error during user update',e,d);
 		}
-		RefreshSessions()	
+		//RefreshSessions( id )	
 	}
 	
 	args.command ='update';
@@ -356,18 +559,152 @@ function SaveUser( id )
 
 function DeleteUser( id )
 {
-	var m = new Module( 'system' );
-	m.onExecuted = function( e, d )
+	Confirm( i18n( 'i18n_deleting_user' ), i18n( 'i18n_deleting_verify' ), function( result )
 	{
-		if( e == 'ok' )
+		// Confirmed!
+		if( result.data == true )
 		{
-			CancelEditing();
-			Application.listUsers();
+			var f = new Library( 'system.library' );
+			var args = {};
+			args.command ='delete';
+			args.id = id;
+
+
+			if( ge( 'UserListID_' + id ) ) ge( 'UserListID_' + id ).parentNode.removeChild( ge( 'UserListID_' + id ) );
+
+			f.onExecuted = function( e, d )
+			{
+				if( e == 'ok' )
+				{
+				    CancelEditing();
+				    startlimit = 0;
+				    limit = ( startlimit + ', ' + maxlimit );
+				    
+				    ge( 'UserList' ).innerHTML = '';
+				    Application.listUsers();
+				    console.log('User deleted. List refreshed?');
+				}
+				else
+				{
+					console.log('delete user gave unexpected response',e,d);
+				}
+				//RefreshSessions( id );
+			}
+
+			f.execute( 'user', args );
 		}
-		RefreshSessions();
-	}
-	m.execute( 'userdelete', { id: id } );
+	} );
 }
+
+function RefreshUserGroups( groups )
+{
+	if ( ge( 'pUserWorkgroup' ) )
+	{
+		if (!ge( 'pUserWorkgroup' ).innerHTML )
+		{
+			ge( 'pUserWorkgroup' ).innerHTML = i18n( 'i18n_loading' );
+		}
+
+		var str = ''; var ugs = '';
+		
+		if ( groups )
+		{
+			var sw = 1;
+			
+			//ugs += '<option value="0">' + i18n( 'i18n_add_workgroup' ) + '</option>';
+			
+			str += '<table class="List"><tbody>';
+			
+			for( k in groups )
+			{
+				if( groups[k].UserID > 0 )
+				{
+					str += '<tr itemid="' + ( 1 + k ) + '" value="' + groups[k].ID + '" class="sw' + ( sw = ( sw == 1 ? 2 : 1 ) ) + '">' +
+						   '<td>&nbsp;' + groups[k].Name + '</td>' +
+						   '<td width="24px" onclick="RemoveUserGroups(this)" class="MousePointer IconSmall fa-remove">&nbsp;&nbsp;&nbsp;</td>' +
+						   '</tr>';
+				}
+				else
+				{
+					ugs += '<option value="' + groups[k].ID + '">' + groups[k].Name + '</option>';
+				}
+			}
+			
+			str += '</tbody></table>';
+		}
+		
+		ge( 'pUserWorkgroup' ).innerHTML = str;
+		
+		ge( 'pUserWorkgroup' ).obj = ( groups ? groups : [] );
+		
+		if( ge( 'WorkgroupSelect' ) )
+		{
+			if( !ugs )
+			{
+				ge( 'WorkgroupSelect' ).style.display = 'none';
+			}
+			else
+			{
+				ge( 'WorkgroupSelect' ).style.display = '';
+			}
+		}
+		
+		ge( 'Workgroup' ).innerHTML = ugs;
+	}
+}
+
+function RemoveUserGroups( ele )
+{
+	if ( ele.parentNode && ge( 'pUserWorkgroup' ) && ge( 'pUserWorkgroup' ).obj )
+	{
+		var sts = ele.parentNode;
+	
+		groups = new Array();
+		
+		var obj = ge( 'pUserWorkgroup' ).obj;
+	
+		if ( obj )
+		{
+			for( k in obj )
+			{
+				if( obj[k].ID == sts.getAttribute( 'value' ) )
+				{
+					obj[k].UserID = 0;
+				}
+				
+				groups.push( obj[k] );
+			}
+			
+			RefreshUserGroups( groups );
+		}
+	}
+}
+
+function AddUserGroup()
+{
+	if ( ge( 'Workgroup' ) && ge( 'pUserWorkgroup' ) && ge( 'pUserWorkgroup' ).obj )
+	{
+		groups = new Array();
+		
+		var obj = ge( 'pUserWorkgroup' ).obj;
+	
+		if ( obj && ge( 'Workgroup' ).value )
+		{
+			for( k in obj )
+			{
+				if( obj[k].ID == ge( 'Workgroup' ).value )
+				{
+					obj[k].UserID = 1;
+				}
+				
+				groups.push( obj[k] );
+			}
+			
+			RefreshUserGroups( groups );
+		}
+	}
+}
+
 
 function UnblockUser( id )
 {
@@ -377,14 +714,14 @@ function UnblockUser( id )
 		if( e == 'ok' )
 		{
 			CancelEditing();
-			Application.listUsers();
+			Application.listUsers( id );
 			Notify({'title':'Users administration','text':'User unblocked'});
 		}
 		else
 		{
 			Notify({'title':'Users administration','text':'Could not unblock user ' + e + ':' + d });
 		}
-		RefreshSessions();
+		//RefreshSessions( id );
 	}
 	m.execute( 'userunblock', { id: id } );
 }
@@ -409,6 +746,12 @@ function AddUser()
 		}
 	}
 	m.execute( 'useradd' );
+}
+
+function RefreshList()
+{
+    ge( 'UserList' ).innerHTML = '';
+    Application.listUsers();
 }
 
 /* Setup -------------------------------------------------------------------- */
@@ -468,13 +811,13 @@ function EditSetup( id )
 	{
 		var data = {};
 		
-		var ele;
+		var ele = {};
 		try
 		{
 			ele = JSON.parse( d );
-		} catch(e) { Notify({'title':'ERROR in Users app','text':'Could not load setup data!'}); return; }
+		} catch(e) { Notify({'title':'ERROR in Users app','text':'Could not load setup data!'});/* return;*/ }
 		
-		if( ele.Data )
+		if( ele && ele.Data )
 		{
 			try
 			{
@@ -484,8 +827,8 @@ function EditSetup( id )
 		
 		var f = new File( 'Progdir:Templates/setup.html' );
 		f.replacements = {
-			'id': ele.ID,
-			'name': ele.Name,
+			'id': ( ele.ID ? ele.ID : id ),
+			'name': ( ele.Name ? ele.Name : 'Unnamed setup' ),
 			'applications': '',
 			'disks': '',
 			'startups': '',
@@ -499,7 +842,7 @@ function EditSetup( id )
 			
 			if( ge( 'pSetupPreinstall' ) )
 			{
-				ge( 'pSetupPreinstall' ).checked = ( data.preinstall ? true : false );
+				ge( 'pSetupPreinstall' ).checked = ( data.preinstall != '0' ? true : false );
 			}
 			
 			RefreshSoftware( data.software );
@@ -548,12 +891,12 @@ function RefreshSoftware( apps )
 				{
 					if ( sfw[apps[k][0]] )
 					{
-						str += '<div value="' + sfw[apps[k][0]].Name + '" class="HBox GuiContainer MarginBottom Padding">' +
+						str += '<div value="' + sfw[apps[k][0]].Name + '" class="HBox Box MarginBottom Padding">' +
 						'<h2>' + sfw[apps[k][0]].Name + '<span onclick="RemoveSoftware(this)" class="MousePointer IconSmall fa-remove"></span></h2>' + 
 						'<p class="Layout"><strong>' + sfw[apps[k][0]].Category + '</strong></p>' +
 						'<p class="Layout">No description available for this title.</p>' +
 						'<div class="TheButton BackgroundNegative Padding">' +
-						'<span>include in dock&nbsp;</span><input type="checkbox"' + ( apps[k][1] ? ' checked="checked"' : '' ) + '/>' + 
+						'<span>' + i18n( 'i18n_include_in_dock' ) + '&nbsp;</span><input type="checkbox"' + ( apps[k][1] != '0' ? ' checked="checked"' : '' ) + '/>' + 
 						'</div>' +
 						'</div>';
 					}
@@ -694,7 +1037,7 @@ function RefreshStartup( starts )
 		
 		ge( 'pSetupStartup' ).innerHTML = str;
 		
-		ge( 'pSetupStartup' ).obj = ( starts ? starts : false );
+		ge( 'pSetupStartup' ).obj = ( starts ? starts : [] );
 	}
 }
 
@@ -949,14 +1292,68 @@ function saveSetup()
 
 function ApplySetup( id )
 {
-	if ( id && ge( 'Setup' ) && ge( 'Setup' ).value )
+	if ( id && ge( 'Setup' ) )
 	{
 		var m = new Module( 'system' );
 		m.onExecuted = function( e, d )
 		{
+			try { d = JSON.parse( d ) } catch( e ) {}
+			
+			console.log( { e: e, d: d, id: ( ge( 'Setup' ).value ? ge( 'Setup' ).value : '0' ), userid: id } );
+			
 			EditUser( id );
 		}
-		m.execute( 'usersetupapply', { id: ge( 'Setup' ).value, userid: id } );
+		m.execute( 'usersetupapply', { id: ( ge( 'Setup' ).value ? ge( 'Setup' ).value : '0' ), userid: id } );
+	}
+}
+
+function ApplyUserGroups( id )
+{
+	if( id && ge( 'pUserWorkgroup' ) )
+	{
+		var opt = [];
+		
+		var obj = ge( 'pUserWorkgroup' ).obj;
+		
+		if( obj )
+		{
+			for( k in obj )
+			{
+				if( obj[k].ID > 0 && obj[k].UserID > 0 )
+				{
+					opt.push( obj[k].ID );
+				}
+			}
+		}
+		
+		var m = new Module( 'system' );
+		m.onExecuted = function( e, d )
+		{
+			try { d = JSON.parse( d ) } catch( e ) {}
+			
+			console.log( { e: e, d: d, workgroups: ( opt ? opt : '0' ), userid: id } );
+			
+			EditUser( id );
+		}
+		m.execute( 'workgroupupdate', { workgroups: ( opt ? opt : '0' ), userid: id } );
+	}
+}
+
+function ApplyGroupSetup( id )
+{
+	if ( id && ge( 'pWorkgroupSetup' ) )
+	{
+		var m = new Module( 'system' );
+		m.onExecuted = function( e, d )
+		{
+			try { d = JSON.parse( d ) } catch( e ) {}
+			
+			console.log( { e: e, d: d, id: ( ge( 'pWorkgroupSetup' ).value ? ge( 'pWorkgroupSetup' ).value : '0' ), members: ( ge( 'pMembers' ).value ? ge( 'pMembers' ).value : '0' ), group: id } );
+			
+			RefreshWorkgroups();
+			//EditWorkgroup( id );
+		}
+		m.execute( 'usersetupapply', { id: ( ge( 'pWorkgroupSetup' ).value ? ge( 'pWorkgroupSetup' ).value : '0' ), members: ( ge( 'pMembers' ).value ? ge( 'pMembers' ).value : '0' ), group: id } );
 	}
 }
 
@@ -966,6 +1363,8 @@ function deleteSetup()
 	m.onExecuted = function( e, d )
 	{
 		RefreshSetup();
+		
+		if( ge( 'SetupGui' ) ) ge( 'SetupGui' ).innerHTML = '';
 	}
 	m.execute( 'usersetupdelete', { id: ge( 'pSetupID' ).value } );
 }
@@ -985,20 +1384,48 @@ function AddWorkgroup()
 		height: 300
 	} );
 	
-	var f = new File( 'Progdir:Templates/workgroup.html' );
-	f.replacements = {
-		'id': '',
-		'name': '',
-		'viewId': v.getViewId(),
-		'parentViewId': ge( 'viewId' ).value,
-		'delCss': '#deleteButton{ display: none; }'
-	};
-	f.i18n();
-	f.onLoad = function( data )
+	var m = new Module( 'system' );
+	m.onExecuted = function( e, d )
 	{
-		v.setContent( data );
-	}
-	f.load();	
+		var wg = '<option value="0">none</option>';
+		
+		try
+		{
+			if( e == 'ok' && d )
+			{
+				d = JSON.parse( d );
+				
+				if( d )
+				{
+					for( var i in d )
+					{
+						if( d[i].ID )
+						{
+							wg += '<option value="' + d[i].ID + '">' + d[i].Name + '</option>';
+						}
+					}
+				}
+			}
+		}
+		catch( e ){  }
+		
+		var f = new File( 'Progdir:Templates/workgroup.html' );
+		f.replacements = {
+			'id': '',
+			'name': '',
+			'parent': wg,
+			'viewId': v.getViewId(),
+			'parentViewId': ge( 'viewId' ).value,
+			'delCss': '#deleteButton{ display: none; }'
+		};
+		f.i18n();
+		f.onLoad = function( data )
+		{
+			v.setContent( data );
+		}
+		f.load();
+	}	
+	m.execute( 'workgroups' );
 }
 
 function EditWorkgroup( id )
@@ -1007,6 +1434,7 @@ function EditWorkgroup( id )
 	m.onExecuted = function( e, d )
 	{
 		var ele;
+		
 		try{
 			ele = JSON.parse( d );
 		} catch(e) { Notify({'title':'ERROR in Users app','text':'Could not load workgroup data!'}); return; }
@@ -1025,43 +1453,77 @@ function EditWorkgroup( id )
 			}
 		}
 		
-		var f = new File( 'Progdir:Templates/workgroup.html' );
-		f.replacements = {
-			'id': ele.ID,
-			'name': ele.Name,
-			'members': ele.Members,
-			'setup': str,
-			'viewId': ge( 'viewId' ).value,
-			'parentViewId': ge( 'viewId' ).value,
-			'delCss': ''
-		};
-		f.i18n();
-		f.onLoad = function( data )
+		var mm = new Module( 'system' );
+		mm.onExecuted = function( ee, dd )
 		{
-			ge( 'WorkgroupGui' ).innerHTML = data;
+			var wg = '<option value="0">none</option>';
 			
-			if( ge( 'SetupContainer' ) && ge( 'pWorkgroupSetup' ) && !ge( 'pWorkgroupSetup' ).value )
+			try
 			{
-				ge( 'SetupContainer' ).style.display = 'none';
+				if( ee == 'ok' && dd )
+				{
+					dd = JSON.parse( dd );
+					
+					if( dd )
+					{
+						for( var i in dd )
+						{
+							if( dd[i].ID )
+							{
+								if( dd[i].ID == ele.ID || dd[i].ParentID == ele.ID )
+								{
+									continue;
+								}
+								
+								wg += '<option value="' + dd[i].ID + '"' + ( ele.ParentID && dd[i].ID == ele.ParentID ? ' Selected="Selected"' : '' ) + '>' + dd[i].Name + '</option>';
+							}
+						}
+					}
+				}
 			}
+			catch( e ){  }
 			
-			refreshMembers( ele.ID );
-		}
-		f.load();
+			var f = new File( 'Progdir:Templates/workgroup.html' );
+			f.replacements = {
+				'id': ele.ID,
+				'name': ele.Name,
+				'parent': wg,
+				'members': ele.Members,
+				'setup': str,
+				'viewId': ge( 'viewId' ).value,
+				'parentViewId': ge( 'viewId' ).value,
+				'delCss': ''
+			};
+			f.i18n();
+			f.onLoad = function( data )
+			{
+				ge( 'WorkgroupGui' ).innerHTML = data;
+			
+				if( ge( 'SetupGroupContainer' ) && ge( 'pWorkgroupSetup' ) && !ge( 'SetupGroupContainer' ).value )
+				{
+					ge( 'SetupGroupContainer' ).style.display = 'none';
+				}
+			
+				refreshMembers( ele.ID );
+			}
+			f.load();
+		}	
+		mm.execute( 'workgroups' );
 	}	
 	m.execute( 'workgroupget', { id: id } );
 }
 
 // Save a workgroup
-function saveWorkgroup( callback )
+function saveWorkgroup( callback, tmp )
 {
 	var o = {
 		ID: ge( 'pWorkgroupID' ).value > 0 ? ge( 'pWorkgroupID' ).value : '0',
+		ParentID: ( ge( 'pWorkgroupParent' ) ? ge( 'pWorkgroupParent' ).value : '0' ),
 		Name: ge( 'pWorkgroupName' ).value,
 		Setup: ( ge( 'pWorkgroupSetup' ) ? ge( 'pWorkgroupSetup' ).value : '' ),
 		Members: ge( 'pMembers' ).value
 	};
-
+	
 	var m = new Module( 'system' );
 	m.onExecuted = function( e, d )
 	{
@@ -1086,8 +1548,18 @@ function saveWorkgroup( callback )
 		
 		
 		if( callback ) callback();
-		RefreshWorkgroups();
+		
+		if( o.ID > 0 && tmp )
+		{
+			ApplyGroupSetup( o.ID );
+		}
+		else
+		{
+			RefreshWorkgroups();
+		}
 	}
+	
+	console.log( o );
 	
 	if( o.ID > 0 )
 	{
@@ -1216,8 +1688,10 @@ function deleteWorkgroup()
 
 /* Sessions --------------------------------------------------------------- */
 
-function RefreshSessions()
+function RefreshSessions( id )
 {
+	return false;
+	
 	var m = new Module( 'system' );
 	m.onExecuted = function( e, d )
 	{
@@ -1226,26 +1700,41 @@ function RefreshSessions()
 		try
 		{
 			list = JSON.parse( d );
-		} catch(e) { Notify({'title':'ERROR in Users app','text':'Could not load usersessions!'}); return; }
-		var str = '';
+		} catch(e) { /*Notify({'title':'ERROR in Users app','text':'Could not load usersessions!'});*/ return; }
+		var sl = '';
 		var sw = 2;
 		for( var a = 0; a < list.length; a++ )
 		{
 			var us = list[a];
+			
+			var str = '';
+			
 			sw = sw == 1 ? 2 : 1;
-			str += '<div class="UserSession HRow sw' + sw + ' Padding">';
+			
+			str += '<div class="UserSession HRow Padding">';
 			str += '<div class="HContent35 FloatLeft Ellipsis Padding">' + us.FullName + '</div>';
 			str += '<div class="HContent45 FloatLeft Ellipsis Padding"><input type="text" class="FullWidth" value="' + us.SessionID + '"/></div>';
-			str += '<div class="HContent20 FloatLeft Ellipsis"><div class="HContent5 FloatLeft">&nbsp;</div><div class="HContent95 FloatLeft"><button type="button" class="Button IconSmall fa-refresh" onclick="RenewSession(' + us.ID + ')">' + i18n( 'i18n_regenerate' ) + '</button></div></div>';
+			str += '<div class="HContent20 FloatLeft Ellipsis"><div class="HContent5 FloatLeft">&nbsp;</div><div class="HContent95 FloatLeft"><button type="button" class="Button IconSmall fa-refresh" onclick="RenewSession(' + us.ID + ')"> ' + i18n( 'i18n_regenerate' ) + '</button></div></div>';
 			str += '</div>';
+			
+			if( !ge( 'UserSessionID_' + us.ID ) )
+			{
+				sl += '<div id="UserSessionID_' + us.ID + '" class="sw' + sw + '">' + str + '</div>';
+			}
+			else
+			{
+				ge( 'UserSessionID_' + us.ID ).innerHTML = str;
+			}
 		}
-		ge( 'Sessions' ).innerHTML = str;
+		ge( 'Sessions' ).innerHTML = ge( 'Sessions' ).innerHTML + sl;
 	}
-	m.execute( 'usersessions' );
+	m.execute( 'usersessions', { limit: limit, userid: id } );
 }
 
 function RenewSession( id )
 {
+	return false;
+	
 	if( Application.renewSessionGui ) return;
 	var v = new View( {
 		title: i18n( 'i18n_renew_session' ),
@@ -1269,3 +1758,14 @@ function RenewSession( id )
 	}
 }
 
+function TogglePasswordField( inputid )
+{
+	var finput = ge( inputid );
+	if( finput )
+	{
+		if( finput.getAttribute('type') == 'text' )
+			finput.setAttribute('type','password')
+		else
+			finput.setAttribute('type','text')
+	}
+}

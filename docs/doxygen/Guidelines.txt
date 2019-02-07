@@ -13,24 +13,111 @@
  * @file
  *
  * How to document your code
- *
+ * Version 2 - Updated 13/12/2017
  *
  * @author FL (Francois Lionet)
  * @date first pushed on 28/12/2016
  */
 
+HOW TO INSTALL DOXYGEN
+----------------------
+sudo apt-get doxygen doxygen-gui doxygen-doc 
+
 
 HOW TO GENERATE THE DOC
 -----------------------
-In a CLI, move to docs/doxygen, and run ./makeinternaldoc.sh
-The HTML documentation will be generated in a FriendDocInternal sub-folder.
+In a CLI, move to docs/doxygen, and run ./makeopensourcedoc.sh or -makeinternaldoc.sh
+
+The HTML documentation will be generated in a build/internal or build/opensource sub-folder.
 Process takes a couple of seconds on a machine with a SSD drive.
-Note: ./makeopensourcedoc.sh is not yet implemented. It it is same as above.
+
+Internal doc will have TODOs and bugs, and hidden functions that we hide with specific commands
+from the open-source documentation.
+
+
+HOW TO GROUP THINGS
+-------------------
+Friend Core is written in C, Doxygen needs to be informed of the structure of the code in 
+modules. A module is an ensemble of function or structures centered around the same task.
+Modules can have the structure of a tree, a module can be a sub-module of a parent module.
+I have created as an example the following structure for the '/core/core' directory:
+
+Friend Core
+    Events
+    Information
+    Manager
+    Library
+        Library management
+    Threads
+        PID
+        Web
+        Linux
+    Workers
+
+To achieve the grouping, you insert Doxygen commands at the start of a file and at its end,
+in the Doxygen comment header of the file.
+
+- At the top: 
+
+/** @file
+ *
+ * Title of the file
+ *
+ * @author
+ * @date
+ *
+ * \defgroup GroupName Title of the group
+ * @{
+ */    
+
+- In the bottom:
+/**@}*/
+or
+/**
+ *@}
+ */
+
+>>> Any function or structure defined within the curly brackets will be a part of the group, and 
+will be inserted in the 'Modules' section of the documentation.
+
+- Include a file in a pre-existing group
+
+To include the content of another file in a group that is defined somewhere else, use the 
+following commands on the start of the file:
+ *
+ * \ingroup GroupName
+ * @{
+ */    
+
+- Define sub-groups as parts of a parent group
+
+You can define subgroups as part of parent groups. When defining the sub-group, use:
+/**
+ *
+ * \defgroup GroupName Title of the group
+ * \ingroup ParentGroupName
+ * @{
+ */    
+
+The sub-group will appear when you open the parent group in the module section of the documentation.
+
+- A tree structure
+
+We can define a very clear tree-structure (another one) for any aspect of the documentation, and make
+it simple to browser and facilitate the comprehension of our system.
+
+Have a look at all the files in the /core/core folder to understand what I have done, it is simple.
+
+
+FOR JAVASCRIPT
+--------------
+Doxygen is not specifically made for Javascript, but has a Java parser that seems to suffice.
+You can also find parser extensions, I will dig the subjet and implement the proper tools
+for a fast workflow. Stay tuned!
 
 
 GENERAL SYNTAX
 --------------
-
 LINKS TO WEB PAGES AND EMAIL ADDRESSES
 Doxygen will automatically replace any URLs and mail addresses found in the
 documentation by links (in HTML).
@@ -100,134 +187,6 @@ when the commands are done.
 I made a similar system at the end of the HTML5 runtime (big one!) and it was
 _really_ cool to use.
 
-
-FRIENDPARSER
-------------
-FriendParser contains several systems I would have loved to have at Clickteam
-and that I can finally implement now.
-
-    HOW DOES IT WORK?
-    When pulling the code in the morning just run FriendParser.
-    Syntax : ./friendparser -d -r
-    Will scan all sources (couple of seconds) and extract the reports.
-    You report will be in the form:
-    friendlyreport-XX.txt, generate beside ./friendparser (currently at the root)
-
-    Later if needed, I will run FriendParser before generating
-    the final doc, it will output a copy of the sources the code in a temp
-    directory, and run Doxygen on this copy.
-    So we can pre-process the doc in a much simpler and customized way
-    than what Doxygen provides if we want.
-
-    FriendParser will also be a "Javascript preprocessor", it will parse
-    your Javascript code and generate the code in the build/ folder (instead
-    of just a copy). You will be able to exclude parts of code as in C with
-    macro (like #ifdef and #endif). This feature is really cool for Javascript
-    I miss it so much...
-
-    EXAMPLE OF DOCUMENTED CODE AS I DO IT
-    KEY: use your own style, but respect the way to do it...
-    Please have a look at core/util/friendstring.c and core/util/friendstring.h
-    You can (and should) keep your style of personal comments in files, don't change
-    anything in the way you usually program. You will find yourself with habit
-    using almost only Doxygen-compatible style comments after a while,
-    and do two tasks at once. Therefore saving time.
-
-    XXTODO - PERSONAL TODOs
-    You can have you own semi-personal TODOs, that only you will see each day,
-    as at the end of this file (these ones are not personal as you are reading
-    it! :).
-    Send time-messages to yourself only.
-    Good at the end of the development of a large project with many authors
-    that have little time like us, leaving code open (which might be dangerous)
-    as they don't have time to finish properly it and have to go to another task.
-    If you have to do that, leave yourself a message that the others won't see
-    every day.
-    >>> quicker for everyone at final pass before beta or release
-    >>> others will not see you are such a procrastinator :)
-    >>> Hogne and Thomas can get a report of the whole list of personal TODOs to
-        have an idea of the remaining tasks and for who.
-    Format : XXTODO where XX stands for the initials of the developer.
-             XXYYTODO you can generate TODOs for several people in one go.
-                      list of any size (not implemented)
-             *TODO: will generate a TODO for everyone (not implemented).
-    You will see FLTODO in my code. A line containing this will be extracted by
-    FriendParser and pasted in a "TODO" section of my own report (and the ones
-    who ask for it). Along with the name of the file and the position of the
-    TODO in the file.
-    The system does not interfere with Doxygen, you can still put normal TODO
-    or TODO: or @TODO.
-    Note: I will make FriendParser when detecting this kind of "normal" TODOs extract
-    the initials of the author from the file Doxygen section and copy such a todo in
-    his report.
-
-    XX>DONE(date) - AUTOMATIC TASK DONE LIST GENERATION (not implemented)
-    If your XX>TODO contains a task that you have to do, the simple action of
-    transforming it directly into the code into FL>DONE (example for me),
-    will add the line to an ordered list of task done in the report
-    (starting when you want, I'll implement a personal "date of start" system
-    for each developer).
-    I can even put a counter and indicate the ratio between UNDO and DONE so that
-    you have a global idea of your progress.
-    Hogne and Thomas will be able to see this list and have a global idea of the
-    progress (useful in stressing times).
-    Not a lot of work (same routines as COMMAND, see later), and I think it would
-    be useful.
-
-    XX>YY - PERSONAL MESSAGES
-    You can send a message to another developer (if the process of reading your
-    report every morning or night is accepted, I can put an alert when the
-    report is not empty for you, or automatically open an editor if new lines
-    are added to the report compared to the previous version in the root directory).
-    When you write code, and have a question that can wait a couple of days, using this
-    system will a) ensure it arrives, b) prevent you from quitting your concentration
-    like ... go to Friend Chat and loose time saying stupid things and get caught by
-    a "Like" on Facebook, as it often happens to me as I have not much will at some
-    moments of the day against that. I suspect it is the same for everyone at
-    different levels. (I don't even imagine a day not having Facebook open or without
-    notifications, it is a drug! :D)
-    Syntax: XX>YY, XX is your name, YY is the name of the person you ask the question to.
-    FriendParser will extract the line, and include it (with the file name it included
-    in, and the position in the file) in the destination developer report.
-    I will add ways to include paragraph in the copy, to avoid having to open
-    the file for simple questions and gain time when answering (like quotes).
-    The person who answers the question just have to integrate a YY>XX in the code
-    itself with the answer, and the developer asking the question will be satisfied
-    the next day.
-    FL>* will put a message from me to everyone. (not implemented)
-    FL>HTPSTW will send a message to me to Hogne, Pawel and Thomas. (not implemented)
-
-    MACRO COMMANDS
-    I will quickly integrate into FriendParser a system of macro commands.
-    You will be able to give commands to FriendParser on what to include,
-    how to format tabulations and spaces in a file (for Hogne) etc.
-    Format: FP>COMMAND(parameters)
-    End of command action (eventually): <FP
-
-    List of commands I have in mind, please suggest new ones:
-
-        FP>SETWATCHDOG(name, version) - Put a watch dog on this code.
-        Every developer who uses it in the code (anywhere) will receive warnings if the
-        version number changes (I will use the "name" to find the references).
-        "name" can be anything, a function, a file etc...
-        If you make crucial modifications in a core function that you suspect will
-        have implications at other places, please use it, it may save a lot of hassle.
-        All the people who have put a FP>OKWATCHDOG(sameName, version) will receive a
-        message when the version number in the SETWATCHDOG is higher than the one
-        in the OKWATCHDOG command, until they validate it by entring the same (or higher)
-        version number in their code.
-        Principle being : You change -> They get constant warnings until they
-                          have validated that the new code works.
-        This message will be sent to all the developers who's initials are listed
-        in the Doxygen description of the file (important, as it can also change
-        code of the other authors not directly related to the function).
-        Please note that you can put such a watch dog for a whole file, if the
-        content has completely changed and you want to be sure that all persons
-        involved have really understood the new way of working. Just use:
-        FP>SETWATCHDOG(filename.ext, version) with the exact file name.
-
-        FP>FORMAT(tabs_or_spaces_before_beginning, tabs_or_spaces_before_remarks)
-        for Hogne.
 
 
 HOW TO CODE YOUR DOCUMENTATION WITHOUT REALIZING IT
@@ -468,21 +427,3 @@ STRUCTURE HEADER
  * Description
  * paragraph
  */
-
-MY LIST OF PERSONAL TODOS FOR THE DOCUMENTATION AND FRIENDPARSER
-----------------------------------------------------------------
-FLTODO CLI parameter to generate for only one developer or a list
-FLTODO config.txt file?
-FLTODO extract name of current author from file Doxygen indications
-FLTODO XX>* command
-FLTODO XX>YYZZ command
-FLTODO XXYYTODO command
-FLTODO *TODO command
-FLTODO FP>COMMAND(parameters) - FP>SETWATCHDOG(name, version), FP>OKWATCHDOG(name, version)
-FLTODO FP>CUT(identifier), FP>PASTE(identifier), FP>FORMAT(xx, yy)
-FLTODO FP>IFDEF(variable), FP>IFNDEF(variable), FP>IFEQUAL(variable, value), FP>IFNEQUAL(variable, value)
-FLTODO FP>FORMAT(before, after)
-FLTODO Change the format of commands to FP<COMMAND(Parameters): more consistency, command go to FriendParser and not from. End of block marked with >FP... much better!
-FLTODO If above, change personal todos to: XXTODO or XXYYZZ<TODO
-FLTODO Change personal messages to YY<XX or YYZZ<XX
-FLTODO XX<DONE

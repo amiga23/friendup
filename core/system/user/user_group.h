@@ -1,25 +1,12 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
 /** @file
  * 
  *  User Group
@@ -35,8 +22,9 @@
 
 #include <core/types.h>
 #include <core/nodes.h>
-#include <mysql/sql_defs.h>
+#include <db/sql_defs.h>
 #include <stddef.h>
+#include <system/fsys/file.h>
 
 /*
 
@@ -55,19 +43,32 @@ CREATE TABLE `FUserGroup` (
 
 */
 
+typedef struct UserGroupAUser
+{
+	MinNode				node;
+	void				*ugau_User;
+	FULONG				ugau_UserID;
+}UserGroupAUser;
+
+//
+
 typedef struct UserGroup
 {
-	struct MinNode 		node;
-	FULONG 					ug_ID;
-	char 						*ug_Name;
-	FULONG 					ug_UserID;
-	char 						*ug_Type;
+	MinNode 			node;
+	FULONG 				ug_ID;
+	char 				*ug_Name;
+	FULONG 				ug_UserID;
+	char 				*ug_Type;
+	
+	UserGroupAUser		*ug_UserList;		// users assigned to group 
+	File				*ug_MountedDevs;	// root file
+	// this is list of UserGroupDevices, all devices are shared to users by group
+	// if we want to share this device across another groups we must share it
 }UserGroup;
 
-//#pragma GCC diagnostic push
-//#pragma GCC diagnostic ignored " -Wconversion"
-
-//GCC_DIAG_OFF(int-to-pointer-cast);
+//
+//
+//
 
 static FULONG GroupDesc[] = { SQLT_TABNAME, (FULONG)"FUserGroup", SQLT_STRUCTSIZE, sizeof( struct UserGroup ), 
 	SQLT_IDINT, (FULONG)"ID", offsetof( struct UserGroup, ug_ID ), 
@@ -76,9 +77,6 @@ static FULONG GroupDesc[] = { SQLT_TABNAME, (FULONG)"FUserGroup", SQLT_STRUCTSIZ
 	SQLT_STR, (FULONG)"Type", offsetof( struct UserGroup, ug_Type ),
 	SQLT_NODE, (FULONG)"node", offsetof( struct UserGroup, node ),
 	SQLT_END };
-	
-//GCC_DIAG_ON(int-to-pointer-cast);
-//#pragma GCC diagnostic pop
 
 //
 //
@@ -90,12 +88,30 @@ UserGroup *UserGroupNew( FULONG id, char *name, FULONG uid, char *type );
 //
 //
 
-int UserGroupDelete( UserGroup *ug );
+int UserGroupDelete( void *sb, UserGroup *ug );
 
 //
 //
 //
 
-int UserGroupDeleteAll(UserGroup* ug);
+int UserGroupDeleteAll( void *sb, UserGroup* ug );
+
+//
+//
+//
+
+File *UserGroupRemDeviceByName( UserGroup *ugrlist, const char *name, int *error );
+
+//
+//
+//
+
+int UserGroupAddUser( UserGroup *ug, void *u );
+
+//
+//
+//
+
+int UserGroupRemoveUser( UserGroup *ug, void *u );
 
 #endif // __USER_GROUP_H__

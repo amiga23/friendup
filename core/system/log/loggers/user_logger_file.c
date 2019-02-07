@@ -1,27 +1,13 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
-/**
- * @file
+/** @file
  *
  * UserLoggerFile logger
  *
@@ -36,7 +22,15 @@
 
 typedef struct SpecialData
 {
-	FILE                      *sd_FP;
+	FILE				*sd_FP;
+	int					sd_Day;
+	int					sd_Month;
+	int					sd_Year;
+	char				sd_FileName[ 1024 ];
+	char				*sd_FilePath;
+	char				*sd_DstFilePath;
+	int					sd_DstFilePathLength;
+	pthread_mutex_t		sd_Mutex;
 }SpecialData;
 
 //
@@ -50,11 +44,12 @@ void init( struct UserLogger *s )
 	SpecialData *sd = FCalloc( 1, sizeof( SpecialData ) );
 	if( sd != NULL )
 	{
-		char *fname = "action_logger.log";
+		char *fname = "action_logger";
+		char *fpath = "logs/";
 		Props *prop = NULL;
 		
 		// Get a copy of the properties.library
-		struct PropertiesLibrary *plib = ( struct PropertiesLibrary *)sb->LibraryPropertiesGet( sb );
+		struct PropertiesInterface *plib = &(sb->sl_PropertiesInterface);
 		if( plib != NULL )
 		{
 			char *ptr = getenv("FRIEND_HOME");
@@ -73,18 +68,66 @@ void init( struct UserLogger *s )
 			if( prop != NULL)
 			{
 				DEBUG("[UserLogger] reading file name\n");
-				fname = plib->ReadString( prop, "Logger:filename", "action_logger.log" );
+				
+				// get filename
+				fname = plib->ReadStringNCS( prop, "Logger:filename", "action_logger" );
+				if( fname == NULL )
+				{
+					strcpy( sd->sd_FileName, "action_logger" );
+				}
+				else
+				{
+					strcpy( sd->sd_FileName, fname );
+				}
+				
+				// get file path
+				fpath = plib->ReadStringNCS( prop, "Logger:filepath", "log/" );
+				int size = 5;
+				if( fpath == NULL )
+				{
+					sd->sd_FilePath = FCalloc( size+64, sizeof(char) );
+					strcpy( sd->sd_FilePath, "log/" );
+				}
+				else
+				{
+					size = strlen( fpath );
+					sd->sd_FilePath = FCalloc( size+64, sizeof(char) );
+					strcpy( sd->sd_FilePath, fpath );
+				}
+				
+				sd->sd_DstFilePathLength = size+32+strlen(sd->sd_FileName);
+				sd->sd_DstFilePath = FCalloc( sd->sd_DstFilePathLength, sizeof(char) );
+				//snprintf( sd->sd_DstFilePath, lsize, "%s%s", sd->sd_FilePath, sd->sd_FileName );
 			}
 			else
 			{
+				int size = 5;
 				FERROR( "Cannot open property file!\n" );
+				sd->sd_DstFilePathLength = size+32+strlen(sd->sd_FileName);
+				sd->sd_DstFilePath = FCalloc( sd->sd_DstFilePathLength, sizeof(char) );
+				strcpy( sd->sd_FilePath, "log/" );
+				strcpy( sd->sd_FileName, "action_logger" );
 			}
-			
-			sd->sd_FP = fopen( fname, "wb" );
 
 			if( prop ) plib->Close( prop );
 			
-			sb->LibraryPropertiesDrop( sb, plib );
+			time_t rawtime;
+			struct tm timeinfo;
+			rawtime = time(NULL);
+			localtime_r(&rawtime, &timeinfo);
+
+			// Get System Date 
+			sd->sd_Year = timeinfo.tm_year+1900;
+			sd->sd_Month = (int)(timeinfo.tm_mon+1);
+			sd->sd_Day = timeinfo.tm_mday;
+			
+			snprintf( sd->sd_DstFilePath, sd->sd_DstFilePathLength, "%s%s%-d-%d-%d.log", sd->sd_FilePath, sd->sd_FileName, sd->sd_Year, sd->sd_Month, sd->sd_Day );
+			
+			mkdir( sd->sd_FilePath, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+			
+			sd->sd_FP = fopen( sd->sd_DstFilePath, "a" );
+			
+			pthread_mutex_init( &(sd->sd_Mutex), NULL);
 		}
 		
 		s->ul_SD = sd;
@@ -105,6 +148,18 @@ void deinit( struct UserLogger *s )
 		{
 			fclose( sd->sd_FP );
 		}
+		
+		if( sd->sd_FilePath != NULL )
+		{
+			FFree( sd->sd_FilePath );
+		}
+		
+		if( sd->sd_DstFilePath != NULL )
+		{
+			FFree( sd->sd_DstFilePath );
+		}
+		
+		pthread_mutex_destroy( &(sd->sd_Mutex) );
 		
 		FFree( s->ul_SD );
 	}
@@ -136,9 +191,36 @@ int StoreInformation( struct UserLogger *s, UserSession *session, char *actions,
 	char datestring[ 64 ];
 	strftime( datestring, sizeof(datestring), "%c", tm );
 	
+	time_t rawtime;
+	struct tm timeinfo;
+	rawtime = time(NULL);
+	localtime_r(&rawtime, &timeinfo);
+
+	// Get System Date 
+	sd->sd_Year = timeinfo.tm_year+1900;
+	sd->sd_Month = timeinfo.tm_mon+1;
+	
 	if( sd->sd_FP != NULL )
 	{
-		fprintf( sd->sd_FP, "Date: %s, UserID: %llu, UserSessionID: %s, Action: %s, Information: %s\n",  datestring, logEntry.ul_UserID, logEntry.ul_UserSessionID, actions, information );
+		FRIEND_MUTEX_LOCK( &(sd->sd_Mutex) );
+		// change file name every day
+		if( sd->sd_Day != timeinfo.tm_mday )
+		{
+			sd->sd_Day = timeinfo.tm_mday;
+			fclose( sd->sd_FP );
+			
+			snprintf( sd->sd_DstFilePath, sd->sd_DstFilePathLength, "%s%s-%d-%d-%d.log", sd->sd_FilePath, sd->sd_FileName, sd->sd_Year, sd->sd_Month, sd->sd_Day );
+			
+			sd->sd_FP = fopen( sd->sd_DstFilePath, "a" );
+			//char fileName[ 1024 ];
+			//snprintf( fileName, sizeof( fileName ), "%d-%d-%d-%s", sd->sd_Year, sd->sd_Month, sd->sd_Day, sd->sd_FileName );
+			
+			//sd->sd_FP = fopen( fileName, "a" );
+		}
+		
+		fprintf( sd->sd_FP, "Date: %s, UserID: %lu, UserSessionID: %s, Action: %s, Information: %s\n",  datestring, logEntry.ul_UserID, logEntry.ul_UserSessionID, actions, information );
+		
+		FRIEND_MUTEX_UNLOCK( &(sd->sd_Mutex) );
 	}
 	
 	return 0;

@@ -1,25 +1,12 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
 /** @file
  * 
  * Remote User
@@ -29,6 +16,7 @@
  *  @author PS (Pawel Stefanski)
  *  @date created 29/05/2017
  */
+
 #include "remote_user.h"
 #include <system/systembase.h>
 
@@ -84,6 +72,12 @@ void RemoteUserDelete( RemoteUser *usr )
 			FFree( usr->ru_SessionID );
 		}
 		
+		if( usr->ru_AuthID != NULL )
+		{
+			FFree( usr->ru_AuthID );
+			usr->ru_AuthID = NULL;
+		}
+		
 		FFree( usr );
 	}
 }
@@ -109,10 +103,13 @@ int RemoteUserDeleteAll( RemoteUser *usr )
 	return 0;
 }
 
-//
-//
-//
-
+/**
+ * Add remote drive to remote user
+ *
+ * @param ru pointer to RemoteUser to which drive will be assigned
+ * @param name name of remote drive
+ * @return 0 when success, otherwise error number
+ */
 int RemoteDriveAdd( RemoteUser *ru, char *name )
 {
 	if( ru != NULL )
@@ -129,10 +126,13 @@ int RemoteDriveAdd( RemoteUser *ru, char *name )
 	return 0;
 }
 
-//
-//
-//
-
+/**
+ * Remove remote drive from remote user
+ *
+ * @param ru pointer to RemoteUser from which drive will be removed
+ * @param name name of remote drive
+ * @return 0 when success, otherwise error number
+ */
 int RemoteDriveRemove( RemoteUser *ru, char *name )
 {
 	if( ru != NULL )
@@ -155,7 +155,6 @@ int RemoteDriveRemove( RemoteUser *ru, char *name )
 		{
 			prevdrive->node.mln_Succ = ldrive->node.mln_Succ;
 			DEBUG("RemoteDriveDelete drive will be removed from memory\n");
-			//UserDelete( ldrive );
 			
 			RemoteDriveDelete( ldrive );
 			
@@ -165,10 +164,13 @@ int RemoteDriveRemove( RemoteUser *ru, char *name )
 	return 0;
 }
 
-//
-//
-//
-
+/**
+ * Create new RemoteDrive
+ *
+ * @param localName pointer to local drive name
+ * @param remoteName pointer to remote drive name
+ * @return new structure when success, otherwise NULL
+ */
 RemoteDrive *RemoteDriveNew( char *localName, char *remoteName )
 {
 	RemoteDrive *rd = NULL;
@@ -178,14 +180,14 @@ RemoteDrive *RemoteDriveNew( char *localName, char *remoteName )
 		rd->rd_LocalName = StringDuplicate( localName );
 		rd->rd_RemoteName = StringDuplicate( remoteName );
 	}
-	
 	return rd;
 }
 
-//
-//
-//
-
+/**
+ * Delete RemoteDrive
+ *
+ * @param rd pointer to drive which will be deleted
+ */
 void RemoteDriveDelete( RemoteDrive *rd )
 {
 	if( rd != NULL )
@@ -204,15 +206,15 @@ void RemoteDriveDelete( RemoteDrive *rd )
 		{
 			FFree( rd->rd_Name );
 		}
-		
 		FFree( rd );
 	}
 }
 
-//
-//
-//
-
+/**
+ * Delete RemoteDrive linked list
+ *
+ * @param rd pointer to drive which is first on linked list
+ */
 void RemoteDriveDeleteAll( RemoteDrive *rd )
 {
 	RemoteDrive *next = rd;
@@ -235,7 +237,6 @@ void RemoteDriveDeleteAll( RemoteDrive *rd )
 		{
 			FFree( rd->rd_Name );
 		}
-		
 		FFree( rd );
 	}
 }

@@ -142,8 +142,6 @@ int is_large_file(const char* filename)
     pos = FTELLO_FUNC(pFile);
     fclose(pFile);
 
-    printf("File : %s is %lld bytes\n", filename, pos);
-
     return (pos >= 0xffffffff);
 }
 
@@ -166,7 +164,6 @@ int get_file_crc(const char* filenameinzip, void *buf, unsigned long size_buf, u
 
             if ((size_read < size_buf) && (feof(fin) == 0))
             {
-                printf("error in reading %s\n",filenameinzip);
                 err = ZIP_ERRNO;
             }
 
@@ -179,7 +176,6 @@ int get_file_crc(const char* filenameinzip, void *buf, unsigned long size_buf, u
     if (fin)
         fclose(fin);
 
-    printf("file %s crc %lx\n", filenameinzip, calculate_crc);
     *result_crc = calculate_crc;
     return err;
 }
@@ -256,7 +252,7 @@ int PackFileToZIP( FILE *zf, const char *filenameinzip, int cutfilename, char *p
 
 	if (err != ZIP_OK)
 	{
-		printf("error in opening %s in zipfile (%d)\n", filenameinzip, err);
+		DEBUG("error in opening %s in zipfile (%d)\n", filenameinzip, err);
 	}
 	else
 	{
@@ -264,7 +260,7 @@ int PackFileToZIP( FILE *zf, const char *filenameinzip, int cutfilename, char *p
 		if (fin == NULL)
 		{
 			err = ZIP_ERRNO;
-			printf("error in opening %s for reading\n", filenameinzip);
+			DEBUG("error in opening %s for reading\n", filenameinzip);
 			}
 	}
 
@@ -329,13 +325,13 @@ int PackDirectory( FILE *zipf, char *path, int cutfilename, char *password, int 
 	}
 	DIR *d;
 	struct dirent *dir;
+	int entry = 0;
+	
 	d = opendir( path );
 	if( d != NULL )
 	{
-		DEBUG("Checking directory: %s\n", path );
 		while( (dir = readdir(d)) != NULL )
 		{
-			DEBUG("Checking : %s\n", dir->d_name );
 			if( strcmp( dir->d_name, "." ) == 0 || strcmp( dir->d_name, ".." ) == 0 )
 			{
 				continue;
@@ -345,9 +341,6 @@ int PackDirectory( FILE *zipf, char *path, int cutfilename, char *password, int 
 			strcat( newpath, "/" );
 			strcat( newpath, dir->d_name );
 			
-			DEBUG("Checking new path: %s\n", newpath );
-			
-			//printf("%s\n", dir->d_name);
 			int status;
 			struct stat st_buf;
 
@@ -369,6 +362,7 @@ int PackDirectory( FILE *zipf, char *path, int cutfilename, char *password, int 
 				DEBUG ("%s is a directory.\n", newpath );
 				
 				PackDirectory( zipf, newpath, cutfilename, password, opt_compress_level, request, fileNumber, numberOfFiles );
+				entry++;
 			}
 			else
 			{
@@ -377,6 +371,7 @@ int PackDirectory( FILE *zipf, char *path, int cutfilename, char *password, int 
 				PackFileToZIP( zipf, newpath, cutfilename, password, opt_compress_level );
 				
 				(*fileNumber)++;
+				entry++;
 				
 				if( request != NULL )
 				{
@@ -391,18 +386,57 @@ int PackDirectory( FILE *zipf, char *path, int cutfilename, char *password, int 
 					char message[ 1024 ];
 					
 					int per = (int)( (float)(*fileNumber)/(float)numberOfFiles * 100.0f );
-					
-					DEBUG("Percentage %d count %d current %d fname %s\n", per, numberOfFiles, (*fileNumber), filename );
 
 					int size = snprintf( message, sizeof(message), "\"action\":\"compress\",\"filename\":\"%s\",\"progress\":%d", filename, per );
-					
-					DEBUG(" sbptr %p  request ptr %p usersession %p\n", sb, request, request->h_UserSession );
 					
 					sb->SendProcessMessage( request, message, size );
 				}
 			}
 		}
 		closedir(d);
+	}
+	
+	// create empty directory
+	
+	if( entry == 0 )
+	{
+		// function below should create empty folder in zip file
+		
+		const char *savefilenameinzip = path;
+		zip_fileinfo zi = {0};
+		unsigned long crcFile = 0;
+		int zip64 = 0;
+		int err = 0;
+
+		//savefilenameinzip += cutfilename;
+		while (savefilenameinzip[0] == '\\' || savefilenameinzip[0] == '/')
+		{
+			savefilenameinzip++;
+		}
+
+		int newsize = strlen( &savefilenameinzip[cutfilename] );
+		if( newsize > 0 )
+		{
+			char *newname = FMalloc( newsize+2 );
+			strcpy( newname, &savefilenameinzip[cutfilename] );
+			strcat( newname, "/" );
+		
+			// Add to zip file 
+			err = zipOpenNewDirectoryInZip3_64(zipf, newname, &zi,
+				NULL, 0, NULL, 0, NULL ,
+				(opt_compress_level != 0) ? Z_DEFLATED : 0,
+				opt_compress_level,0,
+				-MAX_WBITS, DEF_MEM_LEVEL, Z_DEFAULT_STRATEGY,
+				password, crcFile, zip64);
+
+			if (err != ZIP_OK)
+			{
+				err = ZIP_ERRNO;
+			}
+		
+			FFree( newname );
+		}
+		
 	}
 	
 	free( newpath );
@@ -430,7 +464,6 @@ int PackZip( char *zipfilename, char *compresspath, int cutfilename, char *passw
 
 //	opt_overwrite = APPEND_STATUS_CREATEAFTER;
 
-	DEBUG("Create zip %s write %d\n", zipfilename, opt_overwrite );
 	zf = zipOpen64( zipfilename, opt_overwrite );
 
 	if (zf == NULL)
@@ -441,7 +474,6 @@ int PackZip( char *zipfilename, char *compresspath, int cutfilename, char *passw
 	}
 	else
 	{
-		DEBUG("creating %s\n", zipfilename);
 	}
 	
 	int status;
@@ -456,11 +488,9 @@ int PackZip( char *zipfilename, char *compresspath, int cutfilename, char *passw
 
 	if (S_ISREG (st_buf.st_mode)) 
 	{
-		DEBUG ("%s is a regular file.\n", compresspath );
-		
 		err = PackFileToZIP( zf, compresspath, cutfilename, password, opt_compress_level );
 	}
-	if (S_ISDIR (st_buf.st_mode) ) 
+	else if (S_ISDIR (st_buf.st_mode) ) 
 	{
 		DEBUG ("%s is a directory.\n", compresspath );
 		

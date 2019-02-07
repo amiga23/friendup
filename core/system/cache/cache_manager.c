@@ -1,25 +1,12 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
 /** @file
  * 
  * file contain functitons related to cache
@@ -29,6 +16,9 @@
  */
 
 #include "cache_manager.h"
+#include <util/murmurhash3.h>
+#include <system/user/user.h>
+#include <mutex/mutex_manager.h>
 
 /**
  * create new CacheManager
@@ -43,6 +33,9 @@ CacheManager *CacheManagerNew( FULONG size )
 	if( cm != NULL )
 	{
 		int i = 0;
+		
+		pthread_mutex_init( &(cm->cm_Mutex), NULL );
+		
 		cm->cm_CacheMax = size;
 		
 		cm->cm_CacheFileGroup = FCalloc( CACHE_GROUP_MAX, sizeof(CacheFileGroup) );
@@ -52,8 +45,6 @@ CacheManager *CacheManagerNew( FULONG size )
 			{
 				cm->cm_CacheFileGroup[ i ].cg_EntryId = i;
 				cm->cm_CacheFileGroup[ i ].cg_File = NULL;
-				
-				//DEBUG("Create cache id %d ptr %p\n", cm->cm_CacheFileGroup[ i ].cg_EntryId, cm->cm_CacheFileGroup[ i ].cg_File );
 			}
 		}
 	}
@@ -75,6 +66,8 @@ void CacheManagerDelete( CacheManager *cm )
 	{
 		int i = 0;
 		
+		FRIEND_MUTEX_LOCK( &(cm->cm_Mutex) );
+		
 		for( ; i < CACHE_GROUP_MAX; i++ )
 		{
 			LocFile *lf = cm->cm_CacheFileGroup[ i ].cg_File;
@@ -82,7 +75,7 @@ void CacheManagerDelete( CacheManager *cm )
 			{
 				LocFile *rf = lf;
 				lf = (LocFile *)lf->node.mln_Succ;
-				LocFileFree( rf );
+				LocFileDelete( rf );
 			}
 		}
 		
@@ -90,9 +83,21 @@ void CacheManagerDelete( CacheManager *cm )
 		{
 			FFree( cm->cm_CacheFileGroup );
 		}
+		
+		FRIEND_MUTEX_UNLOCK( &(cm->cm_Mutex) );
+		
+		pthread_mutex_destroy( &(cm->cm_Mutex) );
+		/*
+		LocFile *lf = cm->cm_LocFileCache;
+		while( lf != NULL )
+		{
+			LocFile *rf = lf;
+			lf = (LocFile *)lf->node.mln_Succ;
+			LocFileDelete( rf );
+		}
+		*/
+		FFree( cm );
 	}
-	
-	FFree( cm );
 }
 
 /**
@@ -104,6 +109,7 @@ void CacheManagerClearCache( CacheManager *cm )
 {
 	if( cm != NULL )
 	{
+		FRIEND_MUTEX_LOCK( &(cm->cm_Mutex) );
 		int i = 0;
 		
 		for( ; i < CACHE_GROUP_MAX; i++ )
@@ -114,11 +120,27 @@ void CacheManagerClearCache( CacheManager *cm )
 				LocFile *rf = lf;
 				lf = (LocFile *)lf->node.mln_Succ;
 				
-				LocFileFree( rf );
+				LocFileDelete( rf );
 			}
 			
 			cm->cm_CacheFileGroup[ i ].cg_File = NULL;
 		}
+		
+		/*
+		disabled for now
+		LocFile *lf = cm->cm_LocFileCache;
+		while( lf != NULL )
+		{
+			LocFile *rf = lf;
+			lf = (LocFile *)lf->node.mln_Succ;
+			
+			LocFileDelete( rf );
+		}
+		*/
+			
+		cm->cm_LocFileCache = NULL;
+		
+		FRIEND_MUTEX_UNLOCK( &(cm->cm_Mutex) );
 	}
 }
 
@@ -135,34 +157,54 @@ int CacheManagerFilePut( CacheManager *cm, LocFile *lf )
 {
 	if( cm != NULL )
 	{
-		INFO(" cache size %lld file size %lld cache max %lld\n",  cm->cm_CacheSize ,(FQUAD)lf->filesize, (FQUAD)cm->cm_CacheMax );
-		if( (cm->cm_CacheSize + lf->filesize) > cm->cm_CacheMax )
+		INFO(" cache size %ld file size %ld cache max %ld\n",  cm->cm_CacheSize ,(FLONG)lf->lf_FileSize, (FLONG)cm->cm_CacheMax );
+		if( (cm->cm_CacheSize + lf->lf_FileSize) > cm->cm_CacheMax )
 		{
 			FERROR("Cannot add file to cache, cache is FULL\n");
-			return 1;
+			return -3;
 		}
 		else
 		{
-			if( lf != NULL &&  lf->lf_Filename != NULL )
+			if( lf != NULL )
 			{
-				int id = lf->lf_Filename[ 0 ];		//we sort data by name
-				if( id < 0 && id >= CACHE_GROUP_MAX )
+				char *hfirstChar = (char *)lf->hash;
+				unsigned char id = (unsigned char)hfirstChar[0];		//we sort data by name
+				/*
+				if( id < 0 && id > 255 )
 				{
 					id = 0;
 				}
-				if( cm->cm_CacheFileGroup[ id ].cg_File == NULL )
+				*/
+				
+				FRIEND_MUTEX_LOCK( &(cm->cm_Mutex) );
+				
+				if( cm->cm_LocFileCache != NULL )
 				{
-					cm->cm_CacheFileGroup[ id ].cg_File = lf;
+					DEBUG("ID %d\n", id );
+					if( cm->cm_CacheFileGroup[ id ].cg_File == NULL )
+					{
+						cm->cm_CacheFileGroup[ id ].cg_File = lf;
+					}
+					else
+					{
+						lf->node.mln_Succ = (MinNode *)cm->cm_CacheFileGroup[ id ].cg_File;
+						cm->cm_CacheFileGroup[ id ].cg_File = lf;
+					}
+				
+					//lf->node.mln_Succ = (MinNode *)cm->cm_LocFileCache;
+					//cm->cm_LocFileCache = lf;
+			
+					lf->lf_FileUsed++;
+			
+					cm->cm_CacheSize += lf->lf_FileSize;
 				}
 				else
 				{
-					lf->node.mln_Succ = (MinNode *)cm->cm_CacheFileGroup[ id ].cg_File;
-					cm->cm_CacheFileGroup[ id ].cg_File = lf;
+					FERROR("[CacheManagerFilePut] No file provided\n");
+					FRIEND_MUTEX_UNLOCK( &(cm->cm_Mutex) );
+					return -2;
 				}
-			
-				lf->lf_FileUsed++;
-			
-				cm->cm_CacheSize += lf->filesize;
+				FRIEND_MUTEX_UNLOCK( &(cm->cm_Mutex) );
 			}
 			else
 			{
@@ -174,22 +216,63 @@ int CacheManagerFilePut( CacheManager *cm, LocFile *lf )
 	return 0;
 }
 
-//
-// Internal function which gets pointer to char where filename is started
-//
-
-inline char *GetFileNamePtr( char *path, int len )
+/**
+ * function store LocFile inside cache (User cache)
+ *
+ * @param locusr pointer to User structure
+ * @param lf pointer to LocFile structure which will be stored in cache
+ * @return 0 when success, otherwise error number
+ */
+int CacheManagerUserFilePut( void *locusr, LocFile *lf __attribute__((unused)) )
 {
-	int i = len;
-	while( i != 0 )
+	if( locusr != NULL )
 	{
-		if( path[ i ] == '/' )
-		{
-			return &path[ i+1 ];
-		}
-		i--;
+		// trying to find user assigned to CacheUserFiles, on the end we should assign cache to user
+		User *usr = (User *)locusr;
+
+		//CacheUserFilesAddFile( &(usr->u_FileCache), lf );
+
 	}
-	return path;
+	return 0;
+}
+
+
+/**
+ * function get LocFile from cache (User cache)
+ *
+ * @param locusr pointer to User structure
+ * @param path full path to file (include device name)
+ * @return LocFile structure when success, otherwise NULL
+ */
+LocFile *CacheManagerUserFileGet( void *locusr, char *path )
+{
+	if( locusr != NULL )
+	{
+		// trying to find user assigned to CacheUserFiles, on the end we should assign cache to user
+		User *usr = (User *)locusr;
+		
+		uint64_t hash[ 2 ];
+		MURMURHASH3( path, strlen(path), hash );
+		
+		char *hfirstChar = (char *)hash;
+		unsigned char id = (unsigned char)hfirstChar[0];
+		
+		// if CacheUserFiles exist, we are trying to find file
+
+		/*
+		LocFile *lf = usr->u_FileCache->cuf_File;
+		while( lf != NULL )
+		{
+			if( memcmp( hash, lf->hash, sizeof(hash) ) == 0 )
+			{
+				lf->lf_FileUsed++;
+				return lf;
+			}
+			lf = (LocFile *)lf->node.mln_Succ;
+		}
+		*/
+	}
+	return 0;
 }
 
 /**
@@ -200,50 +283,70 @@ inline char *GetFileNamePtr( char *path, int len )
  * @param checkByPath find file by compareing paths
  * @return pointer to LocFile when structure is stored in CacheManager, otherwise NULL
  */
-LocFile *CacheManagerFileGet( CacheManager *cm, char *path, FBOOL checkByPath )
+LocFile *CacheManagerFileGet( CacheManager *cm, char *path, FBOOL checkByPath __attribute__((unused)) )
 {
 	LocFile *ret = NULL;
 	
 	if( path == NULL )
 	{
-		INFO("Cache meananger do not handle NULL file\n");
+		FERROR("[CacheManagerFileGet] Cache meananger do not handle NULL file\n");
 		return NULL;
 	}
 	
 	if( cm != NULL )
 	{
-		char *fname = NULL;
+		uint64_t hash[ 2 ];
+		MURMURHASH3( path, strlen(path), hash );
 		
-		if( checkByPath == FALSE )
-		{
-			fname = GetFileNamePtr( path, strlen(path ) );
-		}
-		else
-		{
-			fname = path;
-		}
-		
-		DEBUG("FNAME %s -- id %d\n", fname, fname[ 0 ] );
-		int id = fname[ 0 ];
+		char *hfirstChar = (char *)hash;
+		unsigned char id = (unsigned char)hfirstChar[0];
+		/*
 		if( id < 0 || id > 255 )
 		{
 			id = 0;
 		}
+		*/
+		
 		LocFile *lf = NULL;
 
-		CacheFileGroup *cg = &(cm->cm_CacheFileGroup[ id ]);
-		lf = cg->cg_File;
+		FRIEND_MUTEX_LOCK( &(cm->cm_Mutex) );
+				
+		if( cm->cm_LocFileCache != NULL )
+		{
+			CacheFileGroup *cg = &(cm->cm_CacheFileGroup[ id ]);
+			lf = cg->cg_File;
 
+			while( lf != NULL )
+			{
+				if( memcmp( hash, lf->hash, sizeof(hash) ) == 0 )
+				{
+					lf->lf_FileUsed++;
+					return lf;
+				}
+			
+				lf = (LocFile *)lf->node.mln_Succ;
+			}
+		}
+		
+		FRIEND_MUTEX_UNLOCK( &(cm->cm_Mutex) );
+		
+		/*
+		LocFile *lf = cm->cm_LocFileCache;
 		while( lf != NULL )
 		{
-			if( lf->lf_Path != NULL && strcmp( lf->lf_Path, path ) == 0 )
+			char *s = (char *)hash;
+			char *d = (char *)lf->hash;
+			
+			int i;
+			FERROR("COMPARE %x-%x %x-%x\n", hash[0], lf->hash[0], hash[1], lf->hash[1] );
+			
+			if( memcmp( hash, lf->hash, sizeof(hash) ) == 0 )
 			{
-				lf->lf_FileUsed++;
 				return lf;
 			}
-			
 			lf = (LocFile *)lf->node.mln_Succ;
 		}
+		*/
 	}
 	
 	return ret;

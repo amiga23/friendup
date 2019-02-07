@@ -1,29 +1,45 @@
 /*©agpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Affero General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Affero General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Affero   *
+* General Public License, found in the file license_agpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
 
 Application.run = function( msg, iface )
 {
-	var v = new View( {
+	var viewFlags = {
 		title: i18n( 'i18n_Server' ),
 		width: 700,
 		height: 600
-	} );
+	};
+	
+	if( msg.args.indexOf( ' ' ) > 0 )
+	{
+		var args = msg.args.split( ' ' );
+		if( args[1] == 'test' )
+		{
+			viewFlags.frameworks = { 
+				fui: {
+					data: 'Progdir:FUI/server.json',
+					javascript: 'Progdir:Scripts/server_fui.js'
+				}
+			};
+		}
+		else if( args[1] == 'tree' )
+		{
+			viewFlags.frameworks = {
+				tree: {
+					data: 'Progdir:FUI/server.json',
+					javascript: 'Progdir:Tree/server.js'
+				}
+			}
+		}
+	}
+	
+	var v = new View( viewFlags );
 	
 	this.mv = v;
 	
@@ -31,14 +47,20 @@ Application.run = function( msg, iface )
 	{
 		Application.quit();
 	}
+
+	// Set app in single mode
+	this.setSingleInstance( true );
 	
-	var f = new File( 'Progdir:Templates/server.html' );
-	f.i18n();
-	f.onLoad = function( data )
+	if( !viewFlags.frameworks )
 	{
-		v.setContent( data );
+		var f = new File( 'Progdir:Templates/server.html' );
+		f.i18n();
+		f.onLoad = function( data )
+		{
+			v.setContent( data );
+		}
+		f.load();
 	}
-	f.load();
 }
 
 Application.receiveMessage = function( msg )

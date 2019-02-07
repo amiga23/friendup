@@ -2,25 +2,12 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
 
 // Gets our stuff!
 
@@ -48,18 +35,25 @@ if( count( $argv ) >= 4 )
 
 	if( file_exists( $filePath ) )
 	{
+		if( strstr( $filePath, '/' ) )
+		{
+			$file = explode( '/', $filePath );
+			$file = $file[ count( $file ) - 1 ];
+		}
+		else $file = $filePath;
+		
+		$curlFile = new CURLFile( $filePath, 'application/octetstream', $file );
 		$postfields = array(
 			'sessionid' => $session,
 			'devname' => $devname,
 			'path' => urlencode( $destPath ),
 			'target' => urlencode( $destPath ),
-			'data' => '@' . $filePath
+			'data' => $curlFile
 		);
 	
 		$ch = curl_init();
 		curl_setopt( $ch, CURLOPT_URL, $url    );
 		curl_setopt( $ch, CURLOPT_PORT, $Config->FCPort );
-		curl_setopt( $ch, CURLOPT_SAFE_UPLOAD, false );
 		curl_setopt( $ch, CURLOPT_POSTFIELDS, $postfields );
 		curl_setopt( $ch, CURLOPT_RETURNTRANSFER, true );
 		if( $Config->SSLEnable == 1 )

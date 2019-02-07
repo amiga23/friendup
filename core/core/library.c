@@ -1,27 +1,13 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
-/**
- * @file
+/** @file
  *
  * Library opening and closing
  *
@@ -29,6 +15,10 @@
  * @author HT (Hogne Tildstad)
  * @author JMN (John Michael Nilsen)
  * @date first pushed on 06/02/2015
+ * 
+ * \defgroup FriendCoreLibrary Library Management
+ * \ingroup FriendCore
+ * @{
  */
 
 #include <core/types.h>
@@ -40,7 +30,6 @@
 #include <string.h>
 #include <unistd.h>
 #include <system/systembase.h>
-
 
 /**
  * Opens a library
@@ -68,10 +57,10 @@ void *LibraryOpen( void *sb, const char *name, long version )
 	}
 		
 	FBOOL loaded = FALSE;
-	char currentDirectory[ 255 ];
-	char loadLibraryPath[ 512 ];
-	memset( &currentDirectory, 0, 255 );
-	memset( &loadLibraryPath, 0, 512 );
+	char currentDirectory[ PATH_MAX ];
+	char loadLibraryPath[ PATH_MAX ];
+	memset( &currentDirectory, 0, sizeof(currentDirectory) );
+	memset( &loadLibraryPath, 0, sizeof(loadLibraryPath) );
 
 	// Open library
 	if( name == NULL )
@@ -86,7 +75,11 @@ void *LibraryOpen( void *sb, const char *name, long version )
 	void * ( *libInit )( void * );
 
 	// there is no need to multiply by sizeof(char)
-	getcwd( currentDirectory, sizeof ( currentDirectory ) );
+	if (getcwd( currentDirectory, sizeof ( currentDirectory ) ) == NULL)
+	{
+		FERROR("getcwd failed!");
+		exit(5);
+	}
 	//DEBUG( "[LibraryOpen] Current directory %s\n", currentDirectory );
 
 	// we should check and get lib from current dirrectory first (compatybility)
@@ -130,7 +123,11 @@ void *LibraryOpen( void *sb, const char *name, long version )
 	if( loaded == FALSE )
 	{
 		// there is no need to multiply by sizeof(char)
-		getcwd( currentDirectory, sizeof ( currentDirectory ) );
+		if (getcwd( currentDirectory, sizeof ( currentDirectory ) ) == NULL)
+		{
+			FERROR("getcwd failed!");
+			exit(5);
+		}
 
 		// we should check and get lib from "current dirrectory"/libs/
 	
@@ -218,8 +215,6 @@ void *LibraryOpen( void *sb, const char *name, long version )
 	
 	if( library != NULL )
 	{
-		//library->sb = sb;
-		
 		DEBUG( "[LibraryOpen] After init\n" );
 
 		library->handle = handle;
@@ -261,3 +256,5 @@ void LibraryClose( void *lib )
 	DEBUG( "[LibraryOpen] Lib closed memory free\n" );
 }
 
+/**@}*/
+// End of FriendCoreLibrary Doxygen group

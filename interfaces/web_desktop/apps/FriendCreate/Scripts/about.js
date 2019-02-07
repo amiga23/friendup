@@ -1,19 +1,10 @@
 /*©agpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Affero General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Affero General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Affero   *
+* General Public License, found in the file license_agpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
 
@@ -23,15 +14,15 @@ for ( var a = 0; a < 20; a++ )
 	var j = document.createElement ( 'div' );
 	j.x = Math.random () * 320;
 	j.y = Math.random () * 174;
-	j.s = ( Math.random () * 3 + 1 ) / 4;
+	j.s = ( Math.random () * 3 + 1 ) / 2;
 	j.time = ( new Date () ).getTime ();
 	j.style.position = 'absolute';
 	j.style.top = Math.floor ( j.y ) + 'px';
 	j.style.left = Math.floor ( j.x ) + 'px';
 	j.style.width = '2px';
 	j.style.height = '2px';
-	j.style.background = '#D8D8D8';
-	j.style.boxShadow = '0px 0px 10px 3px #D8D8D8';
+	j.style.background = '#ffff99';
+	j.style.boxShadow = '0px 0px 10px 3px #ff8800';
 	
 	// Add to window
 	document.body.appendChild ( j );

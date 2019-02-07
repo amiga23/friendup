@@ -2,30 +2,17 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
 
-
 /******************************************************************************\
 *                                                                              *
-* FriendUP PHP API v1.0                                                        *
-* (c) 2015, Friend Software Labs AS                                            *
+* FriendUP PHP API v1.2                                                        *
+* (c) 2015-2018, Friend Software Labs AS                                       *
 * mail: info@friendup.no                                                       *
 *                                                                              *
 \******************************************************************************/
@@ -121,19 +108,33 @@ function AuthenticateApplication( $appName, $UserID, $searchGroups = false )
 	
 	if( !$searchGroups )
 	{
-		$groups = $SqlDatabase->FetchObjects( 'SELECT ug.Name FROM FUserGroup ug, FUserToGroup utg WHERE utg.UserID=\'' . $UserID . '\' AND utg.UserGroupID = ug.ID' );
-		if( !$groups ) return 'fail<!--separate-->User with no group can not use apps.';
-		$searchGroups = array(); foreach( $groups as $g ) $searchGroups[] = $g->Name;
+		if( !( $groups = $SqlDatabase->FetchObjects( '
+			SELECT ug.Name 
+			FROM 
+				FUserGroup ug, FUserToGroup utg 
+			WHERE 
+				utg.UserID=\'' . $UserID . '\' AND utg.UserGroupID = ug.ID
+		' ) ) )
+		{
+			return 'fail<!--separate-->User with no group can not use apps.';
+		}
+		$searchGroups = array(); 
+		foreach( $groups as $g )
+		{
+			$searchGroups[] = $g->Name;
+		}
 	}
-	
+		
 	// Do we have a project?
 	if( strtolower( substr( $appName, -4, 4 ) ) == '.apf' )
 	{
 		include_once( 'php/classes/file.php' );
 		$f = new File( $appName );
-		$f->Load();
-		$content = $f->GetContent();
-		return 'ok<!--separate-->' . $content;
+		if( $f->Load() )
+		{
+			return 'ok<!--separate-->' . $f->GetContent();
+		}
+		return 'fail<!--separate-->{"Error":"Can not find file."}';
 	}
 	else
 	{
@@ -186,20 +187,26 @@ function FindAppInSearchPaths( $app )
 // Get arguments from argv
 if( isset( $argv ) && isset( $argv[1] ) )
 {
-	if( $args = explode( "&", $argv[1] ) )
+	if( $args = explode( '&', $argv[1] ) )
 	{
+		//include_once( 'classes/logger.php' );
+		//$Logger->log( 'Here are the received args: ' . $argv[1]  . print_r( $args, 1 ) );
+		$num = 0;
 		$kvdata = new stdClass();
 		foreach ( $args as $arg )
 		{
+			// Keyed value
 			if( trim( $arg ) && strstr( $arg, '=' ) )
 			{
 				list( $key, $value ) = explode( '=', $arg );
 				if( isset( $key ) && isset( $value ) )
 				{
 					if( substr( $value, 0, 13 ) == '<!--base64-->' )
-						$value = base64_decode( substr( $value, 13, strlen( $value ) - 13 ) );
+						$value = trim( base64_decode( substr( $value, 13, strlen( $value ) - 13 ) ) );
 					if( strstr( $value, '%' ) || strstr( $value, '&' ) ) 
+					{
 						$value = rawurldecode( $value );
+					}
 					if( $value && ( $value[0] == '{' || $value[0] == '[' ) )
 					{
 						if( $data = json_decode( $value) )
@@ -240,50 +247,110 @@ if( file_exists( 'cfg/cfg.ini' ) )
 	include_once( 'include/i18n.php' );
 	// For debugging
 	include_once( 'classes/logger.php' );
+	
 	$logger =& $GLOBALS['Logger'];
 	
 	// Set config object
-	$Config = new Object();
+	$Config = new stdClass();
 	$car = array( 'Hostname', 'Username', 'Password', 'DbName',
-	              'FCHost', 'FCPort', 'FCUpload', 
-	              'SSLEnable', 'FCOnLocalhost', 'Domains' );
+	              'FCHost', 'FCPort', 'FCUpload', 'FCPort', 
+	              'SSLEnable', 'FCOnLocalhost', 'Domains', 'friendnetwork', 
+	              'WorkspaceShortcuts', 'preventWizard'
+	);
 
+	// Shortcuts
+	$dataUser = $configfilesettings[ 'DatabaseUser' ];
+	$dataCore = $configfilesettings[ 'FriendCore' ];
+	$datCore2 = $configfilesettings[ 'Core' ]; // TODO: Deprecated?
+	if( isset( $configfilesettings[ 'Security' ] ) )
+		$security = $configfilesettings[ 'Security' ];
+	else $security = [];
+	if( isset( $configfilesettings[ 'FriendNetwork' ] ) )
+	{
+		$frindNet = $configfilesettings[ 'FriendNetwork' ];
+	}
+	else $frindNet = [];
+	
 	foreach( array(
 		'host', 'login', 'password', 'dbname', 
-		'fchost', 'fcport', 'fcupload',
-		'SSLEnable', 'fconlocalhost', 'domains'
+		'fchost', 'fcport', 'fcupload', 'port', 
+		'SSLEnable', 'fconlocalhost', 'domains','friendnetwork',
+		'workspaceshortcuts', 'preventwizard'
 	) as $k=>$type )
 	{
 		$val = '';
-		switch( $type )
+		
+		switch( strtolower( $type ) )
 		{
+			case 'workspaceshortcuts':
+				$val = isset( $dataCore[ $type ] ) ? $dataCore[ $type ] : [];
+				if( is_string( $val ) )
+				{
+					$val = trim( $val );
+					$o = array();
+					$val = explode( ',', $val );
+					foreach( $val as $v )
+						$o[] = trim( $v );
+					$val = $o;
+					$o = null;
+				}
+				break;
 			case 'host':
 			case 'login':
 			case 'password':
 			case 'dbname':
-				$val = isset( $configfilesettings['DatabaseUser'][$type] ) ? $configfilesettings['DatabaseUser'][$type] : '';
+				$val = isset( $dataUser[ $type ] ) ? $dataUser[ $type ] : '';
 				break;	
-			
-			case 'fchost':
-			case 'fcport':
 			case 'fcupload':
-			case 'fconlocalhost':
-				$val = isset( $configfilesettings['FriendCore'][$type] ) ? $configfilesettings['FriendCore'][$type] : '';
+				$val = isset( $dataCore[ $type ] ) ? $dataCore[ $type ] : '';
+				if( substr( $val, 0, 1 ) != '/' )
+					$val = getcwd() . '/' . $val;
 				break;
-				
-			case 'SSLEnable':	
-				$val = isset( $configfilesettings['Core'][$type] ) ? $configfilesettings['Core'][$type] : '';
+			case 'preventwizard':
+			case 'port':
+				$val = isset( $dataCore[ $type ] ) ? $dataCore[ $type ] : '';
+				break;
+			case 'fcport':
+				$val = isset( $dataCore[ $type ] ) ? $dataCore[ $type ] : '';
+				break;
+			case 'fchost':
+			case 'fconlocalhost':
+				$val = isset( $dataCore[ $type ] ) ? $dataCore[ $type ] : '';
+				break;
+			case 'sslenable':	
+				$val = isset( $dataCore[ $type ] ) ? $dataCore[ $type ] : '';
+				// Check in deprecated location
+				if( !$val )
+				{
+					$val = isset( $datCore2[ $type ] ) ? $datCore2[ $type ] : '';
+				}
 				break;
 				
 			case 'domains':
-				$val = isset( $configfilesettings['Security'][$type] ) ? $configfilesettings['Security'][$type] : '';
-				break;		
+				$val = isset( $security[ $type ] ) ? $security[ $type ] : '';
+				break;	
+			case 'friendnetwork':
+				$val = isset( $frindNet[ 'enabled' ] ) ? $frindNet[ 'enabled' ] : '0';	
+				break;
 			default:
 				$val = '';
 				break;	
 		}
-		$Config->{$car[$k]} = $val;
+		// Make sure the value is valid
+		if( isset( $val ) && $val )
+		{
+			//$Logger->log( 'Setting: ' . $car[$k] . ' = ' . $val );
+			$Config->{$car[$k]} = $val;
+		}
 	}
+	
+	//$Logger->log( print_r( $Config, 1 ) );
+	
+	// Don't need these now
+	$dataUser = null;
+	$dataCore = null;
+	$security = null;
+	$frindNet = null;
 	
 	// Temporary folder
 	$Config->FCTmp    = isset( $ar['fctmp'] ) ? $ar['fctmp'] : '/tmp/';
@@ -327,14 +394,7 @@ if( file_exists( 'cfg/cfg.ini' ) )
 		( isset( $GLOBALS['args']->sessionid ) ? $GLOBALS['args']->sessionid : '' )
 	);
 	
-	//die( $sidm .'..' . $User->ID . '..');
-	
-	/*die( '
-			SELECT u.* FROM FUser u, FUserSession us
-			WHERE
-				us.UserID = u.ID AND
-				( u.SessionID=\'' . $sidm . '\' OR us.SessionID = \'' . $sidm . '\' )
-		' );*/
+	//$logger->log( 'Trying to log in: ' . $sidm . ' ' . print_r( $args, 1 ) );
 	
 	// Here we need a union because we are looking for sessionid in both the
 	// FUserSession and FUser tables..

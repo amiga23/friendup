@@ -1,25 +1,12 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
 /** @file
  * 
  *  INVAR definitions
@@ -39,7 +26,7 @@
 
 #include <core/types.h>
 #include <core/nodes.h>
-#include <mysql/mysqllibrary.h>
+#include <db/sqllib.h>
 #include <stddef.h>
 
 /*
@@ -63,13 +50,13 @@ typedef struct INVAREntry
 	void 							*ne_SpecialData;	// special data
 }INVAREntry;
 
-static FULONG INVAREntryDesc[] = { SQLT_TABNAME, (FULONG)"FINVAREntry", SQLT_STRUCTSIZE, sizeof( struct INVAREntry ), 
-	SQLT_IDINT, (FULONG)"ID", offsetof( INVAREntry, ne_ID ), 
-	SQLT_INT, (FULONG)"Pointer", offsetof( INVAREntry, ne_Pointer ), 
-	SQLT_STR, (FULONG)"Name", offsetof( INVAREntry, ne_Name ),
-	SQLT_STR, (FULONG)"Data", offsetof( INVAREntry, ne_Data ),
-	SQLT_NODE, (FULONG)"node", offsetof( struct INVAREntry, node ),
-	SQLT_END };
+//static FULONG INVAREntryDesc[] = { SQLT_TABNAME, (FULONG)"FINVAREntry", SQLT_STRUCTSIZE, sizeof( struct INVAREntry ),
+//	SQLT_IDINT, (FULONG)"ID", offsetof( INVAREntry, ne_ID ),
+//	SQLT_INT, (FULONG)"Pointer", offsetof( INVAREntry, ne_Pointer ),
+//	SQLT_STR, (FULONG)"Name", offsetof( INVAREntry, ne_Name ),
+//	SQLT_STR, (FULONG)"Data", offsetof( INVAREntry, ne_Data ),
+//	SQLT_NODE, (FULONG)"node", offsetof( struct INVAREntry, node ),
+//	SQLT_END };
 
 //
 // Load INVAREntry from DB
@@ -112,12 +99,12 @@ typedef struct INVARGroup
 	INVAREntry 				*ng_Entries;
 }INVARGroup;
 
-static FULONG INVARGroupDesc[] = { SQLT_TABNAME, (FULONG)"FINVARGroup", SQLT_STRUCTSIZE, sizeof( struct INVARGroup ), 
-	SQLT_IDINT, (FULONG)"ID", offsetof( INVARGroup, ng_ID ), 
-	SQLT_INT, (FULONG)"Pointer", offsetof( INVARGroup, ng_Pointer ), 
-	SQLT_STR, (FULONG)"Name", offsetof( INVARGroup, ng_Name ),
-	SQLT_NODE, (FULONG)"node", offsetof( struct INVARGroup, node ),
-	SQLT_END };
+//static FULONG INVARGroupDesc[] = { SQLT_TABNAME, (FULONG)"FINVARGroup", SQLT_STRUCTSIZE, sizeof( struct INVARGroup ),
+//	SQLT_IDINT, (FULONG)"ID", offsetof( INVARGroup, ng_ID ),
+//	SQLT_INT, (FULONG)"Pointer", offsetof( INVARGroup, ng_Pointer ),
+//	SQLT_STR, (FULONG)"Name", offsetof( INVARGroup, ng_Name ),
+//	SQLT_NODE, (FULONG)"node", offsetof( struct INVARGroup, node ),
+//	SQLT_END };
 
 //
 // INVARGroup

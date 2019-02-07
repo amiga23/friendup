@@ -1,25 +1,12 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
 /** @file
  * 
  *  INVAR body
@@ -65,7 +52,7 @@ INVAREntry *INVAREntryNew( FULONG id, char *name, char *data )
 /**
  * Delete INVAREntry structure
  *
- * @param id of new created INVAREntry
+ * @param ne of new created INVAREntry
  */
 void INVAREntryDelete( INVAREntry *ne )
 {
@@ -88,7 +75,7 @@ void INVAREntryDelete( INVAREntry *ne )
 /**
  * Convert full INVAREntry to json
  *
- * @param id of new created INVAREntry
+ * @param ne of new created INVAREntry
  * @param buffer where string will be stored
  * @param len length of the buffer
  */
@@ -101,7 +88,7 @@ int INVAREntryToJSON( INVAREntry *ne, char *buffer, int len )
 /**
  * Convert INVAREntry to json
  *
- * @param id of new created INVAREntry
+ * @param ne of new created INVAREntry
  * @param buffer where string will be stored
  * @param len length of the buffer
  */
@@ -158,7 +145,7 @@ void INVARGroupDelete( INVARGroup *ne )
 /**
  * Convert INVARGroup to json
  *
- * @param id of new created INVARGroup
+ * @param ne of new created INVARGroup
  * @param buffer where string will be stored
  * @param len length of the buffer
  */
@@ -171,7 +158,7 @@ int INVARGroupToJSON( INVARGroup *ne, char *buffer, int len )
 /**
  * Convert INVARGroup to json
  *
- * @param id of new created INVARGroup
+ * @param ne of new created INVARGroup
  * @param buffer where string will be stored
  * @param len length of the buffer
  */

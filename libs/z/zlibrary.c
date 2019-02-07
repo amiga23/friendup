@@ -1,22 +1,12 @@
-/*©lpgl*************************************************************************
+/*©lgpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Lesser General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Lesser General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Lesser   *
+* General Public License, found in the file license_lgpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
-
 
 /*
 
@@ -35,7 +25,7 @@
 #include <util/string.h>
 #include <network/http.h>
 #include <openssl/sha.h>
-#include <propertieslibrary.h>
+#include <interface/properties_interface.h>
 #include <util/buffered_string.h>
 #include <system/json/json_converter.h>
 #include <system/user/user_session.h>
@@ -67,12 +57,12 @@ void libClose( struct ZLibrary *l )
 //
 //
 
-long GetVersion(void)
+FULONG GetVersion(void)
 {
 	return LIB_VERSION;
 }
 
-long GetRevision(void)
+FULONG GetRevision(void)
 {
 	return LIB_REVISION;
 }
@@ -84,7 +74,7 @@ long GetRevision(void)
 int Unpack( struct ZLibrary *l, const char *name, const char *dir, const char *pass, Http *request )
 {
 	request->h_SB = l->sb;
-	DEBUG("Call unzip\n");
+	DEBUG("Z.library: Call unzip\n");
 	return UnpackZip( name, dir, pass, request );
 }
 
@@ -94,7 +84,7 @@ int Unpack( struct ZLibrary *l, const char *name, const char *dir, const char *p
 
 int Pack( struct ZLibrary *l, const char *name, const char *dir, int cutfilename, const char *pass, Http *request, int numberOfFiles )
 {
-	DEBUG("pack called\n");
+	DEBUG("Z.library: pack called\n");
 	request->h_SB = l->sb;
 	return PackZip( name, dir, cutfilename, pass, request, numberOfFiles );
 }
@@ -122,9 +112,6 @@ void *libInit( void *sb )
 
 	l->Unpack = Unpack; //dlsym ( l->l_Handle, "UnpackZIP");
 	l->Pack = Pack;//dlsym ( l->l_Handle, "PackToZIP");
-	
-	DEBUG("Pack function pointer %p\n", l->Pack );
-	DEBUG("Unpack function pointer %p\n", l->Unpack );
 
 	//l->ZWebRequest = dlsym( l->l_Handle, "ZWebRequest" );
 	
@@ -156,7 +143,6 @@ unsigned int ZWebRequest( struct ZLibrary *l, char* func, Http* request, Socket*
 {
 	unsigned int result = 0;
 	/*
-	DEBUG("APPLIBRARY WEBREQUEST %s\n", func );
 	
 	if( strcmp( func, "help" ) == 0 )
 	{
@@ -227,14 +213,11 @@ unsigned int ZWebRequest( struct ZLibrary *l, char* func, Http* request, Socket*
 
 char* StringDuplicate( const char* str )
 {
-	DEBUG("SD str ptr %p\n", str );
 	if( str == NULL )
 	{
 		return NULL;
 	}
 	int size = strlen( str );
-	
-	DEBUG("String duplacate %d\n", size );
 	
 	char *tmp = calloc( size + 1, sizeof( char ) );
 	if( tmp == NULL )
@@ -264,7 +247,6 @@ char *MakeString ( int length )
 }
 
 // Create HASH
-// TODO: Use stronger key!
 //
 /*
 void HashedString ( char **str )

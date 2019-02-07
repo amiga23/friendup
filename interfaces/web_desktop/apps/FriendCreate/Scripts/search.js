@@ -1,21 +1,28 @@
 /*©agpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Affero General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Affero General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Affero   *
+* General Public License, found in the file license_agpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
+
+Application.run = function()
+{
+	setTimeout( function()
+	{
+		ge( 'SearchId' ).focus();
+	}, 20 );
+	
+	window.addEventListener( 'keydown', function( e )
+	{
+		if( e.which == 27 )
+		{
+			CloseView();
+		}
+	}, false );
+}
 
 function searchFor()
 {
@@ -52,7 +59,6 @@ function replaceNum( what )
 	}
 }
 
-ge( 'SearchId' ).focus();
 ge( 'SearchId' ).onkeydown = function( e )
 {
 	var w = e.which ? e.which : e.keyCode;

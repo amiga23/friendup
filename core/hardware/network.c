@@ -1,25 +1,21 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
+/** @file
+ *
+ *  Network
+ * 
+ *  Additional network functions
+ *
+ *  @author PS (Pawel Stefanski)
+ *  @date pushed 19/10/2016
+ */
 
 #include "network.h"
 #include <util/log/log.h>
@@ -27,11 +23,24 @@
 
 #define __USE_MISC
 #include <net/if.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
-//
-// get mac address of current machine
-//
+#include<stdio.h> //printf
+#include<string.h>    //memset
+#include<errno.h> //errno
+#include<sys/socket.h>
+#include<netdb.h>
+#include<ifaddrs.h>
+#include<stdlib.h>
+#include<unistd.h>
 
+/**
+ * Get mac address
+ *
+ * @param maddr pointer to string when mac address will be stored
+ * @return 0 when success, otherwise error number
+ */
 int getMacAddress( char *maddr )
 {
 	struct ifreq ifr;
@@ -87,9 +96,135 @@ int getMacAddress( char *maddr )
 				 (char)ifr.ifr_hwaddr.sa_data[0], (char)ifr.ifr_hwaddr.sa_data[1], (char)ifr.ifr_hwaddr.sa_data[2],
 				 (char)ifr.ifr_hwaddr.sa_data[3], (char)ifr.ifr_hwaddr.sa_data[4], (char)ifr.ifr_hwaddr.sa_data[5] );
 		//memcpy( maddr, ifr.ifr_hwaddr.sa_data, 6);
-		//DEBUG("MACADDRESS %6s\n", maddr );
 		return 0;
 	}
-	
 	return 3;
+}
+
+/**
+ * Get primary IP address
+ *
+ * @param buffer buffer where IP will be stored
+ * @param buflen buffer size where data will be stored
+ * @return 0 when success, otherwise error number
+ */
+int getPrimaryIp( char* buffer, size_t buflen )
+{
+    if( buflen < 16 )
+	{
+		return 1;
+	}
+
+	int sock = socket( AF_INET, SOCK_DGRAM, 0 );
+	if( sock > 0 )
+	{
+		struct sockaddr_in serv;
+		memset( &serv, 0, sizeof(serv) );
+		serv.sin_family = AF_INET;
+		serv.sin_addr.s_addr = inet_addr( "8.8.8.8" );
+		serv.sin_port = htons( 53 );
+
+		int err = connect( sock, (const struct sockaddr*) &serv, sizeof(serv) );
+		if( err != -1 )
+		{
+			struct sockaddr_in name;
+			socklen_t namelen = sizeof( name );
+			err = getsockname( sock, (struct sockaddr*) &name, &namelen );
+			if( err != -1 )
+			{
+				const char* p = inet_ntop( AF_INET, &name.sin_addr, buffer, buflen );
+				if( p != NULL )
+				{
+					close( sock );
+					return 0;
+				}
+				else
+				{
+					close( sock );
+					return 1;
+				}
+			}
+			else
+			{
+				close( sock );
+				return 1;
+			}
+		}
+		else
+		{
+			close( sock );
+			return 1;
+		}
+		close( sock );
+	}
+	return 0;
+}
+
+/**
+ * Get local IP address
+ *
+ * @param buffer buffer where IP will be stored
+ * @param buflen buffer size where data will be stored
+ * @return 0 when success, otherwise error number
+ */
+int getLocalIP( char* buffer, size_t buflen )
+{
+	FILE *f;
+	char line[100] , *p , *c;
+     
+	f = fopen("/proc/net/route" , "r");
+	
+    while( fgets(line , 100 , f ) )
+	{
+		p = strtok(line , " \t");
+		c = strtok(NULL , " \t");
+         
+		if(p!=NULL && c!=NULL)
+		{
+			if(strcmp(c , "00000000") == 0)
+			{
+				printf("Default interface is : %s \n" , p);
+				break;
+			}
+		}
+	}
+     
+	//which family do we require , AF_INET or AF_INET6
+	int fm = AF_INET;
+	struct ifaddrs *ifaddr, *ifa;
+	int family;
+ 
+	if( getifaddrs(&ifaddr) == -1 )
+	{
+		//perror("getifaddrs");
+		//exit(EXIT_FAILURE);
+		return 1;
+	}
+ 
+	//Walk through linked list, maintaining head pointer so we can free list later
+	for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) 
+	{
+		if (ifa->ifa_addr == NULL)
+		{
+			continue;
+		}
+ 
+		family = ifa->ifa_addr->sa_family;
+ 
+		if(strcmp( ifa->ifa_name , p) == 0)
+		{
+			if (family == fm) 
+			{
+				int s = getnameinfo( ifa->ifa_addr, (family == AF_INET) ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6) , buffer , buflen , NULL , 0 , NI_NUMERICHOST );
+				if( s != 0 ) 
+				{
+					DEBUG("getnameinfo() failed: %s\n", gai_strerror(s));
+					return 2;
+				}
+				printf("address: %s", buffer );
+			}
+		}
+	}
+	freeifaddrs(ifaddr);
+	return 0;
 }

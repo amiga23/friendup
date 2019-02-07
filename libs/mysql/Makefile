@@ -1,12 +1,19 @@
-GCC		=	gcc
-OUTPUT	=	bin/mysql.library
-CFLAGS	=	--std=c99 -Wall  -W -D_FILE_OFFSET_BITS=64 -g -Ofast -funroll-loops -I. -Wno-unused-parameter -Wno-unused-variable -I../../core/ -I/usr/include/mysql/ -I../ -fPIC -I../properties/  -I../../libs-ext/libwebsockets/lib/ -I../../libs-ext/libwebsockets/  -L../../libs-ext/libwebsockets/lib/
-LFLAGS	=	-shared -fPIC -L/usr/lib/x86_64-linux-gnu/ `mysql_config --libs` -lstdc++ -lz -lpthread -lrt -lcrypt
-DFLAGS	=	-M $(CFLAGS)  
-FPATH	=	$(shell pwd)
+-include ../../Makefile.defs
+
+CC			=	gcc
+OUTPUT		=	bin/mysql.library
+CFLAGS		=	$(GLOBAL_CFLAGS) -I../../$(LIBWS_INCLUDE_DIR) -I../../core/ -fPIC -I../../libs/ -I../../libs/properties/ -I../../libs/application/ -I../../core/system/ -I../../
+LFLAGS		=	-shared -fPIC -L/usr/lib/x86_64-linux-gnu/ `mysql_config --libs` -lz -lpthread -lrt -lcrypt
+FPATH		=	$(shell pwd)
+
+#CFLAGS	=	--std=c99 -Wall  -W -D_FILE_OFFSET_BITS=64 -g -Ofast -funroll-loops -I. -Wno-unused-parameter -Wno-unused-variable -I../../core/ -I/usr/include/mysql/ -I../ -fPIC -I../properties/  -I../../libs-ext/libwebsockets/build/include/  
 
 ifeq ($(DEBUG),1)
 CFLAGS  +=      -D__DEBUG
+endif
+
+ifeq ($(PROFILE),1)
+CFLAGS  +=	-pg -DPROFILE=1
 endif
 
 ifeq ($(WEBSOCKETS_THREADS),1)
@@ -25,8 +32,6 @@ ifeq ($(CYGWIN_BUILD),1)
 CFLAGS  +=      -DCYGWIN_BUILD
 endif
 
-LFLAGS += -L../libs-ext/libwebsockets/lib/ -lwebsockets
-
 C_FILES := $(wildcard mysqllibrary.c)
 OBJ_FILES := $(addprefix obj/,$(notdir $(C_FILES:.c=.o)))
 
@@ -35,36 +40,36 @@ ALL:	$(OBJ_FILES) $(OUTPUT)
 
 $(OUTPUT): $(OBJ_FILES)
 	@echo "\033[34mLinking ...\033[0m"
-	$(GCC) -o $(OUTPUT) $(OBJ_FILES) $(LFLAGS) $(CFLAGS) ../../core/obj/library.o ../../core/obj/list_string.o 
+	$(CC) -o $(OUTPUT) $(OBJ_FILES) $(LFLAGS) $(CFLAGS) ../../core/obj/library.o ../../core/obj/list_string.o 
 
-obj/%.o: %.c *.h %.d
+obj/%.o: %.c %.d
 	@echo "\033[34mCompile ...\033[0m"
-	gcc $(CFLAGS) -c -o $@ $<
+	$(CC) $(CFLAGS) -c -o $@ $<
 
 #build system
 
 clean:
 	@echo "\033[34mCleaning\033[0m"
 	@rm -f $(C_FILES:%.c=%.d)
-	@rm -f obj/*o $(OUTPUT) *.d
+	@rm -f obj/*o $(OUTPUT) *.d*
 	@rm -fr obj/*
 
 install:
 	@echo "\033[34mInstalling library\033[0m"
-	cp bin/mysql.library ../../build/libs/
+	cp $(OUTPUT) $(FRIEND_PATH)/libs/
 
 setup:
 	@echo "\033[34mPrepare enviroment\033[0m"
 	mkdir -p obj bin
 
 test:
-	$(GCC) $(CFLAGS) testlibrary.c ../../core/core/library.c -obin/TestLibrary -ldl -D__DEBUG -L/usr/lib/x86_64-linux-gnu/ 
+	$(CC) $(CFLAGS) testlibrary.c ../../core/core/library.c -obin/TestLibrary -ldl -D__DEBUG -L/usr/lib/x86_64-linux-gnu/ 
 
 # dependency system
 	
 %.d: %.c
 	@set -e; rm -f $@; \
-	$(GCC) -M $(CFLAGS)  $< > $@.$$$$; \
+	$(CC) -M $(CFLAGS)  $< > $@.$$$$; \
 	sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' < $@.$$$$ > $@; \
 	rm -f $@.$$$$
 

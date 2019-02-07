@@ -1,25 +1,12 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
 /** @file
  *
  *  App Session Manager
@@ -65,7 +52,7 @@ AppSessionManager *AppSessionManagerNew()
 
 void AppSessionManagerDelete( AppSessionManager *as )
 {
-	DEBUG("AppSessionManagerDelete\n");
+	DEBUG("[AppSessionManagerGetSession] AppSessionManagerDelete\n");
 	if( as )
 	{
 		AppSession *las = as->sl_AppSessions;
@@ -73,7 +60,7 @@ void AppSessionManagerDelete( AppSessionManager *as )
 		
 		while( las != NULL )
 		{
-			DEBUG("AppSession will be removed from list\n");
+			DEBUG("[AppSessionManagerGetSession] AppSession will be removed from list\n");
 
 			oas = las;
 			las =(AppSession  *)las->node.mln_Succ;
@@ -100,9 +87,9 @@ int AppSessionManagerAddSession( AppSessionManager *as, AppSession *nas )
 		
 		LIST_FOR_EACH( as->sl_AppSessions, las, AppSession * )
 		{
-			if( nas->as_ASSID == las->as_ASSID )
+			if( nas->as_SASID == las->as_SASID )
 			{
-				DEBUG("AppSession was already added to list\n");
+				DEBUG("[AppSessionManagerGetSession] AppSession was already added to list\n");
 				return 0;
 			}
 		}
@@ -143,9 +130,9 @@ int AppSessionManagerRemSession( AppSessionManager *as, AppSession *nas )
 		
 		LIST_FOR_EACH( as->sl_AppSessions, las, AppSession * )
 		{
-			if( nas->as_ASSID == las->as_ASSID )
+			if( nas->as_SASID == las->as_SASID )
 			{
-				DEBUG("AppSession will be removed from list\n");
+				DEBUG("[AppSessionManagerGetSession] AppSession will be removed from list\n");
 				
 				if( nas == as->sl_AppSessions )
 				{
@@ -187,9 +174,9 @@ AppSession *AppSessionManagerGetSession( AppSessionManager *as, FUQUAD id )
 		
 		LIST_FOR_EACH( as->sl_AppSessions, las, AppSession * )
 		{
-			if( id == las->as_ASSID )
+			if( id == las->as_SASID )
 			{
-				DEBUG("AppSession found\n");
+				DEBUG("[AppSessionManagerGetSession] AppSession found\n");
 				
 				return las;
 			}

@@ -1,5 +1,22 @@
 /* Base setup */
 
+:-webkit-full-screen-ancestor>:not(:-webkit-full-screen-ancestor):not(:-webkit-full-screen)
+{
+ display:none!important
+}
+:-moz-full-screen-ancestor>:not(:-moz-full-screen-ancestor):not(:-moz-full-screen)
+{
+ display:none!important
+}
+:-ms-fullscreen-ancestor>:not(:-ms-fullscreen-ancestor):not(:-ms-fullscreen)
+{
+ display:none!important
+}
+:fullscreen-ancestor>:not(:fullscreen-ancestor):not(:fullscreen)
+{
+	display:none!important
+}
+
 html
 {
 	position: absolute;
@@ -21,15 +38,26 @@ body
 	height: 100%;
 	margin: 0;
 	padding: 0;
+	/*
+	TODO: Figure out why this ruins some apps
 	-webkit-transform: rotateZ(0deg);
    -moz-transform: rotateZ(0deg);
    -o-transform: rotateZ(0deg);
    -ms-transform: rotateZ(0deg);
- 	transform: rotateZ(0deg);
-	transition: opacity 0.2s;
-	-moz-transition: opacity 0.2s;
-	-webkit-transition: opacity 0.2s;
+ 	transform: rotateZ(0deg);*/
 	overflow: hidden;
+}
+
+iframe.hidden
+{
+	position:absolute;
+	top:0;
+	left:0;
+	width:1px;
+	height:1px;
+	overflow: hidden;
+	visibility: hidden;
+	pointer-events: none;
 }
 
 /* Apps */
@@ -42,7 +70,7 @@ body > iframe
 	-moz-border-radius: 3px;
 	-webkit-border-radius: 3px;
 	background: black;
-	border: 2px solid white;
+	border: 0;
 	box-shadow: 0px 2px 4px rgba(0,0,0,0.5);
 	-moz-box-shadow: 0px 2px 4px rgba(0,0,0,0.5);
 	-webkit-box-shadow: 0px 2px 4px rgba(0,0,0,0.5);
@@ -57,7 +85,28 @@ h1, h2, h3, h4
 	padding: 0;
 }
 
+body > #FocusGrabber
+{
+	position: fixed;
+	top: 100%;
+}
+
 /* Some backgrounds and colors */
+
+.BackgroundHeavy
+{
+	background-color: $BackgroundHeavy;
+}
+
+.BackgroundHeavier
+{
+	background-color: $BackgroundHeavier;
+}
+
+.BackgroundHeaviest
+{
+	background-color: $BackgroundHeaviest;
+}
 
 .BackgroundStError
 {
@@ -94,7 +143,7 @@ h1, h2, h3, h4
 
 /* Loading animation */
 
-.LoadingAnimation
+body:not(.friendapp) .LoadingAnimation
 {
 	background: $GuiImgWinLoading;
 }
@@ -193,6 +242,11 @@ select
 	display: block;
 }
 
+.StandardBoxShadow
+{
+	box-shadow: 0px 2px 4px rgba(0,0,0,0.5);
+}
+
 .Ellipsis
 {
 	white-space: nowrap;
@@ -229,6 +283,43 @@ button, .Button
 	cursor: hand;
 	cursor: pointer;
 	position: relative;
+	outline: 0 !important;
+}
+
+body button.IconButton:not(:hover),
+body .Button.IconButton:not(:hover)
+{
+	background: none !important;
+	background-color: none !important;
+	border: 1px solid transparent !important;
+	padding: 5px 5px;
+}
+
+body button.IconButton:hover,
+body .Button.IconButton:hover
+{
+	padding: 5px 5px;
+}
+
+.Button.Glue, 
+button.Glue
+{
+	margin: 0;
+	border-radius: 0;
+}
+
+.Button.Glue:first-child,
+button.Glue:first-child
+{
+	border-top-left-radius: $ButtonBorderRadius;
+	border-bottom-left-radius: $ButtonBorderRadius;
+}
+
+.Button.Glue:last-child,
+button.Glue:last-child
+{
+	border-top-right-radius: $ButtonBorderRadius;
+	border-bottom-right-radius: $ButtonBorderRadius;
 }
 
 button:hover, .Button:hover
@@ -279,6 +370,12 @@ html *
 {
 	user-select: inherit;
 	-webkit-user-select: inherit;
+}
+
+html *[contenteditable]
+{
+	-webkit-user-select: text;
+	user-select: text;
 }
 
 html .Selectable
@@ -387,6 +484,17 @@ textarea
 	width: 100%;
 	box-sizing: border-box;
 	-moz-box-sizing: border-box;
+}
+
+.HoverFeedback
+{
+	transition: opacity 0.5s;
+	opacity: 1;
+}
+
+.HoverFeedback:hover
+{
+	opacity: 0.6;
 }
 
 /* Gui content -------------------------------------------------------------- */
@@ -604,6 +712,11 @@ p.Layout
 {
 	padding: 4px;
 	box-sizing: border-box;
+}
+
+
+.PadBorder {
+    border : 0.2em solid $ColorBackground;
 }
 
 /*                                                                            */
@@ -902,7 +1015,7 @@ table.Calendar td:hover { background: #333333; color: #ffffff; }
 
 /* Screen menu -------------------------------------------------------------- */
 
-#WorkbenchMenu
+#WorkspaceMenu
 {
 	position: absolute;
 	z-index: 2147483647;
@@ -913,7 +1026,7 @@ table.Calendar td:hover { background: #333333; color: #ffffff; }
 	top: 0;
 }
 
-#WorkbenchMenu .Menu
+#WorkspaceMenu .Menu
 {
 	float: left;
 	display: block;
@@ -925,7 +1038,7 @@ table.Calendar td:hover { background: #333333; color: #ffffff; }
 	cursor: hand; cursor: pointer;
 }
 
-#WorkbenchMenu .Menu li.Submenu:after
+#WorkspaceMenu .Menu li.Submenu:after
 {
 	font-family: FontAwesome;
 	content: "\f061";
@@ -935,41 +1048,41 @@ table.Calendar td:hover { background: #333333; color: #ffffff; }
 	text-shadow: none;
 }
 
-#WorkbenchMenu .Menu .Open li.Submenu:after,
-#WorkbenchMenu .Menu li.Open.Submenu:after
+#WorkspaceMenu .Menu .Open li.Submenu:after,
+#WorkspaceMenu .Menu li.Open.Submenu:after
 {
 	color: white;
 }
 
-#WorkbenchMenu .Menu li.Submenu:hover:after
+#WorkspaceMenu .Menu li.Submenu:hover:after
 {
 	color: white;
 	text-shadow: inherit;
 }
 
-#WorkbenchMenu .Menu ul, #WorkbenchMenu .Menu li
+#WorkspaceMenu .Menu ul, #WorkspaceMenu .Menu li
 {
 	list-style: none; margin: 0; padding: 0;
 }
-#WorkbenchMenu .Menu > ul
+#WorkspaceMenu .Menu > ul
 {
 	display: none;
 }
-#WorkbenchMenu .Menu li > ul 
+#WorkspaceMenu .Menu li > ul 
 {
 	display: none;
 }
-#WorkbenchMenu .Menu li.Open > ul > li > ul 
+#WorkspaceMenu .Menu li.Open > ul > li > ul 
 {
 	display: block;
 }
-#WorkbenchMenu .Menu li.Open > ul 
+#WorkspaceMenu .Menu li.Open > ul 
 {
 	position: absolute;
 	right: 0px;
 	width: 185px;
 }
-#WorkbenchMenu .Open, #WorkbenchMenu .Menu:hover
+#WorkspaceMenu .Open, #WorkspaceMenu .Menu:hover
 {
 	cursor: hand;
 	cursor: pointer;
@@ -977,17 +1090,17 @@ table.Calendar td:hover { background: #333333; color: #ffffff; }
 	color: white;
 	position: relative;
 }
-#WorkbenchMenu .Open.Menu, #WorkbenchMenu .Menu:hover
+#WorkspaceMenu .Open.Menu, #WorkspaceMenu .Menu:hover
 {
 	text-shadow: 0px 1px 1px rgba(0,0,0,0.5);
 	font-weight: bold;
 }
-#WorkbenchMenu .Open > ul, #WorkbenchMenu .Menu:hover > ul
+#WorkspaceMenu .Open > ul, #WorkspaceMenu .Menu:hover > ul
 {
 	text-shadow: none;
 	font-weight: normal;
 }
-#WorkbenchMenu .Open > ul
+#WorkspaceMenu .Open > ul
 {
 	position: absolute;
 	top: 32px;
@@ -1003,7 +1116,7 @@ table.Calendar td:hover { background: #333333; color: #ffffff; }
 	-moz-box-shadow: 0px 0px 1px 2px rgba(0,0,0,0.2);
 	-webkit-box-shadow: 0px 0px 1px 2px rgba(0,0,0,0.2);
 }
-#WorkbenchMenu .Open ul > li
+#WorkspaceMenu .Open ul > li
 {
 	display: block;
 	padding: 0px 5px 0px 10px;
@@ -1011,17 +1124,17 @@ table.Calendar td:hover { background: #333333; color: #ffffff; }
 	color: black;
 	position: relative;
 }
-#WorkbenchMenu .Open ul > li:hover,
-#WorkbenchMenu .Open ul > li.Open
+#WorkspaceMenu .Open ul > li:hover,
+#WorkspaceMenu .Open ul > li.Open
 {
 	color: white;
 	text-shadow: 1px 1px 1px black;
 }
 
-#WorkbenchMenu .Open ul > li:hover > ul,
-#WorkbenchMenu .Open ul > li.Open > ul { text-shadow: none; }
+#WorkspaceMenu .Open ul > li:hover > ul,
+#WorkspaceMenu .Open ul > li.Open > ul { text-shadow: none; }
 
-#WorkbenchMenu .Open ul > li.Open > ul
+#WorkspaceMenu .Open ul > li.Open > ul
 {
 	position: absolute;
 	display: block;
@@ -1031,21 +1144,21 @@ table.Calendar td:hover { background: #333333; color: #ffffff; }
 	-moz-box-shadow: 0px 0px 1px 2px rgba(0,0,0,0.2);
 	-webkit-box-shadow: 0px 0px 1px 2px rgba(0,0,0,0.2);
 }
-#WorkbenchMenu .Open ul > li.Open > ul > li
+#WorkspaceMenu .Open ul > li.Open > ul > li
 {
 	position: relative;
 }
 
-html #WorkbenchMenu .Menu li.Disabled,
-html #WorkbenchMenu .Menu li.Disabled:hover,
-html #WorkbenchMenu .Menu li.Disabled *
+html #WorkspaceMenu .Menu li.Disabled,
+html #WorkspaceMenu .Menu li.Disabled:hover,
+html #WorkspaceMenu .Menu li.Disabled *
 {
 	opacity: 0.5;
 	font-style: oblique;
 	cursor: default;
 }
 
-#WorkbenchMenu .Open ul > li > span
+#WorkspaceMenu .Open ul > li > span
 {
 	display: block;
 	width: 100%;
@@ -1054,12 +1167,12 @@ html #WorkbenchMenu .Menu li.Disabled *
 	white-space: nowrap;
 }
 
-#WorkbenchMenu.Pear
+#WorkspaceMenu.Pear
 {
 	border-left: 1px solid rgba(0,0,0,0.1);
 }
 
-#WorkbenchMenu li[divider=divider]
+#WorkspaceMenu li[divider=divider]
 {
     border: 0;
     border-top: 1px solid rgba(0,0,0,0.2);
@@ -1081,6 +1194,11 @@ html #WorkbenchMenu .Menu li.Disabled *
 	top: -1000px;
 	border-radius: 5px;
 	box-shadow: 0px 1px 7px rgba(0,0,0,0.2);
+}
+
+.NoMargins
+{
+	margin: 0;
 }
 
 .MarginTop
@@ -1206,22 +1324,28 @@ a.Negative:hover, a.Negative:active, a.Negative:visited
 	background-color : $ColorNotifyBg;
 }
 
-/* put on buttons */
+/* for certain UI elements */
 
-.Button.Accept {
+.Button.Accept,
+.Select.Accept {
 	color : $ColorAcceptButton;
 	background-color : $ColorAcceptButtonBg;
 }
-.Button.Accept:hover {
+
+.Button.Accept:hover,
+.Select.Accept:hover {
 	color : $ColorAcceptButtonHover;
 	background-color : $ColorAcceptButtonHoverBg;
 }
 
-.Button.Danger {
+.Button.Danger,
+.Select.Danger {
 	color : $ColorDangerButton;
 	background-color : $ColorDangerButtonBg;
 }
-.Button.Danger:hover {
+
+.Button.Danger:hover,
+.Select.Danger:hover {
 	color : $ColorDangerButtonHover;
 	background-color : $ColorDangerButtonHoverBg;
 }
@@ -1266,6 +1390,7 @@ a.Negative:hover, a.Negative:active, a.Negative:visited
 
 .LED > i {
 	/* text-shadow : 0 0 1px rgba( 0, 0, 0, 1 ); */
+	background-color : transparent;
 }
 
 /* led style, feel free to make more - works for div, not i */
@@ -1289,25 +1414,13 @@ a.Negative:hover, a.Negative:active, a.Negative:visited
 /* led states */
 
 .LED div.On { background-color: $ColorLEDOn; }
-.LED i.On { color: $ColorLEDOn; }
+.LED i.On { color : $ColorLEDOn; }
 
-.LED div.Available {
-	background-color: $ColorLEDAvailable;
-	color : transparent;
-}
-.LED i.Available {
-	color : $ColorLEDAvailable;
-	background-color: transparent;
-}
+.LED div.Available { background-color : $ColorLEDAvailable; }
+.LED i.Available { color : $ColorLEDAvailable; }
 
-.LED div.Warning {
-	color : transparent;
-	background-color: $ColorLEDWarning;
-}
-.LED i.Warning {
-	color: $ColorLEDWarning;
-	background-color: transparent;
-}
+.LED div.Warning { background-color : $ColorLEDWarning; }
+.LED i.Warning { color : $ColorLEDWarning; }
 
 .LED div.Notify
 {
@@ -1645,7 +1758,17 @@ html .Calendar div.HRow > .Current.Day:nth-child(even):hover
 }
 html body .Widget.Raised
 {
-	z-index: 2147483640;
+	z-index: 2147483643;
+}
+
+html body[mobile=mobile] .Widget.Raised
+{
+	
+}
+
+html body.WindowMenu .Widget
+{
+	pointer-events: none;
 }
 
 .Widget > iframe
@@ -1700,33 +1823,40 @@ body.Inside
 
 body #Screens
 {
-	transition: opacity 1s;
-	-webkit-transition: opacity 1s;
 	background-image: url(/webclient/theme/loginimage.jpg);
 	background-position: center center;
 	background-size: cover;
 }
 
-body.Login #Screens
+body.Login > img
 {
-	opacity: 0.3;
+	display: none;
 }
 
-body.Loading
+body.Loaded > #Screens
+{
+	transition-property: opacity;
+	transition-duration: 1s;
+	-webkit-transition-property: opacity;
+	-webkit-transition-duration: 1s;
+	opacity: 1;
+	box-sizing: border-box;
+}
+
+body.Loaded > #Screens > #DeepestField
+{
+	opacity: 1;
+}
+
+body.Loading > #Screens
 {
 	opacity: 0;
 }
 
-body.Loading #Screens
-{
-	opacity: 0;
-}
-
-
-body.Loading:after
+body:not(.friendapp).Loading:after
 {
 	content: ' ';
-	background: url(/themes/friendup/gfx/loading.gif) no-repeat center center #222222;
+	background: url(/themes/friendup12/gfx/loading.gif) no-repeat center center #222222;
 	position: absolute;
 	top: calc(50% - 30px);
 	left: calc(50% - 40px);
@@ -1736,8 +1866,8 @@ body.Loading:after
 	padding: 0 10px;
 	text-align: center;
 	border-radius: 10px;
-	animation: bodyLoading 0.5s;
-	-webkit-animation: bodyLoading 0.5s;
+	animation: bodyLoading 0.1s;
+	-webkit-animation: bodyLoading 0.1s;
 }
 
 @-webkit-keyframes bodyLoading
@@ -1756,15 +1886,11 @@ body.Inside #Screens
 	background-image: none;
 }
 
-body.Loaded #Screens
-{
-	opacity: 1;
-}
-
 /* Hide this in the beginning */
 body #DeepestField
 {
 	opacity: 0;
+	z-index: 0;
 }
 
 /* Actiontray --------------------------------------------------------------- */
@@ -1806,7 +1932,13 @@ body #DeepestField
     min-width: 0px;
     max-width: 300px;
     height: 32px;
-    z-index: 999
+    z-index: 999;
+}
+
+html #Tray.Size16
+{
+	height: 16px;
+	bottom: 0;
 }
 
 #Tray > div
@@ -1820,6 +1952,22 @@ body #DeepestField
     text-shadow: 0px 1px 1px rgba(0,0,0,0.5);
     position: relative;
 }
+
+#Tray.Size16 > div
+{
+	width: 16px;
+	height: 16px;
+	line-height: 16px;
+	margin: 3px 10px 0 0;
+}
+
+#Tray.Size16 > div:before
+{
+	width: 16px;
+	height: 16px;
+	background-size: contain;
+}
+
 #Tray > div:hover
 {
     color: #ffee00;
@@ -1850,16 +1998,27 @@ body #DeepestField
 
 /* Some info from the tray */
 
-.BubbleInfo
+.BubbleInfo, .PopInfo
 {
 	position: absolute;
 	right: 0px;
 	top: 0px;
 	height: 0px;
 	opacity: 0.8;
+	z-index: 1;
+}
+.PopInfo
+{
+	z-index: 2;
 }
 
-.BubbleInfo > div
+html body .PopInfo + .BubbleInfo
+{
+	pointer-events: none !important;
+	opacity: 0 !important;
+}
+
+.BubbleInfo > div, .PopInfo > div
 {
 	position: absolute;
 	right: 0px;
@@ -1877,7 +2036,8 @@ body #DeepestField
 	line-height: 20px
 }
 
-.TrayElement.Notification .BubbleInfo
+.TrayElement.Notification .BubbleInfo,
+.TrayElement.PopNotification .PopInfo
 {
 	transition: opacity 0.25s;
 	text-align: left;
@@ -1885,12 +2045,14 @@ body #DeepestField
 }
 
 .TrayElement:hover .BubbleInfo > div,
-.TrayElement.Notification .BubbleInfo > div
+.TrayElement.Notification .BubbleInfo > div,
+.TrayElement.PopNotification .PopInfo > div
 {
 	max-height: initial;
 	padding: 8px;
 }
 
+.PopInfo:before,
 .BubbleInfo:before
 {
 	content: " ";
@@ -1906,8 +2068,21 @@ body #DeepestField
 	text-overflow: hidden;
 }
 
+.BubbleInfo:after
+{
+	content: " ";
+	display: block;
+	position: absolute;
+	right: 0px;
+	width: 30px;
+	bottom: 0;
+	height: 30px;
+	opacity: 0;
+}
+
 .TrayElement:hover .BubbleInfo:before, 
-.TrayElement.Notification .BubbleInfo:before
+.TrayElement.Notification .BubbleInfo:before,
+.TrayElement.PopNotification .PopInfo:before
 {
 	height: 10px;
 	width: 10px;
@@ -1927,21 +2102,26 @@ body #DeepestField
 	background-repeat: none;
 }
 
+.TrayElement.Rounded
+{
+	border-radius: 100%;
+}
+
 /* Various built-in icons */
 
 .TrayElement.Tasks:before
 {
-	background-image: url(/iconthemes/friendup/24/tray/tasks.png);
+	background-image: url(/graphics/tasks.png);
 }
 
 .TrayElement.Notification:before
 {
-	background-image: url(/iconthemes/friendup/24/tray/notifications.png);
+	background-image: url(/graphics/notifications.png);
 }
 
 .TrayElement.Disks:before
 {
-	background-image: url(/iconthemes/friendup/24/tray/disks.png);
+	background-image: url(/graphics/disks.png);
 }
 
 .TrayElement:hover .BubbleInfo.List > div 
@@ -2049,6 +2229,12 @@ body #DeepestField
 	-webkit-border-radius: 3px;
 	background: rgba(0,0,0,0.5);
 	transition: top,left,width,height 0.25s;
+	height: 0;
+}
+
+.Desklet.Initializing
+{
+	transition: none;
 }
 
 .Desklet .Launcher
@@ -2060,22 +2246,33 @@ body #DeepestField
 	border-radius: 2px;
 	-moz-border-radius: 2px;
 	-webkit-border-radius: 2px;
-	-webkit-filter: drop-shadow(0 0 3px rgba(0,0,0,0.5));
-	filter: drop-shadow(0 0 3px rgba(0,0,0,0.5));
+	-webkit-filter: drop-shadow(0 0 5px rgba(0,0,0,1));
+	filter: drop-shadow(0 0 5px rgba(0,0,0,1));
 	border: 0;
 }
 
-.Desklet .Launcher:hover
+.Desklet .Launcher span
 {
-	-webkit-filter: drop-shadow(0 0 12px rgba(255,244,200,0.3));
-	filter: drop-shadow(0 0 6px rgba(255,244,200,0.3));
+	display: none;
+	color: white;
+}
+
+body:not([tablet]):not([mobile]) .Desklet .Launcher:hover
+{
+	-webkit-filter: drop-shadow(0 0 12px rgba(255,244,200,0.8));
+	filter: drop-shadow(0 0 6px rgba(255,244,200,0.8));
 }
 
 .Desklet .Launcher.Minimized
 {
 	filter: grayscale(100%);
 	-webkit-filter: grayscale(100%);
-	opacity: 0.6;
+}
+
+body:not([tablet]):not([mobile]) .Desklet .Launcher.Startmenu:hover
+{
+	-webkit-filter: drop-shadow(0 0 12px rgba(255,255,200,1) );
+	filter: drop-shadow(0 0 8px rgba(255,255,200,1) );
 }
 
 /* running apps */
@@ -2085,9 +2282,9 @@ body #DeepestField
 {
 	position: absolute;
 	content: ' ';
-	width: 80%;
-	left: 10%;
-	top: -4px;
+	width: 40%;
+	left: 30%;
+	top: 100%;
 	height: 3px;
 	border-radius: 5px;
 	background: rgba(255,255,255,0.8);
@@ -2099,10 +2296,10 @@ body #DeepestField
 {
 	position: absolute;
 	content: ' ';
-	width: 80%;
-	left: 10%;
-	bottom: -4px;
-	height: 3px;
+	height: 80%;
+	top: 0%;
+	right: -4px;
+	width: 3px;
 	border-radius: 5px;
 	background: rgba(255,255,255,0.8);
 	box-shadow: 0px 1px 2px rgba(0,0,0,0.5);
@@ -2113,8 +2310,8 @@ body #DeepestField
 {
 	position: absolute;
 	content: ' ';
-	height: 80%;
-	top: 10%;
+	height: 40%;
+	top: 30%;
 	right: -4px;
 	width: 3px;
 	border-radius: 5px;
@@ -2127,8 +2324,8 @@ body #DeepestField
 {
 	position: absolute;
 	content: ' ';
-	height: 80%;
-	top: 10%;
+	height: 40%;
+	top: 30%;
 	left: -4px;
 	width: 3px;
 	border-radius: 5px;
@@ -2146,6 +2343,31 @@ body #DeepestField
 	background-size: contain;
 	background-position: center;
 	background-repeat: no-repeat;
+}
+
+.Desklet .Launcher.View.Directory
+{
+}
+
+.Desklet .Launcher .ElementCount
+{
+	display: none;
+}
+.Desklet .Launcher.Minimized .ElementCount
+{
+	display: block;
+	margin: 5px auto;
+	text-align: center;
+	position: relative;
+}
+.Desklet .Launcher.Minimized .ElementCount > span
+{
+	display: inline-block;
+	color: white;
+	background: rgba(0,0,0,0.5);
+	font-size: 12px;
+	padding: 1px 4px;
+	border-radius: 100%;
 }
 
 /* Desklet widget end ------------------------------------------------------- */
@@ -2177,9 +2399,130 @@ body #DeepestField
 	background-position: center;
 }
 
-#DoorsScreen > .Offline
+#DoorsScreen > .ScreenContent > .Scroller
+{
+	height: 100%;
+	opacity: 0;
+	transition: opacity 0.25s;
+}
+
+#DoorsScreen > .ScreenContent > .Scroller.Loaded
+{
+	opacity: 1;
+}
+
+/* Different solution for drives */
+#DoorsScreen > .ScreenContent.DrivePanel > .Scroller 
 {
 	position: absolute;
+	background: rgba(0,0,0,0.1);
+	left: 0px;
+	top: 0px;
+	width: 130px;
+	height: 100%;
+	border-radius: 0;
+	overflow: scroll;
+	overflow-x: hidden;
+	pointer-events: visiblefill;
+	z-index: 2;
+}
+
+#DoorsScreen > .ScreenContent.DrivePanel > .Scroller *
+{
+	pointer-events: all;
+}
+
+#DoorsScreen > .ScreenContent.DrivePanel > .Scroller::-webkit-scrollbar
+{
+	width: 2px;
+}
+#DoorsScreen > .ScreenContent.DrivePanel > .Scroller::-webkit-scrollbar-track
+{
+	background: rgba(0,0,0,0.4);
+	box-shadow: none;
+}
+#DoorsScreen > .ScreenContent.DrivePanel > .Scroller::-webkit-scrollbar-thumb
+{
+	background: rgba(255,255,255,0.4);
+	border: 0;
+	background-image: none;
+	box-shadow: none;
+}
+
+#DoorsScreen .Left > .VirtualWorkspaces
+{
+	position: absolute;
+	right: 308px;
+	border-right: 1px solid rgba(0,0,0,0.1);
+	height: 33px;
+	top: 0;
+	padding-left: 8px;
+	padding-right: 3px;
+	border-left: 1px solid rgba(0,0,0,0.1);
+}
+
+#DoorsScreen .Left > .VirtualWorkspaces > div 
+{
+	display: inline-block;
+	position: relative;
+	width: 26px;
+	height: 24px;
+	line-height: 22px;
+	background: rgba(255,255,255,0.5);
+	border-radius: 5px;
+	margin: 5px 5px 0 0 !important;
+	box-sizing: border-box;
+	border: 1px solid rgba(0,0,0,0.1);
+	color: black;
+	transition: background,color 0.25s;
+}
+
+#DoorsScreen .Left > .VirtualWorkspaces > div.Active
+{
+	background: rgba(0,0,0,0.8);
+	color: white;
+}
+
+#DoorsScreen .Left > .VirtualWorkspaces > div:hover
+{
+	background: rgba(255,255,255,1);
+}
+#DoorsScreen .Left > .VirtualWorkspaces > div.Active:hover
+{
+	background: rgba(0,0,0,1);
+}
+
+#DoorsScreen .Left > .VirtualWorkspaces > div > span
+{
+	width: 100% !important;
+	margin: 0 !important;
+	text-align: center;
+	text-shadow: none;
+}
+
+/* Wallpapers */
+
+.WorkspaceWallpaper
+{
+	pointer-events: none;
+	position: absolute;
+	top: 0px;
+	background-size: cover;
+	background-position: center;
+}
+
+.WorkspaceContainer
+{
+	position: absolute;
+	top: 0;
+	overflow: hidden;
+}
+
+/* Don't show the .Offline thing on the desktop */
+#DoorsScreen > .Offline
+{
+	display: none;
+	/*position: absolute;
 	top: calc(50% - 50px);
 	left: 10%;
 	width: 80%;
@@ -2191,7 +2534,12 @@ body #DeepestField
 	color: #F00;
 	opacity: 0.5;
 	pointer-events: none;
-	z-index: 1;
+	z-index: 1;*/
+}
+
+.Screen, .Screen > .ScreenContent
+{
+	box-sizing: border-box;
 }
 
 .Screen > .TitleBar
@@ -2214,6 +2562,25 @@ body #DeepestField
 	padding-left: 30px;
 }
 
+/* Show indicator when hovering over titlebar */
+
+.TitleBar .Left:after 
+{
+	opacity: 0;
+	transition: opacity 0.5s;
+    content: ": : :";
+    color: rgba(0,0,0,0.3);
+    position: absolute;
+    left: calc(50% - 10px);
+    top: 6px;
+}
+.TitleBar:hover .Left:after,
+.TitleBar:active .Left:after
+{
+	opacity: 1;
+	cursor: pointer;
+}
+
 .Screen > .TitleBar > .Left *
 {
 	float: left;
@@ -2223,6 +2590,29 @@ body #DeepestField
 .Screen > .TitleBar > .Left > .Extra
 {
 	float: right;
+}
+
+.Screen > .TitleBar > .Left > .Extra > .ExtraClick
+{
+	display: inline-block;
+	padding: 0 10px 0 10px;
+	background: inherit;
+	float: right;
+	margin: 0 -10px 0 0;
+	border-left: 1px solid rgba(0,0,0,0.05)
+}
+
+.Screen > .TitleBar > .Left > .Extra:hover > .ExtraClick
+{
+	color: white;
+}
+
+@media (max-width: 955px)
+{
+	.Screen > .TitleBar > .Left > .Extra
+	{
+		display: none;
+	}
 }
 
 .Screen > .TitleBar > .Left
@@ -2240,7 +2630,6 @@ body #DeepestField
 	position: absolute;
 	right: 32px;
 	padding: 0 10px 0 10px;
-	margin: 0;
 	top: 0;
 	height: 32px;
 	line-height: 32px;
@@ -2318,11 +2707,6 @@ body #DeepestField
 	filter:opacity(alpha=50);
 }
 
-.Screen > .TitleBar .Hover
-{
-	color: 
-}
-
 .Frameloader, .Imageloader
 {
 	position: absolute;
@@ -2349,6 +2733,17 @@ body #DeepestField
 	height: 16px;
 }
 
+.Frame .Groove + .Bar > div
+{
+	text-overflow: ellipsis; 
+	text-align: center;
+	line-height: 30px; 
+	color: white;
+	position: absolute;
+	width: 100%;
+	overflow: hidden;
+}
+
 /* Directory view toolbar --------------------------------------------------- */
 
 .DirectoryToolbar
@@ -2370,6 +2765,17 @@ body #DeepestField
 .Active .DirectoryToolbar
 {
 	border-bottom-color: $WinFrameBgActive;
+}
+
+.DirectoryToolbar .ToggleGroup
+{
+	position: absolute;
+	top: 8px;
+}
+
+.DirectoryToolbar .ToggleGroup.center
+{
+	left: calc(50% - 30px);
 }
 
 .DirectoryToolbar button
@@ -2642,6 +3048,11 @@ div.ColumnView .File > .Icon,
     padding: 0;
 }
 
+#MousePointer .Row.File > .Icon
+{
+	height: 24px;
+}
+
 div.Listview .File > .Icon > div,
 div.ColumnView .File > .Icon > div,
 #MousePointer .Row.File > .Icon > div
@@ -2649,6 +3060,54 @@ div.ColumnView .File > .Icon > div,
     width: 100%;
     height: 24px;
     background-size: contain;
+}
+
+.File.Compact > .Icon
+{
+	width: 170px;
+}
+
+.File.Compact > .Icon > div
+{
+	width: 32px;
+	height: 32px;
+	margin: 0;
+	background-size: contain;
+	background-position: left center;
+}
+
+.File.Compact > .Title
+{
+	position: absolute;
+	top: 0px;
+	left: 36px;
+	width: 110px;
+	text-align: left;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	overflow: hidden;
+}
+
+.File.Compact > .Icon > .Label,
+.File.Compact > .Icon > .Label.Shared,
+.File.Compact > a.Download
+{
+	width: 16px;
+	height: 16px;
+	top: 0;
+	left: 0;
+	border-width: 1px;
+}
+
+.File.Compact > .Icon > .Label:before,
+.File.Compact > .Icon > .Label.Shared:before,
+.File.Compact > a.Download:before
+{
+	position: absolute;
+	top: 2px;
+	left: 2px;
+	font-size: 10px;
+	line-height: 10px;
 }
 
 /* Columns in listview done */
@@ -2673,6 +3132,24 @@ html #Statusbar
 	z-index: 2147483640;
 }
 
+html body[viewlist=dockedlist] #Statusbar
+{
+	width: auto;
+	z-index: 2147483643;
+	left: auto;
+}
+
+html body[viewlist=dockedlist] #Statusbar #Tray
+{
+	white-space: nowrap;
+	position: relative;
+}
+
+html body[viewlist=dockedlist] #Statusbar #Tray > div
+{
+	display: inline-block;
+}
+
 html body[viewlist=docked] #Statusbar
 {
 	height: 0;
@@ -2683,16 +3160,52 @@ html body[viewlist=docked] #Statusbar > #Taskbar
 	height: 0;
 }
 
+#Statusbar, #Taskbar, #Tray
+{
+	pointer-events: none;
+}
+
+#Statusbar *:not(#Taskbar),
+#Taskbar *, #Tray *
+{
+	pointer-events: all;
+}
+
 html #Statusbar > #Taskbar
 {
 	position: absolute;
-	left: 0px;
-	top: 0px;
-	bottom: 0px;
-	right: 305px;
+	white-space: nowrap;
+	overflow: hidden;
+}
+html #Statusbar > #Taskbar.Horizontal
+{
+	width: 100%;
 }
 
-#Statusbar .Task
+html #Statusbar > #Taskbar.Vertical
+{
+	height: 100%;
+}
+
+html #Statusbar > #Taskbar .Task
+{
+	display: inline-block;
+	float: none;
+}
+
+.Desklet #DockWindowList
+{
+	position: absolute;
+	padding: 5px 10px;
+	box-sizing: border-box;
+}
+
+.Desklet #DockWindowList.Size32
+{
+	padding-top: 9px;
+}
+
+#Statusbar .Task, #DockWindowList .Task
 {
 	position: relative;
 	float: left;
@@ -2715,16 +3228,213 @@ html #Statusbar > #Taskbar
 	white-space: nowrap;
 	background-size: 25px 25px;
 	background-position: 8px 3px;
-	background-image: url(/webclient/gfx/icons/128x128/categories/applications-utilities.png);
+	background-image: url(/iconthemes/friendup15/File_Binary.svg);
 	background-repeat: no-repeat;
 }
+
+html #Statusbar .Task.Directory, 
+html #DockWindowList .Task.Directory
+{
+	background-image: url(/iconthemes/friendup15/Folder.svg);
+	background-position: 5px center;
+}
+
+.Horizontal #DockWindowList
+{
+	border-left: 1px solid rgba(0,0,0,0.3);
+	overflow: hidden;
+	white-space: nowrap;
+}
+
+.Vertical #DockWindowList
+{
+	border-top: 1px solid rgba(0,0,0,0.3);
+	overflow: hidden;
+}
+
+.Horizontal #DockWindowList .Task
+{
+	float: none;
+	display: inline-block;
+}
+
+#DockWindowList .Task
+{
+	border-radius: 5px;
+	height: 22px;
+	line-height: 9px;
+    margin-bottom: 4px;
+	background-size: 18px;
+	background-position: 5px 2px;
+	padding: 7px 8px 7px 25px;
+}
+
+#DockWindowList.Size32 .Task
+{
+	height: 30px;
+	line-height: 15px;
+	font-size: 14px;
+	background-position: 5px 5px;
+	background-size: 16px;
+}
+#DockWindowList.Size32.Rows .Task
+{
+	height: 17px;
+	line-height: 3px;
+	font-size: 12px;
+	background-position: 5px 1px;
+	background-size: 16px;
+}
+
+#DockWindowList.Size59 .Task
+{
+	height: 24px;
+	line-height: 10px;
+	margin-top: 3px;
+}
+
+#DockWindowList.Size80 .Task
+{
+	height: 23px;
+	line-height: 10px;
+	margin-top: 2px;
+}
+
+.Vertical.Desklet #DockWindowList
+{
+	padding: 10px 5px 10px 5px;
+}
+
+.Vertical.Desklet #DockWindowList .Task
+{
+	margin: 0 0 5px 0;
+	max-width: 100%;
+	box-sizing: border-box;
+}
+
+.DockMenu
+{
+	position: absolute;
+	z-index: 2147483646;
+	width: 220px;
+	height: 0;
+	transition-property: height,top;
+	transition-duration: 0.25s,0.25s;
+	box-shadow: 0px 1px 1px rgba(0,0,0,0.5);
+	overflow: hidden;
+}
+
+.DockMenu *
+{
+	color: white;
+}
+.DockMenu.Visible
+{
+	overflow: visible;
+}
+
+.DockMenuSubHeader
+{
+	font-weight: bold;
+	padding: 5px 10px 5px 10px;
+}
+
+.DockMenu .DockSubMenu
+{
+	background: rgba(0,0,0,0.8);
+	box-shadow: 0px 1px 5px rgba(0,0,0,0.8);
+	border-radius: 3px 3px 0 0;
+}
+
+.DockMenu .DockSubMenu .DockSubMenu
+{
+	border-radius: 3px;
+}
+
+.DockMenu .DockMenuItem
+{
+	padding: 5px 10px 5px 10px;
+	position: relative;
+}
+
+.DockMenu .DockMenuItem img
+{
+	width: 20px;
+	height: auto;
+	vertical-align: middle;
+	margin-right: 5px;
+}
+
+.DockMenu .DockMenuItem.Directory img
+{
+	position: relative;
+	top: -2px;
+}
+
+.DockMenu .DockMenuHeader
+{
+	padding: 5px 10px 5px 10px;
+	position: relative;
+	background: rgba(74,157,194,0.4);
+	font-weight: bold;
+	border-radius: 3px 3px 0 0;
+}
+
+.DockMenu .DockMenuItem
+{
+	border-top: 1px solid rgba(0,0,0,0.4);
+}
+
+.DockMenu .DockSubMenu .DockSubMenu .DockMenuItem:last-child
+{
+	border-radius: 0 0 3px 3px;
+}
+
+.DockMenu .DockMenuItem:hover,
+.DockMenu .DockMenuItem.Active
+{
+	background: rgba(157,157,157,0.4);
+}
+
+.Right .DockMenu .DockMenuItem.Directory:after
+{
+	content: "<";
+	float: left;
+}
+
+.DockMenu .DockMenuItem.Directory:after
+{
+	content: ">";
+	display: block;
+	float: right;
+	margin: 0 5px 0 0;
+}
+
+.DockMenu .DockMenuItem.Directory > .DockSubMenu
+{
+	visibility: hidden;
+	pointer-events: none;
+	position: absolute;
+	left: 100%;
+	top: 0;
+	width: 220px;
+	background: rgba(0,0,0,0.8);
+}
+
+.DockMenu .DockMenuItem.Directory.Over > .DockSubMenu,
+.DockMenu .DockMenuItem.Directory.Active > .DockSubMenu
+{
+	pointer-events: all;
+	visibility: visible;
+}
+
 
 #Taskbar[full=full] .Task
 {
 	max-width: 50px;
 }
 
-#Statusbar .Task.Active
+#Statusbar .Task.Active, #DockWindowList .Task.Active
 {
 	background-color: #4A9DC2;
 }
@@ -2735,7 +3445,12 @@ html #Statusbar > #Taskbar
 	bottom: -5px;
 }
 
-#Statusbar .Task:hover
+#DockWindowList .Task.Hidden
+{
+	opacity: 0.5;
+}
+
+#Statusbar .Task:hover, #DockWindowList .Task:hover
 {
 	box-shadow: 0px 0px 10px 0px rgba(255,245,100,0.5);
 	opacity: 1;
@@ -2757,7 +3472,7 @@ html #Statusbar > #Taskbar
 	position: absolute;
 	top: 0;
 	left: 0;
-	right: 0;
+	width: 100%;
 	bottom: 0;
 	overflow: hidden;
 	background: #2F669F;
@@ -2766,6 +3481,23 @@ html #Statusbar > #Taskbar
 #Screens .View
 {
 	position: absolute;
+	transition: opacity 0.2s;
+	opacity: 1;
+}
+
+#Screens .View[moving]
+{
+	transition: none;
+}
+
+#Screens .View:not([moving]):not(.Opening):not(.Opened)
+{
+	transition: opacity,width,height 0.2s,0.2s,0.2s;
+}
+
+#Screens .View.Opening
+{
+	opacity: 0;
 }
 
 #Screens .View > .Content > iframe
@@ -2778,6 +3510,13 @@ html #Statusbar > #Taskbar
 	border: 0;
 	margin: 0;
 	outline: none;
+	transition: opacity 0.2s ease-in;
+	opacity: 1;
+}
+
+#Screens .View > .Content > iframe.Loading
+{
+	opacity: 0;
 }
 
 .Screen > div
@@ -2817,9 +3556,25 @@ html #Statusbar > #Taskbar
 	z-index: 0;
 }
 
+.ScreenContent > #RegionSelector
+{
+	z-index: 2;
+}
+
 /* Deepest field ------------------------------------------------------------ */
 
 /* Loggedin state */
+
+.Inside #DeepestField > div
+{
+	z-index: 1;
+}
+
+.Inside #DeepestCanvas
+{
+	background: #303030;
+	border-radius: 4px;
+}
 
 .Inside #DeepestField
 {
@@ -2842,38 +3597,31 @@ html #Statusbar > #Taskbar
 	left: 0;
 }
 
-#DeepestField > div > #Identity
-{
-	position: absolute;
-	background: rgba(0,0,0,0.3);
-	top: 20px;
-	left: 20px;
-	width: 185px;
-	height: 222px;
-	border-radius: 5px;
-}
-
-body[mobile=mobile] #DeepestField > div > #Identity
-{
-	width: 122px;
-	height: 180px;
-}
-
-#DeepestField > div > #NotificationHeader
+#DeepestField > div > #NotificationHeader,
+#DeepestField > div > #FNetHeader
 {
 	background: rgba(0,0,0,0.8);
 	position: absolute;
-	right: 20px;
 	top: 260px;
 	display: block;
 	color: white;
-	left: calc(50% + 10px);
 	border-radius: 2px 2px 0 0;
 	height: 30px;
 	line-height: 30px;
 	z-index: 2;
 	padding: 0 10px 0 10px;
 	font-weight: bold;
+}
+#DeepestField > div > #NotificationHeader
+{
+	left: calc(75% + 10px);
+	right: 20px;
+}
+
+#DeepestField > div > #FNetHeader
+{
+	left: calc(50% + 10px);
+	right: calc(25% + 10px);
 }
 
 #DeepestField > div > #CapabilityHeader,
@@ -2915,7 +3663,7 @@ body[mobile=mobile] #DeepestField > div > #Identity
 	top: 20px;
 	display: block;
 	color: white;
-	left: 225px;
+	left: 20px;
 	border-radius: 2px 2px 0 0;
 	height: 30px;
 	line-height: 30px;
@@ -2927,7 +3675,8 @@ body[mobile=mobile] #DeepestField > div > #Identity
 #DeepestField > div > #Notifications,
 #DeepestField > div > #Tasks,
 #DeepestField > div > #Capabilities,
-#DeepestField > div > #Netconnections
+#DeepestField > div > #Netconnections,
+#DeepestField > div > #FNetContent
 {
 	background: rgba(0,0,0,0.3);
 	overflow: auto;
@@ -2937,16 +3686,23 @@ body[mobile=mobile] #DeepestField > div > #Identity
 	color: white;
 }
 
-#DeepestField > div > #Notifications
+#DeepestField > div > #Notifications,
+#DeepestField > div > #FNetContent
 {
 	position: absolute;
-	left: calc(50% + 10px);
+	left: calc(75% + 10px);
     font-family: monospace, courier, courier new;
     font-size: 13px;
     top: 261px;
     height: 246px;
     right: 20px;
     padding: 45px 20px 12px 20px;
+}
+
+#DeepestField > div > #FNetContent
+{
+	left: calc(50% + 10px);
+	right: calc(25% + 10px);
 }
 
 #DeepestField > div > #Capabilities,
@@ -3014,7 +3770,7 @@ body[mobile=mobile] #DeepestField > div > #Identity
 {
 	position: absolute;
 	top: 20px;
-	left: 225px;
+	left: 20px;
 	right: 20px;
 	height: 222px;	
 	overflow-x: hidden;
@@ -3036,7 +3792,7 @@ body[mobile=mobile] #DeepestField #NotificationHeader
 body[mobile=mobile] #DeepestField #Tasks,
 body[mobile=mobile] #DeepestField #TasksHeader
 {
-	left: 162px;
+	left: 20px;
 }
 
 body[mobile=mobile] #DeepestField #Tasks
@@ -3168,13 +3924,13 @@ blockquote.Code
 
 /* Hardware accelerated ----------------------------------------------------- */
 
-.Accelerated, .View, .Screen, #RegionSelector, #MousePointer, .Desklet
+.Accelerated, .View, .Screen, #RegionSelector, #MousePointer, .Desklet, .Widget
 {
-	webkit-transform: translateZ(0);
-	-moz-transform: translateZ(0);
-	-ms-transform: translateZ(0);
-	-o-transform: translateZ(0);
-	transform: translateZ(0);
+	webkit-transform: rotateZ(0deg);
+	-moz-transform: rotateZ(0deg);
+	-ms-transform: rotateZ(0deg);
+	-o-transform: rotateZ(0deg);
+	transform: rotateZ(0deg);
 	-webkit-backface-visibility: hidden;
 	-moz-backface-visibility: hidden;
 	-ms-backface-visibility: hidden;
@@ -3183,7 +3939,7 @@ blockquote.Code
 	perspective: 1000;
 }
 
-.Accelerated > *, .View > *, .Screen > *, #RegionSelector > *, #MousePointer > *, .Desklet > *
+.Accelerated > *, .View > .Content > iframe, .Desklet > *, .Widget > *
 {
 	webkit-transform: none;
 	-moz-transform: none;
@@ -3197,4 +3953,217 @@ blockquote.Code
 	backface-visibility: none;
 	perspective: none;
 }
+
+html body .ScrollBarSmall::-webkit-scrollbar
+{
+	width: 4px;
+	height: 4px;
+}
+
+/* Palette colors */
+
+div.Green, button.Green
+{
+	color: white;
+	background: #74A790;
+	border-color: #638F7B;
+}
+
+div.Red, button.Red
+{
+	color: white;
+	background: #E2452F;
+	border-color: #C23B28;
+}
+
+div.Neutral, button.Neutral, .Button.Neutral
+{
+	background: rgba(155,155,155,0.35);
+	color: #222222;
+}
+
+div.Neutral:hover, button.Neutral:hover, .Button.Neutral:hover
+{
+	color: white;
+}
+
+div.Blue, button.Blue
+{
+	color: white;
+	background: #2481D7;
+	border-color: #1E6BB3;
+}
+
+div.Orange, button.Orange
+{
+	color: white;
+	background: #DE9446;
+	border-color: #C4833E;
+}
+
+/* Slider */
+
+.SliderElement:not(.Vertical)
+{
+	position: relative;
+	min-width: 100px;
+	height: 20px;
+	box-sizing: border-box;
+}
+
+.SliderElement .SliderGroove
+{
+	position: absolute;
+	width: 100%;
+	height: 100%;
+	border-radius: 4px;
+	background: rgba(0,0,0,0.1);
+	box-shadow: inset 0px 0px 10px rgba(0,0,0,0.1);
+}
+
+.SliderElement:not(.Vertical) .SliderGroove .SliderButton
+{
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 20px;
+	height: 100%;
+}
+
+.SliderElement:not(.Vertical) .SliderGroove .SliderButton:after
+{
+	content: " ";
+	display: block;
+	position: absolute;
+	top: 3px;
+	left: 3px;
+	right: 3px;
+	bottom: 3px;
+	background-color: $ColorBgButton;
+	color: $ColorButton;
+	cursor: pointer;
+	border-radius: 5px;
+}
+
+.SliderElement:not(.Vertical) .SliderGroove .SliderButton:active:after,
+.SliderElement:not(.Vertical) .SliderGroove .SliderButton:hover:after
+{
+	background-color: $ColorLEDAlert;
+}
+
+
+/* Friend Network classes */
+
+.FNetBubble .HoverRow
+{
+	transition: background-color 0.25s;
+	background-color: $ColorBackground;
+	color: $ColorDefault;
+	padding-top: 2px;
+	padding-bottom: 2px;
+	padding-left: 4px;
+	padding-right: 4px;
+}
+
+.FNetBubble .HoverRow:hover
+{
+	background-color: $ColorBgNegative;
+	color: $ColorNegative;
+}
+
+.FNetBubble .HoverRow .Buttons
+{
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 0.25s;
+}
+
+.FNetBubble .HoverRow:hover .Buttons
+{
+	opacity: 1;
+	pointer-events: all;
+}
+
+.FNetBubble .HoverRow:hover .Buttons > span
+{
+	transition: invert 0.25s;
+	filter: invert(0);
+}
+
+.FNetBubble .HoverRow:hover .Buttons > span:hover
+{
+	filter:invert(0.5);
+}
+
+.FNetText 
+{
+    width: 250px;
+    float: left;
+	margin-left: 16px;
+    text-align: justify;
+    font-size: 10px;
+    overflow: hidden;
+}
+
+/* Responsive page layout */
+
+@media (max-width: 480px)
+{
+	.Responsive-Page
+	{
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100px;
+		height: 100%;
+		transition: left 0.25s;
+		z-index: 1;
+	}
+	.Responsive-Page-Active
+	{
+		position: fixed;
+		left: 0px;
+		width: 100%;
+		height: 100%;
+		z-index: 1000;
+	}
+	.Responsive-Page.Responsive-Page-Right
+	{
+		left: -100%;
+		z-index: 999;
+	}
+	.Responsive-Page.Responsive-Page-Left:not(.Responsive-Page-Active)
+	{
+		left: 100%;
+		z-index: 999;
+	}
+	.Responsive-Page.Responsive-Subpage
+	{
+		top: 32px;
+	}
+	.Responsive-Container
+	{
+		position: absolute;
+		top: 0;
+		left: 0px;
+		width: 100%;
+		height: 100%;
+	}
+	.Responsive-Button-Back
+	{
+		position: fixed;
+		z-index: 1001;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 32px;
+		box-sizing: border-box;
+		padding: 5px 10px;
+		font-weight: bold;
+		transition: height 0.25s;
+		overflow: hidden;
+	}
+}
+
+
 

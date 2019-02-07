@@ -1,19 +1,10 @@
 /*©agpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Affero General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Affero General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Affero   *
+* General Public License, found in the file license_agpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
 
@@ -52,12 +43,16 @@ Application.run = function(msg)
 	this.instanceId = 1;
 	this.currentPath = 'System:';
 	this.previousPath = false;
-	this.friendNetwork = 'disabled';
 	this.disableCLI();
 	
 	// Script list for parsing
 	this.scriptListArray = [];
 	this.scriptListPosition = 0;
+	
+	// FriendNetwork
+	this.friendNetwork = 'disabled';
+	this.friendNetworkClient = false;
+	this.friendNetworkHosts = [];
 	
 	// Fire up the core shell proxy
 	this.shell = new Shell();
@@ -126,27 +121,7 @@ Application.handlePipe = function( packet )
 				ignoreOutput = true;
 				return false;
 			case 'friendnetworklist':
-				var msg = {
-					applicationName: 'FriendShell',
-					applicationId: Application.applicationId
-				}
-				FriendNetwork.list( msg );
-				break;
-			case 'friendnetworkenable':
-				var msg = {
-					applicationName: 'FriendShell',
-					applicationId: Application.applicationId
-				}
-				DormantMaster.connectToFriendNetwork( msg );
-				Application.friendNetwork = 'enabled';
-				break;
-			case 'friendnetworkdisable':
-				var msg = {
-					applicationName: 'FriendShell',
-					applicationId: Application.applicationId
-				}
-				DormantMaster.disconnectFromFriendNetwork( msg );
-				Application.friendNetwork = 'disabled';
+				FriendNetwork.list( function( msg ){} );
 				break;
 			default:
 				if (typeof packet.returnMessage == 'object')
@@ -159,14 +134,111 @@ Application.handlePipe = function( packet )
 					{
 						switch ( packet.returnMessage.command )
 						{
+							case 'help':
+								// Help on command
+								if( packet.returnMessage.name )
+								{
+									var help = i18n( 'i18n_' + packet.returnMessage.name );
+									Application.addOutput( help );
+									Application.addNL();
+								}
+								break;
 							case 'friendnetworkhost':
-								FriendNetwork.host( packet.returnMessage.name );
+								FriendNetwork.host
+								( 
+									packet.returnMessage.name, 
+									'system', 
+									'FriendShell', 
+									'Please connect to my Friend Shell', 
+									{ password: packet.returnMessage.password }
+								);
+								break;
+							case 'friendnetworkstatus':
+								FriendNetwork.status();
 								break;
 							case 'friendnetworkconnect':
-								FriendNetwork.connect( packet.returnMessage.name );
+								this.noNextNL = true;
+								if ( !this.friendNetworkClient )
+								{
+									FriendNetwork.connect( packet.returnMessage.name, 'system', packet.returnMessage.p2p );
+								}
+								else
+								{
+									this.addError( 'Cannot connect : you are already a client.' );
+									this.addNL();
+								}
+								break;
+							case 'friendnetworksetpassword':
+								var ok = false;
+								if ( !Application.friendNetworkClient && Application.friendNetworkHosts )
+								{
+									for ( var key in Application.friendNetworkHosts )
+									{
+										if ( Application.friendNetworkHosts[ key ].name == packet.returnMessage.name )
+										{
+											ok = true;
+											FriendNetwork.setHostPassword( key, packet.returnMessage.password );
+											break;
+										}
+									}
+								}
+								if ( !ok )
+								{
+									this.addError( 'Host not found.' );
+									this.addNL();
+								}
+								break;
+							case 'friendnetworkdisconnect':
+								if ( this.friendNetworkClient )
+								{
+									FriendNetwork.disconnect( this.friendNetworkClient.key, function( msg ) {
+									} );
+									Application.fnetDisconnect();
+								}
+								else
+									this.addError( 'You are not connected to anyone.' );
+								this.addNL();
 								break;
 							case 'friendnetworkdispose':
-								FriendNetwork.dispose( packet.returnMessage.name );
+								var found = false;
+								if ( !Application.friendNetworkClient && Application.friendNetworkHosts )
+								{
+									var hostName = packet.returnMessage.name;
+									var userName, p;
+									if ( (p = hostName.indexOf('@')) >= 0)
+									{
+										userName = hostName.substring(p + 1);
+										hostName = hostName.substring(0, p);
+									}
+									for ( var key in Application.friendNetworkHosts )
+									{
+										var name = Application.friendNetworkHosts[ key ].name;
+										if ( !userName )
+										{
+											p = name.indexOf('@');
+											if ( name.substring(0, p) == hostName )
+											{
+												found = true;
+												break;
+											}
+										}
+										else if ( packet.returnMessage.name == name )
+										{
+											found = true;
+											break;
+										}
+									}
+								}
+								if ( found )
+								{
+									FriendNetwork.dispose( key, function( msg ) {
+									});
+								}
+								else
+								{
+									this.addError('Host not found.');
+									this.addNL();
+								}
 								break;
 						}
 					}
@@ -236,11 +308,12 @@ Application.handlePipe = function( packet )
 	// Are we done? Ready to add newline?
 	if( packet.returnMessage && packet.returnMessage.done )
 	{
-		console.log( 'We are done!' );
 		Application.enableCLI();
-		Application.addNL();
+		if ( !this.noNextNL )
+			Application.addNL();
+		else
+			this.noNextNL = false;
 	}
-	
 }
 
 // Add error line
@@ -253,12 +326,11 @@ Application.addError = function( str )
 }
 
 // Add error line
-Application.addOutput = function( str )
+Application.addOutput = function( str)
 {
-	console.log( 'Adding output (input: ' + ( this.input ? 'on' : 'off' ) + ' ): ' + str );
-	var n = document.createElement( 'div' );
+	var n = document.createElement('div');
 	n.innerHTML = '<div class="Output SelectableText">' + str + '</div>';
-	this.terminal.appendChild( n );
+	this.terminal.appendChild(n);
 	this.terminal.scrollTop = 99999999;
 }
 
@@ -337,7 +409,7 @@ Application.addNL = function( focus )
 	cli.spellcheck = false;
 	
 	// Hack, please check if window is active..
-	if( focus || document.body.className.indexOf( 'activated' ) > 0 )
+	if( focus || document.body.classList.contains( 'activated' ) )
 	{
 		setTimeout( function(){ Application.focusCLI(); }, 150 );
 	}
@@ -350,6 +422,59 @@ Application.addNL = function( focus )
 	// Also focus on the cli when clicking window
 	document.body.onclick = function() 
 	{ 
+		Application.focusCLI();
+	};
+	
+	this.currentCLI = cli;
+	
+	this.setupTerminalKeys();
+	
+	this.terminal.scrollTop = 99999999;
+	
+	this.enableCLI();
+	
+	this.focusCLI();
+}
+
+// Add new line
+Application.addQuestion = function( question, callback )
+{
+	if( this.currentCLI && this.currentCLI.contentEditable == false ) return false;
+	
+	if( !this.input )
+	{
+		this.terminal.scrollTop = 99999999;
+		return false;
+	}
+	
+	this.questionCallback = callback;
+	this.disableCLI();
+	
+	var t = this.cliTemplate;
+	var n = document.createElement( 'div' );
+	n.innerHTML = t;
+	this.terminal.appendChild( n );
+	
+	var cli = GeByClass( 'Cli', n );
+	cli.contentEditable = true;
+	cli.spellcheck = false;
+	
+	// Hack, please check if window is active..
+	if( focus || document.body.className.indexOf( 'activated' ) > 0 )
+	{
+		setTimeout( function(){ Application.focusCLI(); }, 150 );
+	}
+	
+	n.className = 'Password';
+	
+	var path = GeByClass( 'Path', n );
+	path.innerHTML = question +': ';
+	path.onfocus = function() { Application.focusCLI(); }
+	path.onclick = function() { Application.focusCLI(); }
+
+	// Also focus on the cli when clicking window
+	document.body.onclick = function()
+	{
 		Application.focusCLI();
 	};
 	
@@ -439,10 +564,48 @@ Application.setupTerminalKeys = function()
 					t.evaluateInput( [ "\n" ], 0, k );
 				else
 				{
+					if ( t.questionCallback )
+					{
+						var callback = t.questionCallback;
+						t.questionCallback = false;
+						callback( t.currentCLI.innerHTML );
+						return cancelBubble( e );
+					}
+					
 					// Add last command to log
 					t.cmdLog.push( t.currentCLI.innerHTML );
 					t.logKey = t.cmdLog.length - 1;
-					t.evaluateInput( [ t.currentCLI.innerHTML ], 0, k );
+					
+					// Are we client of a FriendNetwork Shell host?
+					if ( t.friendNetworkClient )
+					{
+						// Are we calling fnet disconnect?
+						var s = t.currentCLI.innerHTML.toLowerCase();
+						var p = s.indexOf( 'fnet', 0 );
+						if ( p < 0 ) p = s.indexOf( 'friendnetwork' );
+						if ( p >= 0 )
+						{
+							if ( s.indexOf( 'disconnect', p ) > p )
+							{
+								t.evaluateInput( [t.currentCLI.innerHTML], 0, k );
+							}
+							else if ( s.indexOf( 'status', p ) > p )
+							{
+								t.evaluateInput( [t.currentCLI.innerHTML], 0, k );
+							}
+						}
+						else
+						{
+							FriendNetwork.send(t.friendNetworkClient.key, [t.currentCLI.innerHTML], function (msg)
+							{
+								console.log('FriendShell sent: ', t.friendNetworkHostKey, msg);
+							});
+						}
+					}
+					else
+					{
+						t.evaluateInput([t.currentCLI.innerHTML], 0, k);
+					}
 				}
 				return cancelBubble( e );
 			}
@@ -653,17 +816,19 @@ Application.generateOutputFromObjects = function( objects )
 // Receive messages
 Application.receiveMessage = function( object )
 {
+	var self = this;
 	var command = object.command;
-	if( !command )
+/*	if( !command )
 	{
 		if ( object.data && object.data.command )
 			command = object.data.command;
 		else
 			return false;
 	}
-	switch( command )
+*/	switch( command )
 	{
 		case 'quit_shell':
+			FriendNetwork.closeApplication();
 			this.shell.execute( 'exit' );
 			// Just send back, it knows what to do
 			object = {
@@ -721,48 +886,211 @@ Application.receiveMessage = function( object )
 				if( f ) f();
 			}
 			break;
+		case 'activate':
+			Application.focusCLI();
+			break;
 		case 'friendnetwork':
-			var message = object.data.data;
-			if ( message.response.substr(0, 2) != 'ok' )
+			switch (object.subCommand)
 			{
-				this.addError( 'Friend network error.' );
-				this.addNL;
-			}
-			else
-			{
-				switch ( message.command )
-				{
-					case 'connect':
-						this.addOutput( 'The Friend network has been enabled.' );
-						this.addNL();
-						break;
-					case 'disconnect':
-						this.addOutput( 'The Friend network has been disabled.');
-						this.addNL();
-						break;
-					case 'listhosts':
-						this.addOutput( 'These servers are available:' );
-						for (var a = 0; a < message.hosts.length; a++ )
+				case 'list':
+					var output = false;
+					var count = 1;
+					for (var a = 0; a < object.hosts.length; a++)
+					{
+						if ( object.hosts[a].apps )
 						{
-							this.addOutput( a + 1 + '. "' + message.hosts[a] + '"' );
+							var apps = object.hosts[a].apps;
+							for (var b = 0; b < apps.length; b++)
+							{
+								if ( apps[b].type == 'system' )
+								{
+									if ( !output )
+									{
+										this.addOutput('These servers are available:');
+										output = true;
+									}
+									this.addOutput(count + '. "' + apps[b].name + '@' + object.hosts[a].name + '"');
+									count++;
+								}
+							}
 						}
+					}
+					if ( !output )
+					{
+						this.addOutput( 'No servers available.' );
+					}
+					this.addNL();
+					break;
+				case 'host':
+					this.addOutput('You are hosting "' + object.name + '"');
+					this.friendNetworkHosts[ object.hostKey ] = { name: object.name, key: object.hostKey, clients: [] };
+					this.addNL();
+					break;
+				case 'hostDisconnected':
+					if ( this.friendNetworkClient )
+					{
+						this.friendNetworkClient = false;
+						this.sendMessage( { command: 'settitle', text: 'New Shell' } );
+						this.addOutput('You have been disconnected from "' + object.name + '"');
 						this.addNL();
-						break;
-					case 'starthosting':
-						this.addOutput( 'You are hosting "' + message.name +'"' );
+					}
+					break;
+				case 'disposed':
+					if ( this.friendNetworkHosts[ object.hostKey ])
+					{
+						this.friendNetworkHosts[object.hostKey] = false;
+						var temp = [];
+						for ( var key in this.friendNetworkHosts )
+						{
+							if ( this.friendNetworkHosts[ key ])
+								temp[ key ] = this.friendNetworkHosts[ key ];
+						}
+						this.friendNetworkHosts = temp;
+						this.addOutput('You are no longer hosting "' + object.name + '"');
 						this.addNL();
-						break;
-					case 'disposehosting':
-						this.addOutput( '"' + message.name + '" has been disposed.' );
+					}
+					break;
+				case 'clientConnected':
+					var shell = new Shell();
+					shell.onReady = function()
+					{
+						if ( Application.friendNetworkHosts[ object.hostKey ] )
+						{
+							var restrictedPath = object.sessionPassword ? false : Application.currentPath;
+							Application.friendNetworkHosts[ object.hostKey ].clients[ object.key ] = {
+								key:   object.key,
+								shell: shell,
+								restrictedPath: restrictedPath
+							};
+							shell.evaluate( ['cd ' + Application.currentPath ], function(){}, restrictedPath, object.key );
+							var p2p = "";
+							if ( object.p2p ) p2p = ' (peer-to-peer)'
+							Application.addOutput( object.name + ' just connected to you' + p2p + '...' );
+							Application.addNL();
+						}
+					};
+					break;
+				case 'p2pClientConnected':
+					Application.addOutput( 'Peer-to-peer connection established' );
+					Application.addNL();
+					break;
+				case 'p2pConnected':
+					Application.addOutput( 'Peer-to-peer connection established' );
+					Application.addNL();
+					break;
+				case 'clientDisconnected':
+					if ( this.friendNetworkHosts[ object.hostKey ])
+					{
+						if ( this.friendNetworkHosts[ object.hostKey ].clients[ object.key ] )
+						{
+							this.friendNetworkHosts[ object.hostKey ].clients[ object.key ] = false;
+							this.addOutput( object.name + ' disconnected from you...' );
+							this.addNL();
+						}
+					}
+					break;
+				case 'timeout':
+					if ( this.friendNetworkHosts[ object.hostKey ] )
+					{
+						if ( this.friendNetworkHosts[ object.hostKey ].clients[ object.key ])
+						{
+							this.friendNetworkHosts[ object.hostKey ].clients[ object.key ] = false;
+							this.addOutput( object.name + ' timeout.' );
+							this.addNL();
+						}
+					}
+					else if ( this.friendNetworkClient && this.friendNetworkClient.key == object.key )
+					{
+						this.friendNetworkClient = false;
+						this.addOutput( object.name + ' timeout.' );
 						this.addNL();
-						break;
-					case 'connecttohost':
-						this.addOutput( 'You are now connected to "' + message.name + '"' );
-						this.addNL();
-						break;
-					case 'sendtohost':
-						break;
-				}
+					}
+					break;
+				case 'getCredentials':
+					setTimeout( askQuestion, 500 );
+					break;
+				case 'connected':
+					this.friendNetworkPreviousPath = this.currentPath;
+					this.friendNetworkClient = { key: object.key, name: object.name, hostName: object.hostName };
+					this.sendMessage( { command: 'settitle', text: 'New Shell - ' + object.hostName } );
+					this.addOutput( 'You are now connected to "' + object.hostName + '"' );
+					this.addNL();
+					break;
+				case 'disconnected':
+					this.currentPath = this.friendNetworkPreviousPath;
+					this.friendNetworkClient = false;
+					this.sendMessage( { command: 'settitle', text: 'New Shell' } );
+					this.addOutput( 'You are now disconnected from ' + object.name );
+					this.addNL();
+					break;
+				case 'messageFromClient':
+					if ( this.friendNetworkHosts[ object.hostKey ] )
+					{
+						if ( this.friendNetworkHosts[ object.hostKey ].clients[ object.key ] )
+							this.friendNetworkHosts[ object.hostKey ].clients[ object.key ].shell.evaluate( object.data, false, object.key, this.friendNetworkHosts[ object.hostKey ].clients[ object.key ].restrictedPath );
+					}
+					break;
+				case 'messageFromHost':
+					if ( this.friendNetworkClient )
+						Application.handlePipe( object.data );
+					break;
+				case 'status':
+					var out = "";
+					out += 'FriendNetwork status report<br />';
+					out += '---------------------------';
+					if ( object.connected )
+					{
+						out += '<br />Connected';
+						for ( var a = 0; a < object.hosts.length; a++ )
+						{
+							out += '<br />Host: ' + object.hosts[ a ].name + '\n';
+							for ( var b = 0; b < object.hosts[ a ].hosting.length; b++ )
+							{
+								out += '<br />    Hosting: ' + object.hosts[ a ].hosting[ b ].distantName + '\n';
+							}
+						}
+						for ( var a = 0; a < object.clients.length; a++ )
+						{
+							out += '<br />Client: of ' + object.clients[a].hostName +'\n';
+						}
+					}
+					else
+					{
+						out = '<br />Disconnected';
+					}
+					out += '<br />---------------------------';
+					this.addOutput( out );
+					this.addNL();
+					break;
+				case 'error':
+					this.noNextNL = false;
+					switch ( object.error )
+					{
+						case 'ERR_HOST_ALREADY_EXISTS':
+							this.addError('Host already exists.');
+							break;
+						case 'ERR_HOSTING_FAILED':
+							this.addError('Hosting failed');
+							break;
+						case 'ERR_HOST_NOT_FOUND':
+							this.addError('Host not found');
+							break;
+						case 'ERR_DISPOSING':
+							this.addError('Error while disposing host.');
+							break;
+						case 'ERR_FAILED_CREDENTIALS':
+							this.addOutput('Connection cancelled.');
+							break;
+						case 'ERR_WRONG_CREDENTIALS':
+							this.addOutput('Invalid password...');
+							setTimeout( askQuestion, 500 );
+							break;
+						default:
+							this.addError('Network error.');
+							break;
+					}
+					this.addNL();
+					break;
 			}
 			break;
 		case 'applicationlist':
@@ -780,8 +1108,14 @@ Application.receiveMessage = function( object )
 			//console.log( object );
 			break;
 	}
+	function askQuestion()
+	{
+		self.addQuestion( 'Please enter password ', function( result )
+		{
+			FriendNetwork.sendCredentials( object.key, result );
+		} );
+	}
 }
-
 Application.parseVariables = function( pr )
 {
 	for( var a in this.variables )
@@ -790,6 +1124,11 @@ Application.parseVariables = function( pr )
 		pr = pr.split( "$" + a ).join( this.variables[a] );
 	}
 	return pr;
+}
+Application.fnetDisconnect = function()
+{
+	this.sendMessage( { command: 'settitle', text: 'New Shell' } );
+	this.friendNetworkClient = false;
 }
 
 // CLI commands! ---------------------------------------------------------------

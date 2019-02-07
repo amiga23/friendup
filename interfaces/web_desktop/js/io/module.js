@@ -1,19 +1,10 @@
 /*©agpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Affero General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Affero General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Affero   *
+* General Public License, found in the file license_agpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
 
@@ -31,6 +22,17 @@ var Module = function( mod )
 	this.addVar = function( k, value )
 	{
 		this.vars[k] = value;
+	}
+
+	this.destroy = function()
+	{
+		this.module = null;
+		this.args = null;
+		this.command = null;
+		this.vars = null;
+		if( this.lastJax )
+			this.lastJax.destroy();
+		delete this;
 	}
 
 	// Execute a command to a Friend UP module
@@ -62,6 +64,12 @@ var Module = function( mod )
 		j.addVar( 'command',   this.command                 );
 		
 		for( var a in this.vars ) j.addVar( a, this.vars[a] );
+			
+		// Force http!
+		if( this.forceHTTP )
+			j.forceHTTP = true;
+		if( this.forceSend )
+			j.forceSend = true;
 		
 		if( this.onExecuted )
 		{
@@ -78,9 +86,13 @@ var Module = function( mod )
 					}
 				}
 				t.onExecuted( rc, data );
+				t.destroy();
 			};
 		}
 		j.send();
+		if( this.lastJax )
+			this.lastJax.destroy();
+		this.lastJax = j;
 	}
 };
 

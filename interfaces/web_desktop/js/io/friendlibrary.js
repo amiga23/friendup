@@ -1,19 +1,10 @@
 /*©agpl*************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* This program is free software: you can redistribute it and/or modify         *
-* it under the terms of the GNU Affero General Public License as published by  *
-* the Free Software Foundation, either version 3 of the License, or            *
-* (at your option) any later version.                                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* GNU Affero General Public License for more details.                          *
-*                                                                              *
-* You should have received a copy of the GNU Affero General Public License     *
-* along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
+* Licensed under the Source EULA. Please refer to the copy of the GNU Affero   *
+* General Public License, found in the file license_agpl.txt.                  *
 *                                                                              *
 *****************************************************************************©*/
 
@@ -31,6 +22,21 @@ var FriendLibrary = function ( library, encryption )
 	{
 		this.vars[k] = value;
 	}
+	
+	this.destroy = function()
+	{
+		this.encryption = null;
+		this.library = null;
+		this.args = null;
+		this.method = null;
+		this.vars = null;
+		if( this.currentRequest )
+		{
+			this.currentRequest.destroy();
+			this.currentRequest = null;
+		}
+		delete this;
+	}
 
 	// Execute a method to a Friend UP module
 	this.execute = function( method, args )
@@ -39,7 +45,13 @@ var FriendLibrary = function ( library, encryption )
 		
 		var data = '';
 		
-		var j = new cAjax ();		
+		var j = new cAjax ();	
+		this.currentRequest = j;	
+		
+		if( this.forceHTTP )
+			j.forceHTTP = true;
+		if( this.forceSend )
+			j.forceSend = true;
 		
 		var ex = '';
 		
@@ -80,7 +92,7 @@ var FriendLibrary = function ( library, encryption )
 		if( this.encryption )
 		{
 			// If ssl is enabled add vars encrypted data string to send as post raw data with cAjax
-			if( this.vars && typeof( fcrypt ) != 'undefined' && typeof( Workspace ) != 'undefined' && Workspace.keys.server && Workspace.keys.client )
+			if( this.vars && typeof( fcrypt ) != 'undefined' && typeof( Workspace ) != 'undefined' && Workspace.encryption.keys.server && Workspace.encryption.keys.client )
 			{
 				var json = JSON.stringify( this.vars );
 				
@@ -95,7 +107,7 @@ var FriendLibrary = function ( library, encryption )
 					//}
 					
 					//data = fcrypt.encryptRSA( json, Workspace.keys.server.publickey );
-					var encrypted = fcrypt.encryptRSA( json, Workspace.keys.server.publickey );
+					var encrypted = fcrypt.encryptRSA( json, Workspace.encryption.keys.server.publickey );
 					
 					j.addVar( 'encryptedblob', encrypted );
 					
@@ -124,7 +136,7 @@ var FriendLibrary = function ( library, encryption )
 					if( t.encryption )
 					{
 						// If ssl is enabled decrypt the data returned by cAjax
-						if( rc && typeof( fcrypt ) != 'undefined' && typeof( Workspace ) != 'undefined' && Workspace.keys.server && Workspace.keys.client )
+						if( rc && typeof( fcrypt ) != 'undefined' && typeof( Workspace ) != 'undefined' && Workspace.encryption.keys.server && Workspace.encryption.keys.client )
 						{
 							// TODO: This will probably not work in C code only made for js/php since decryptString is a RSA+AES combination to support large blocks of data outside of RSA limitations, make decryptRSA() support stacking of blocks split by block limit
 							//var decrypted = fcrypt.decryptString( rc, Workspace.keys.client.privatekey );
@@ -134,7 +146,7 @@ var FriendLibrary = function ( library, encryption )
 							//	rc = decrypted.plaintext;
 							//}
 							
-							rc = fcrypt.decryptRSA( rc, Workspace.keys.client.privatekey );
+							rc = fcrypt.decryptRSA( rc, Workspace.encryption.keys.client.privatekey );
 						}
 					}
 					
@@ -145,6 +157,7 @@ var FriendLibrary = function ( library, encryption )
 					}
 					// No json then..
 					t.onExecuted( rc, d );
+					t.destroy();
 				}
 				// No, it's not that
 				catch( e )
@@ -158,6 +171,7 @@ var FriendLibrary = function ( library, encryption )
 						}
 					}
 					t.onExecuted( rc, d );
+					t.destroy();
 				}
 			}
 		}

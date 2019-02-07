@@ -1,27 +1,13 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
-/**
- * @file
+/** @file
  *
  * Body of  png image
  *
@@ -51,7 +37,7 @@ int ImageSavePNG( FImage *img, const char *filename )
 	png_color_8 sig_bit;
 	int pass, number_passes;
 	
-	DEBUG("SAVEPNG----------------------------------------");
+	DEBUG("ImageSavePNG start");
 	
 	/* open the file */
 	fp = fopen( filename, "wb" );
@@ -60,8 +46,7 @@ int ImageSavePNG( FImage *img, const char *filename )
 		FERROR("Cannot open file: %s\n", filename );
 		return 0;
 	}
-	
-	DEBUG("struct created\n");
+
 	png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
 	
 	if (png_ptr == NULL)
@@ -79,20 +64,28 @@ int ImageSavePNG( FImage *img, const char *filename )
 		png_destroy_write_struct(&png_ptr,  (png_infopp)NULL);
 		return 0;
 	}
-	
-	DEBUG("info created\n");
-	
-	if (setjmp(png_ptr->jmpbuf))
+
+#if PNG_LIBPNG_VER_MINOR < 5
+	if( setjmp( png_ptr->jmpbuf ) )
 	{
 		/* If we get here, we had a problem reading the file */
 		fclose(fp);
 		png_destroy_write_struct(&png_ptr,  (png_infopp)NULL);
 		return 0;
 	}
+#else
+	if( setjmp( png_ptr ) )
+	{
+		/* If we get here, we had a problem reading the file */
+		fclose(fp);
+		png_destroy_write_struct(&png_ptr,  (png_infopp)NULL);
+		return 0;
+	}
+#endif
 	
 	png_init_io(png_ptr, fp);
 	
-	DEBUG("SAVE width %d height %d depth %d interlace %d\n", img->fi_Width, img->fi_Height, img->fi_Depth, img->fi_Interlace );
+	DEBUG("[ImageSavePNG] SAVE width %d height %d depth %d interlace %d\n", img->fi_Width, img->fi_Height, img->fi_Depth, img->fi_Interlace );
 	
 	png_set_IHDR(png_ptr, info_ptr, img->fi_Width, img->fi_Height, 8,
 			  (img->fi_Depth <= 8) ?  PNG_COLOR_TYPE_PALETTE :  PNG_COLOR_TYPE_RGB_ALPHA,
@@ -111,7 +104,7 @@ int ImageSavePNG( FImage *img, const char *filename )
 	
 	if (img->fi_Depth <= 8)
 	{
-		DEBUG("8 bit\n");
+		DEBUG("[ImageSavePNG] 8 bit picture\n");
 		
 		int i;
 		palette = (png_colorp) png_malloc(png_ptr,
@@ -128,7 +121,7 @@ int ImageSavePNG( FImage *img, const char *filename )
 	}
 	else
 	{
-		DEBUG("32bit\n");
+		DEBUG("[ImageSavePNG] 32bit picture\n");
 	}
 	
 	sig_bit.gray = 0;
@@ -144,7 +137,7 @@ int ImageSavePNG( FImage *img, const char *filename )
 	//png_textp *textptr;
 	if( img->fi_CommentsNumber > 0 )
 	{
-		DEBUG("text found\n");
+		DEBUG("[ImageSavePNG] text found\n");
 		if( ( text = malloc( img->fi_CommentsNumber*sizeof(png_text ) ) ) != NULL )
 		{
 			int pos = 0;
@@ -152,7 +145,6 @@ int ImageSavePNG( FImage *img, const char *filename )
 			KeyValueList *kvl = img->fi_Comments;
 			while( kvl != NULL )
 			{
-				DEBUG("SET TEXT %d\n", pos );
 				text[ pos ].compression = PNG_TEXT_COMPRESSION_NONE;
 				text[ pos ].key = kvl->key;
 				text[ pos ].text = kvl->value;
@@ -168,7 +160,7 @@ int ImageSavePNG( FImage *img, const char *filename )
 	}
 	else
 	{
-		DEBUG("no text\n");
+
 	}
 	/*
 	 t ext_ptr[*0].key = "aaaa";
@@ -184,8 +176,6 @@ int ImageSavePNG( FImage *img, const char *filename )
 	//png_set_invert_alpha(png_ptr);
 	png_write_info(png_ptr, info_ptr);
 	//png_set_swap_alpha(png_ptr);
-	
-	DEBUG("wrote something\n");
 
 	if ( img->fi_Interlace )
 	{
@@ -204,7 +194,9 @@ int ImageSavePNG( FImage *img, const char *filename )
 
 			for (y = 0; y < img->fi_Height; y++)
 			{
-				png_write_rows(png_ptr, &img->fi_Data[ y*img->fi_Width ], 1);
+				png_bytepp p = (png_bytepp)&(img->fi_Data[ y*img->fi_Width ]);
+				//png_write_rows( png_ptr, &p, 1);
+				png_write_row(png_ptr, (unsigned char *)p );
 			}
 		}
 	}
@@ -213,12 +205,12 @@ int ImageSavePNG( FImage *img, const char *filename )
 		for (pass = 0; pass < number_passes; pass++)
 		{
 			int y;
+			int w = img->fi_Width * 4;
 			
 			for (y = 0; y < img->fi_Height; y++)
 			{
-				DEBUG("Store line %d\n", y );
 				//png_write_rows(png_ptr, (png_bytepp) &(img->fi_Data[  y * img->fi_Width * 4 ]), 1);
-				png_write_row(png_ptr, (png_bytepp) &(img->fi_Data[  y * img->fi_Width * 4 ]) );
+				png_write_row(png_ptr, &(img->fi_Data[  y * w ]) );
 			}
 		}
 	}
@@ -227,7 +219,11 @@ int ImageSavePNG( FImage *img, const char *filename )
 	
 	if (img->fi_Depth <= 8)
 	{
+#if PNG_LIBPNG_VER_MINOR < 5
 		png_free(png_ptr, info_ptr->palette);
+#else
+		png_free( png_ptr, palette );
+#endif
 	}
 	
 	//png_destroy_write_struct(&png_ptr, (png_infopp)NULL);
@@ -261,11 +257,9 @@ FImage *ImageLoadPNG( const char *fname )
 	FILE *fp = fopen(fname, "rb");
 	if( fp != NULL )
 	{
-		DEBUG("file opened\n");
 		info_ptr = png_create_info_struct(png_ptr);
 		if( info_ptr != NULL )
 		{
-			DEBUG("info found\n");
 			png_init_io( png_ptr, fp ); // connect libpng with our fp
 			png_read_info(png_ptr, info_ptr); // fill info_ptr
 		
@@ -275,12 +269,7 @@ FImage *ImageLoadPNG( const char *fname )
 			png_uint_32 bitdepth = png_get_bit_depth(png_ptr, info_ptr); // depth per channel, not pixel!
 			png_uint_32 channels = png_get_channels(png_ptr, info_ptr);
 			//png_uint_32 color_type = png_get_color_type(png_ptr, info_ptr);
-		
-			//printf("Image: %dx%d\n", width, height); // you can discard this if it works
-			//printf("Bitdepth: %d\nChannels: %d bytespp %d\n", bitdepth, channels, (bitdepth*channels)); // this too
-			
-			DEBUG("Copy all image data\n");
-			
+
 			if( ( image = ImageNew( width, height, (int)(bitdepth*channels) ) ) != NULL )
 			{
 				png_textp text;
@@ -288,12 +277,9 @@ FImage *ImageLoadPNG( const char *fname )
 				int i;
 
 				num = 0;
-				DEBUG("get text\n");
 				png_get_text(png_ptr, info_ptr, &text, &num);
 				image->fi_CommentsNumber = num;
-				DEBUG("Copy all png text comments %d\n", num );
-			
-				DEBUG("found text %d\n", num );
+
 				for (i = 0; i < num; i++)
 				{
 					KeyValueList *kvl = KeyValueListNewWithEntry( text[ i ].key, text[ i ].text );
@@ -329,9 +315,8 @@ FImage *ImageLoadPNG( const char *fname )
 						//tmp[0]=ptr[0];tmp[1]=ptr[1];tmp[2]=ptr[2];tmp[3]=ptr[3];
 						//ptr[0]=tmp[3];ptr[1]=tmp[2];ptr[2]=tmp[1];ptr[3]=tmp[0];
 						
-						DEBUG(" %u %u %u %u -\n", (int)(ptr[0]&0xff), (int)(ptr[1]&0xff), (int)(ptr[2]&0xff), ptr[3]&0xff ); ptr+=4;
+						ptr+=4;
 						}
-					DEBUG("\n");
 					}
 					*/
 					free( rows );
@@ -342,7 +327,6 @@ FImage *ImageLoadPNG( const char *fname )
 				
 				for( i=0 ; i < height ; i++ )
 				{
-					DEBUG("pos %d rowbytes %d\n", i, rowBytes );
 					memcpy( image->fi_Data +(rowBytes*i ), rowPtrs[ i ], rowBytes );
 				}
 				*/

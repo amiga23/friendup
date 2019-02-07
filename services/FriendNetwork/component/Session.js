@@ -2,25 +2,12 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
 
 
 const log = require( './Log' )( 'Session' );
@@ -33,13 +20,14 @@ ns.Session = function( id, onclose ) {
 	self.id = id;
 	self.onclose = onclose;
 	
-	self.sessionTimeout = 1000 * 60;
+	self.sessionTimeout = 1000 * 1;
 	self.sessionTimer = null;
 	self.connections = {};
 	self.connIds = [];
 	
 	self.isPublic = false;
 	self.subscribers = [];
+	self.subscriptions = [];
 	self.meta = {};
 	
 	Emitter.call( self );
@@ -100,6 +88,14 @@ ns.Session.prototype.detach = function( cid, callback ) {
 	}
 }
 
+ns.Session.prototype.getMeta = function() {
+	const self = this;
+	let meta = self.meta || {};
+	meta.hostId = self.id;
+	meta.isPublic = self.isPublic;
+	return meta;
+}
+
 ns.Session.prototype.updateMeta = function( conf ) {
 	const self = this;
 	log( 'updateMeta', conf );
@@ -112,24 +108,60 @@ ns.Session.prototype.updateMeta = function( conf ) {
 	if ( 'string' === typeof( conf.description ))
 		self.meta.description = conf.description;
 	
-	if ( conf.apps && conf.apps.forEach )
-		self.meta.apps = conf.apps;
-	
 	if ( 'string' === typeof( conf.imagePath ))
 		self.meta.imagePath = conf.imagePath;
+	
+	self.meta.info = conf.info || self.meta.info;
+	
+	if ( conf.apps && conf.apps.forEach )
+		conf.apps.forEach( item => self.exposeApp( item ))
+	
 }
 
-ns.Session.prototype.exposeApps = function( apps ) {
+ns.Session.prototype.subscribe = function( hostId ) {
 	const self = this;
-	if ( !apps || apps.forEach )
+	let subbed = -1;
+	subbed = self.subscribers.indexOf( hostId );
+	if ( -1 !== subbed )
+		return false;
+	
+	self.subscribers.push( hostId );
+	return true;
+}
+
+ns.Session.prototype.unsubscribe = function( hostId ) {
+	const self = this;
+	self.subscribers = self.subscribers.filter( id => id !== hostId );
+}
+
+ns.Session.prototype.subAdded = function( hostId ) {
+	const self = this;
+	let added = self.subscriptions.indexOf( hostId );
+	if ( -1 !== added )
+		return false;
+	
+	self.subscriptions.push( hostId );
+	return true;
+}
+
+ns.Session.prototype.subRemoved = function( hostId ) {
+	const self = this;
+	self.subscriptions = self.subscriptions.filter( id => id !== hostId );
+}
+
+ns.Session.prototype.exposeApp = function( app ) {
+	const self = this;
+	if ( !app )
 		return null;
 	
 	if ( !self.meta.apps || !self.meta.apps.forEach )
 		self.meta.apps = [];
 	
-	const parsed = apps.map( parse );
-	parsed = parsed.filter( item => !!item );
-	self.meta.apps = self.meta.apps.concat( parsed );
+	const parsed =  parse( app );
+	if ( !parsed )
+		return null;
+	
+	self.meta.apps.push( parsed );
 	return self.meta.apps;
 	
 	function parse( item ) {
@@ -137,25 +169,31 @@ ns.Session.prototype.exposeApps = function( apps ) {
 			return null;
 		
 		let id = item.id;
+		let type = '';
 		let name = '';
 		let desc = '';
+		if ( item.type && item.type.toString )
+			type = item.type.toString();
+		
 		if ( item.name && item.name.toString )
 			name = item.name.toString();
 		
 		if ( item.description && item.description.toString )
-			desc = item.description;
+			desc = item.description.toString();
 		
 		return {
 			id          : id,
+			type        : type,
 			name        : name,
 			description : desc,
+			info        : item.info || undefined,
 		}
 	}
 }
 
-ns.Session.prototype.concealApps = function( appIds ) {
+ns.Session.prototype.concealApp = function( appId ) {
 	const self = this;
-	if ( !appIds || !appIds.forEach )
+	if ( !appId || 'string' !== typeof( appId ))
 		return null;
 	
 	if ( !self.meta.apps || !self.meta.apps.forEach ) {
@@ -163,16 +201,11 @@ ns.Session.prototype.concealApps = function( appIds ) {
 		return self.meta.apps;
 	}
 	
-	self.meta.apps = self.meta.apps.filter( notInAppIds );
+	self.meta.apps = self.meta.apps.filter( notAppId );
 	return self.meta.apps;
 	
-	function notInAppIds( item ) {
-		let is = -1;
-		is = appIds.indexOf( item.id );
-		if ( -1 !== is )
-			return false;
-		else
-			return true;
+	function notAppId( item ) {
+		return item.id !== appId;
 	}
 }
 
@@ -218,7 +251,6 @@ ns.Session.prototype.init = function() {
 
 ns.Session.prototype.handleEvent = function( event, clientId ) {
 	const self = this;
-	log( 'handleEvent', event );
 	self.emit(
 		event.type,
 		event.data,

@@ -1,25 +1,12 @@
 /*©mit**************************************************************************
 *                                                                              *
 * This file is part of FRIEND UNIFYING PLATFORM.                               *
-* Copyright 2014-2017 Friend Software Labs AS                                  *
+* Copyright (c) Friend Software Labs AS. All rights reserved.                  *
 *                                                                              *
-* Permission is hereby granted, free of charge, to any person obtaining a copy *
-* of this software and associated documentation files (the "Software"), to     *
-* deal in the Software without restriction, including without limitation the   *
-* rights to use, copy, modify, merge, publish, distribute, sublicense, and/or  *
-* sell copies of the Software, and to permit persons to whom the Software is   *
-* furnished to do so, subject to the following conditions:                     *
-*                                                                              *
-* The above copyright notice and this permission notice shall be included in   *
-* all copies or substantial portions of the Software.                          *
-*                                                                              *
-* This program is distributed in the hope that it will be useful,              *
-* but WITHOUT ANY WARRANTY; without even the implied warranty of               *
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                 *
-* MIT License for more details.                                                *
+* Licensed under the Source EULA. Please refer to the copy of the MIT License, *
+* found in the file license_mit.txt.                                           *
 *                                                                              *
 *****************************************************************************©*/
-
 
 
 #ifndef __NETWORK_MIME_H__
@@ -33,21 +20,12 @@
 #include <util/string.h>
 
 //
-// get MIME by checking 1st bytes of file
-//
-
-inline char *getMIMEFromBuffer( char *buffer, int size )
-{
-	return NULL;
-}
-
-//
 // get MIME by filename extension
 //
 
 //#define CHECK_MIME( A, B, C, D )
 
-inline char *GetMIMEByFilename( char *fname )
+static inline char *GetMIMEByFilename( char *fname )
 {
 	unsigned int flen = strlen( fname );
 	
@@ -56,15 +34,15 @@ inline char *GetMIMEByFilename( char *fname )
 	if( flen < 4 ) return StringDuplicate( "application/octet-stream" );
 	
 	// Our variables!
-	char *mime = calloc( 1, 6 );
+	char *mime = calloc( 1, 16 );
 	char *fallbackMime = NULL;
 	unsigned int i = 0, j = 0;
 	
-	for( i = flen - 4 ; i < flen ; i++ )
+	for( i = flen - 6 ; i < flen ; i++ )
 	{
 		mime[ j++ ] = toupper( fname[ i ] ); 
 	}
-	
+
 	if( strstr( mime, ".PDF" ) )
 		fallbackMime = StringDuplicate( "application/pdf" );
 	else if( strstr( mime, ".WAV" ) )
