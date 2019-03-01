@@ -48,16 +48,22 @@ RUN apt-get update && apt-get install -y libsqlite3-dev libsmbclient-dev libssh2
         ca-certificates git openssh-server openssh-sftp-server libwebsockets-dev
 
 ENV FRIEND_FOLDER="/friendup"
-ENV CFG_PATH="${FRIEND_BUILD}/cfg/cfg.ini"
+ENV CFG_PATH="${FRIEND_FOLDER}/cfg/cfg.ini"
 
 RUN mkdir -p ${FRIEND_FOLDER}/cfg/crt
 
 COPY --from=build /friendup/build ${FRIEND_FOLDER}
 
+ADD db db
+ADD cfg.ini ${CFG_PATH}
+
 WORKDIR ${FRIEND_FOLDER}
+
+ADD entrypoint.sh entrypoint.sh
+
+RUN chmod u+x entrypoint.sh
 
 EXPOSE 6500
 EXPOSE 6502
 
-CMD ./FriendCore
-
+CMD ./entrypoint.sh

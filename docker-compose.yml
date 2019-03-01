@@ -1,0 +1,20 @@
+version: "3"
+
+services:
+  friendup-staging-db:
+    image: mariadb
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: friendup
+      MYSQL_DATABASE: friendup
+      MYSQL_USER: friendup
+      MYSQL_PASSWORD: friendup
+
+  friendup-staging:
+    build: .
+    restart: always
+    ports:
+      - "6500:6500"
+      - "6502:6502"
+    depends_on:
+      - friendup-staging-db
