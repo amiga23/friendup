@@ -3,10 +3,17 @@
 This repo is a fork of https://github.com/FriendUPCloud/friendup
 
 # Docker
-Build and run in docker
-'''
+Build and run in docker with docker-compose
+```
 docker-compose up --build
-'''
+```
+This will
+* Build a docker image
+* Create a mariadb container
+* Create a container with the built image
+* Bootstrap the database
+* Run FriendUp
+
 Point your browser to  
 http://localhost:6502
 
