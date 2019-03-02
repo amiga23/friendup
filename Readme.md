@@ -1,6 +1,18 @@
+[![Build Status](https://travis-ci.org/amiga23/friendup.svg?branch=master)](https://travis-ci.org/amiga23/friendup)
+
+This repo is a fork of https://github.com/FriendUPCloud/friendup
+
+# Docker
+Build and run in docker
+'''
+docker-compose up --build
+'''
+Point your browser to  
+http://localhost:6502
+
+
 Friend Unifying Platform version 1.2-RC2
 ========================================
-[![Build Status](https://travis-ci.org/amiga23/friendup.svg?branch=master)](https://travis-ci.org/amiga23/friendup)
 
 **NB:** This branch is not yet stable, and is currently under development. Out current stable branch for users is FriendUP v1.2-RC1. This current branch changes daily. Developers should commit to *the master branch* after proper testing. Check this out for more information on [commit guidelines](https://github.com/FriendUPCloud/friendup/wiki/4.-Developer-Commit-Guidelines). Bleeding edge *users* should check out the *friendup-1.2-rc2* branch. 
 
